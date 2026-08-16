@@ -1,0 +1,37 @@
+---
+title: Getting started
+description: Replace this starter page with documentation for your framework.
+section: Introduction
+order: 10
+---
+
+# Getting started
+
+This site is ready for documentation written in `.svx` files. Replace this page with your framework's introduction, installation instructions, and first example.
+
+## Write documentation
+
+Add `.svx` files under `src/content/docs`. Their paths become documentation URLs, and frontmatter controls the title, description, section, and order.
+
+```text
+---
+title: Your first guide
+description: Explain the first thing users should build.
+section: Guides
+order: 20
+---
+
+# Your first guide
+
+Write ordinary Markdown and Svelte components here.
+```
+
+## Optional Rust API insights
+
+The site works without Rustdoc data: fenced code blocks receive syntax highlighting. To add hover cards, source links, signatures, and searchable framework symbols, configure `src/lib/docs/config.ts` and prepare an artifact from your framework checkout:
+
+```sh
+bun run docs:prepare --local ../framework
+```
+
+Once prepared, framework identifiers in Rust code blocks are enriched automatically. You can also add focused handwritten API pages under `src/content/symbols` when a symbol needs deeper explanation.

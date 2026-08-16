@@ -1,0 +1,489 @@
+/*
+ * Documentation design tokens and prose styles.
+ *
+ * Two responsibilities, kept together because they share the palette: the tokens every documentation
+ * component reads, and the styling of markdown output that components never touch.
+ *
+ * Theme switching is CSS-only. Shiki renders both themes into every token as custom properties, so a
+ * colour-scheme change repaints code without re-highlighting anything.
+ */
+
+:root {
+	color-scheme: light dark;
+
+	--surface: light-dark(#ffffff, #0e1116);
+	--surface-raised: light-dark(#f8f9fb, #161b22);
+	--surface-sunken: light-dark(#f2f4f7, #0b0e13);
+	--border: light-dark(#e3e6ea, #262c36);
+	--shadow: light-dark(#101828, #000000);
+
+	--text: light-dark(#101828, #e6edf3);
+	--text-muted: light-dark(#4a5565, #9aa5b1);
+	--text-subtle: light-dark(#6b7684, #6e7b8a);
+
+	--accent: light-dark(#0b62d6, #58a6ff);
+	--accent-surface: light-dark(#eaf2fd, #12233c);
+
+	--tone-info: light-dark(#0b62d6, #58a6ff);
+	--tone-info-surface: light-dark(#eaf2fd, #11202f);
+	--tone-success: light-dark(#0f7b45, #3fb950);
+	--tone-success-surface: light-dark(#e8f6ee, #10241a);
+	--tone-warning: light-dark(#a35b00, #d29922);
+	--tone-warning-surface: light-dark(#fdf3e3, #26200f);
+	--tone-danger: light-dark(#c0362c, #f85149);
+	--tone-danger-surface: light-dark(#fdecea, #2a1614);
+
+	/*
+	 * Semantic colours for annotated identifiers in code.
+	 *
+	 * Shiki colours a token by what it *looks* like; these colour it by what it **is**, which is
+	 * knowable here and nowhere else — the build resolved every one of these against the release. A
+	 * snippet where `fetch_add`, `AtomicU64` and `Relaxed` are all the same blue makes the reader do
+	 * the work the index already did.
+	 *
+	 * Four groups, and no more. A palette with a colour per symbol kind is harder to read than no
+	 * colour at all; the useful distinctions are noun from verb from macro from value. Values are
+	 * drawn from GitHub's own palette, which is what the light and dark code themes are, so they sit
+	 * against the unannotated tokens around them rather than fighting them.
+	 *
+	 * The hues are spread rather than merely different. A first pass put fields and calls in
+	 * neighbouring purples, and `self.greetings.fetch_add(…)` — where the two sit adjacent — was no
+	 * easier to read than before.
+	 */
+	--lens-type: light-dark(#0550ae, #79c0ff);
+	--lens-callable: light-dark(#8250df, #d2a8ff);
+	--lens-macro: light-dark(#953800, #ffa657);
+	--lens-value: light-dark(#116329, #7ee787);
+	--lens-module: light-dark(#57606a, #8b949e);
+
+	--radius: 8px;
+
+	--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, monospace;
+}
+
+body {
+	margin: 0;
+	background: var(--surface);
+	color: var(--text);
+	font-family: var(--font-sans);
+	line-height: 1.65;
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: var(--accent);
+}
+
+/* Prose ------------------------------------------------------------------- */
+
+.prose {
+	max-width: 46rem;
+}
+
+.prose h1 {
+	margin: 0 0 0.5rem;
+	font-size: 2rem;
+	font-weight: 650;
+	letter-spacing: -0.02em;
+	line-height: 1.2;
+}
+
+.prose h2 {
+	margin: 2.5rem 0 0.75rem;
+	font-size: 1.375rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.prose h3 {
+	margin: 2rem 0 0.5rem;
+	font-size: 1.0625rem;
+	font-weight: 600;
+}
+
+.prose p,
+.prose ul,
+.prose ol {
+	margin: 0 0 1rem;
+}
+
+.prose li {
+	margin-bottom: 0.25rem;
+}
+
+.prose :not(pre) > code {
+	padding: 0.1em 0.35em;
+	border-radius: 4px;
+	background: var(--surface-raised);
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+}
+
+.prose table {
+	width: 100%;
+	margin: 1.25rem 0;
+	border-collapse: collapse;
+	font-size: 0.9375rem;
+}
+
+.prose th,
+.prose td {
+	padding: 0.5rem 0.75rem;
+	border-bottom: 1px solid var(--border);
+	text-align: left;
+	vertical-align: top;
+}
+
+.prose th {
+	color: var(--text-subtle);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+
+.prose blockquote {
+	margin: 1.25rem 0;
+	padding-left: 1rem;
+	border-left: 3px solid var(--border);
+	color: var(--text-muted);
+}
+
+/* Heading anchors --------------------------------------------------------- */
+
+.prose .heading {
+	scroll-margin-top: 5rem;
+}
+
+.prose .heading__anchor {
+	margin-left: 0.4rem;
+	color: var(--text-subtle);
+	opacity: 0;
+	text-decoration: none;
+	transition: opacity 120ms ease;
+}
+
+.prose .heading:hover .heading__anchor,
+.prose .heading__anchor:focus-visible {
+	opacity: 1;
+}
+
+/* Code blocks ------------------------------------------------------------- */
+
+.code-block {
+	position: relative;
+	margin: 1.25rem 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface-sunken);
+	overflow: hidden;
+}
+
+.code-block__caption {
+	padding: 0.45rem 0.875rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--surface-raised);
+	color: var(--text-muted);
+	font-size: 0.75rem;
+}
+
+.code-block__caption[data-kind='filename'] {
+	font-family: var(--font-mono);
+}
+
+.code-block__copy {
+	position: absolute;
+	top: 0.4rem;
+	right: 0.4rem;
+	z-index: 1;
+	padding: 0.2rem 0.45rem;
+	border: 1px solid var(--border);
+	border-radius: calc(var(--radius) - 3px);
+	background: var(--surface-raised);
+	color: var(--text-muted);
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.6875rem;
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+
+.code-block:hover .code-block__copy,
+.code-block__copy:focus-visible {
+	opacity: 1;
+}
+
+.code-block pre {
+	margin: 0;
+	padding: 0.875rem 1rem;
+	overflow-x: auto;
+	background: none !important;
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	line-height: 1.6;
+}
+
+/*
+ * Shiki emits a light and a dark colour per token. Selecting between them here rather than shipping
+ * two copies of the markup is what keeps a themed code block free of layout duplication.
+ *
+ * Only the colour is taken. Shiki also emits a per-token background, but applying it paints each
+ * token's own box over the block's surface — which is invisible on text and shows up as white
+ * rectangles wherever a token is just indentation. The block's background belongs to the figure.
+ */
+.code-block :where(code, span) {
+	color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+	.code-block :where(code, span) {
+		color: var(--shiki-dark);
+	}
+}
+
+.code-block .line.highlighted {
+	display: inline-block;
+	width: 100%;
+	margin: 0 -1rem;
+	padding: 0 1rem;
+	background: var(--accent-surface) !important;
+	box-shadow: inset 2px 0 var(--accent);
+}
+
+/*
+ * A code block folded away because it is supporting material rather than the point.
+ *
+ * `<details>` keeps it reachable by the browser's own find, which is what makes hiding it safe: the
+ * code is still in the page and still searchable, it is merely not competing for attention with the
+ * lines the example is actually about.
+ */
+.code-block__folded {
+	margin: 1.25rem 0;
+}
+
+.code-block__folded > summary {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.3rem 0;
+	color: var(--text-subtle);
+	cursor: pointer;
+	font-size: 0.8125rem;
+	list-style: none;
+	user-select: none;
+}
+
+.code-block__folded > summary::-webkit-details-marker {
+	display: none;
+}
+
+.code-block__folded > summary::before {
+	content: '';
+	width: 0.4rem;
+	height: 0.4rem;
+	border-right: 1.5px solid currentColor;
+	border-bottom: 1.5px solid currentColor;
+	transform: rotate(-45deg);
+	transition: transform 150ms ease;
+}
+
+.code-block__folded[open] > summary::before {
+	transform: rotate(45deg);
+}
+
+.code-block__folded > summary:hover {
+	color: var(--text);
+}
+
+.code-block__folded > .code-block {
+	margin-top: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.code-block__folded > summary::before {
+		transition: none;
+	}
+}
+
+/* Semantic colours -------------------------------------------------------- */
+
+/*
+ * Applied to annotated identifiers only, so unannotated code keeps Shiki's syntax colouring
+ * untouched. The `!important` is unavoidable rather than lazy: Shiki writes a colour onto every
+ * span it emits, including these, and the whole point is that what the build *resolved* outranks
+ * what the grammar guessed.
+ */
+.code-block [data-lens='type'],
+.prose .symbol-ref [data-lens='type'] {
+	color: var(--lens-type) !important;
+}
+
+.code-block [data-lens='callable'],
+.prose .symbol-ref [data-lens='callable'] {
+	color: var(--lens-callable) !important;
+}
+
+.code-block [data-lens='macro'],
+.prose .symbol-ref [data-lens='macro'] {
+	color: var(--lens-macro) !important;
+}
+
+.code-block [data-lens='value'],
+.prose .symbol-ref [data-lens='value'] {
+	color: var(--lens-value) !important;
+}
+
+.code-block [data-lens='module'],
+.prose .symbol-ref [data-lens='module'] {
+	color: var(--lens-module) !important;
+}
+
+/*
+ * A local and a struct field keep the colour the grammar gave them.
+ *
+ * They are the data the code owns rather than anything the framework provides, and colouring them
+ * tints most of a struct body and most of a function body — which defeats the purpose. What the
+ * semantic colours are for is picking the framework out of the surrounding code, and a field is not
+ * that even when the build can say a great deal about it. Both still carry their annotation: the
+ * hover marker is how they say they have something to show.
+ */
+.code-block [data-lens='local'],
+.code-block [data-lens='field'],
+.prose .symbol-ref [data-lens='field'] {
+	color: inherit;
+}
+
+/* Symbols ----------------------------------------------------------------- */
+
+/*
+ * A symbol referenced in prose. Styled as inline code, but coloured by the same Shiki themes as a
+ * code block, so a type reads the same whether it appears in a sentence or in a snippet.
+ */
+.prose .symbol-ref {
+	padding: 0.1em 0.35em;
+	border-radius: 4px;
+	background: var(--surface-raised);
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+}
+
+.prose .symbol-ref :where(span, a) {
+	color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+	.prose .symbol-ref :where(span, a) {
+		color: var(--shiki-dark);
+	}
+}
+
+.prose .symbol-ref .symbol {
+	border-bottom: 1px dotted color-mix(in srgb, currentColor 45%, transparent);
+	cursor: help;
+	text-decoration: none;
+}
+
+.prose .symbol-ref a.symbol:hover {
+	border-bottom-style: solid;
+}
+
+
+.code-block .symbol {
+	border-bottom: 1px dotted color-mix(in srgb, currentColor 45%, transparent);
+	cursor: help;
+	text-decoration: none;
+}
+
+.code-block a.symbol:hover {
+	border-bottom-style: solid;
+}
+
+.code-block .symbol[data-symbol-deprecated] {
+	text-decoration: line-through;
+	text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
+}
+
+/*
+ * A local whose type the build worked out.
+ *
+ * Marked far more quietly than a symbol, and that difference is the point. A symbol is a thing in
+ * the framework and gets a dotted underline that says "there is something to read here"; a variable
+ * is the snippet's own name for a value, and its type is a hint rather than a destination. A dotted
+ * underline on both would make a snippet look like it was mostly links, and would tell the reader
+ * that `app` is part of the framework, which it is not.
+ *
+ * The marker appears on hover instead of resting on the page: it is there when a reader goes looking
+ * for it and invisible while they are reading the code.
+ */
+.code-block .variable {
+	cursor: help;
+	text-underline-offset: 0.2em;
+}
+
+.code-block .variable:hover {
+	text-decoration: underline dotted color-mix(in srgb, currentColor 35%, transparent);
+}
+
+/*
+ * A name the snippet declared for itself.
+ *
+ * Marked like a variable rather than like a framework symbol, because that is what it is: something
+ * this example invented, with no page behind it. What it does have is a definition a few lines up,
+ * which is why it is clickable where a variable is not.
+ */
+.code-block .local {
+	cursor: pointer;
+	text-underline-offset: 0.2em;
+}
+
+.code-block .local:hover {
+	text-decoration: underline dashed color-mix(in srgb, currentColor 40%, transparent);
+}
+
+/*
+ * A type from another crate.
+ *
+ * Marked more faintly than a framework symbol and never in the accent colour: it is a real
+ * destination, but it leads *away* from this site, and a snippet where `Arc` and `String` compete
+ * visually with the framework's own types tells the reader the wrong thing about which is which.
+ *
+ * A trait is distinguished from a type. That distinction is most of what the reduced external tier
+ * buys — `Serialize` being a trait and `Duration` being a struct is knowable, and worth showing,
+ * without documenting either crate.
+ */
+.code-block .external {
+	cursor: help;
+	text-decoration: none;
+	text-underline-offset: 0.2em;
+}
+
+.code-block a.external:hover {
+	text-decoration: underline dotted color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.code-block .external[data-external-kind='trait'] {
+	font-style: italic;
+}
+
+/*
+ * The line a jump landed on, so the reader can see where they were sent.
+ *
+ * `:target` alone would not do: the jump is handled in script to avoid a navigation, so the class is
+ * applied directly and removed when it has been seen.
+ */
+.code-block .line[data-jumped] {
+	display: inline-block;
+	width: 100%;
+	margin: 0 -1rem;
+	padding: 0 1rem;
+	background: var(--accent-surface);
+	box-shadow: inset 2px 0 var(--accent);
+	transition: background 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.code-block .line[data-jumped] {
+		transition: none;
+	}
+}
