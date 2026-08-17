@@ -15,8 +15,9 @@
 	rustdoc, which is not the bar to aim at.
 -->
 <script lang="ts">
-	import { getSymbolInfo } from '../context.ts';
+	import { getSymbolInfoAccessor } from '../context.ts';
 	import type { SymbolMember } from '../types.ts';
+	import RustSignature from './RustSignature.svelte';
 
 	interface Props {
 		/** Heading for the section. */
@@ -31,7 +32,8 @@
 
 	let { title = 'Members', only, except, kinds }: Props = $props();
 
-	const symbol = getSymbolInfo();
+	const symbolInfo = getSymbolInfoAccessor();
+	const symbol = $derived(symbolInfo());
 
 	/**
 	 * Anchor for the section, derived from its title.
@@ -87,7 +89,7 @@
 					</div>
 
 					{#if member.signature}
-						<pre class="member__signature"><code>{member.signature}</code></pre>
+						<RustSignature code={member.signature} class="member__signature" />
 					{/if}
 
 					{#if member.doc}
@@ -172,7 +174,7 @@
 		color: var(--accent);
 	}
 
-	.member__signature {
+	:global(.member__signature) {
 		margin: 0.4rem 0 0;
 		padding: 0.5rem 0.75rem;
 		overflow-x: auto;

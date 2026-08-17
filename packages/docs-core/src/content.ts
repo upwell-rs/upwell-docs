@@ -57,6 +57,9 @@ export interface NavigationGroup {
 	readonly type: 'group';
 	readonly id: string;
 	readonly label: string;
+	/** A namespace page represented by this group rather than a duplicate child leaf. */
+	readonly href?: string;
+	readonly pageId?: string;
 	readonly order: number;
 	readonly defaultOpen: boolean;
 	readonly kind: 'guide' | 'reference';

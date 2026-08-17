@@ -17,12 +17,15 @@
 		name: string;
 		repository: string;
 		versions: readonly DocsVersion[];
+		guidesHref: string;
+		symbolsHref: string;
+		area: 'guides' | 'symbols';
 		onversionchange: (id: string) => void;
 		/** The narrow-viewport navigation trigger, which hides itself on wide ones. */
 		nav?: Snippet;
 	}
 
-	let { version, onsearch, name, repository, versions, onversionchange, nav }: Props = $props();
+	let { version, onsearch, name, repository, versions, guidesHref, symbolsHref, area, onversionchange, nav }: Props = $props();
 	let hydrated = $state(false);
 
 	onMount(() => {
@@ -35,7 +38,12 @@
 
 		<a class="header__brand" href="/">{name}</a>
 
-	<button class="header__search" type="button" onclick={onsearch}>
+		<nav class="header__areas" aria-label="Documentation sections">
+			<a href={guidesHref} aria-current={area === 'guides' ? 'page' : undefined}>Guides</a>
+			<a href={symbolsHref} aria-current={area === 'symbols' ? 'page' : undefined}>Symbols</a>
+		</nav>
+
+		<button class="header__search" type="button" onclick={onsearch}>
 		<span>Search</span>
 		<kbd class="header__key">/</kbd>
 	</button>
@@ -102,6 +110,31 @@
 		font-size: 0.8125rem;
 	}
 
+	.header__areas {
+		display: flex;
+		align-self: stretch;
+		gap: 0.25rem;
+	}
+
+	.header__areas a {
+		display: flex;
+		align-items: center;
+		padding: 0 0.55rem;
+		border-bottom: 2px solid transparent;
+		color: var(--text-muted);
+		font-size: 0.8125rem;
+		text-decoration: none;
+	}
+
+	.header__areas a:hover {
+		color: var(--text);
+	}
+
+	.header__areas a[aria-current='page'] {
+		border-bottom-color: var(--accent);
+		color: var(--text);
+	}
+
 	.header__search:hover {
 		color: var(--text);
 	}
@@ -142,6 +175,12 @@
 		.header__key,
 		.header__label {
 			display: inline-block;
+		}
+	}
+
+	@media (max-width: 30rem) {
+		.header__areas a {
+			padding: 0 0.35rem;
 		}
 	}
 

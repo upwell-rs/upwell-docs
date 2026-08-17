@@ -8,14 +8,15 @@
  * serialised into the page.
  */
 
+import { dev } from '$app/env';
+import { resolvePrerender } from '@upwell/docs-core/config';
 import { docsServerRoutes } from '#lib/docs/runtime.server';
-import type { EntryGenerator, PageServerLoad } from "./$types";
+import { docsConfig } from 'virtual:docs-config';
+import type { EntryGenerator, PageServerLoad } from './$types';
 
-// A fresh template has no symbol pages. `auto` prerenders generated entries when they exist without
-// rejecting the dynamic route itself when the optional Rustdoc workflow has not been configured yet.
-export const prerender = "auto";
+export const prerender = resolvePrerender(docsConfig, 'symbols', dev);
 
-/** Authored pages and active generated canonical declaration paths are prerendered. */
+/** Static symbol pages are rendered concurrently; version-level catalog data is shared and cached. */
 export const entries: EntryGenerator = () => docsServerRoutes.symbolEntries();
 
 export const load: PageServerLoad = ({ params }) => docsServerRoutes.loadSymbol(params);

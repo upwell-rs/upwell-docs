@@ -77,6 +77,7 @@ export function createDocsRouteHelpers(options: DocsRouteHelpersOptions): {
 
 			return [
 				{ slug: '' },
+				{ slug: 'symbols' },
 				...content.pagesFor(version.releaseVersion).map((page) => ({ slug: page.slug })),
 				...content.symbolPagesFor(version.releaseVersion).map((page) => ({ slug: `symbols/${page.segments}` }))
 			];

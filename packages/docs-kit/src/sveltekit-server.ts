@@ -11,6 +11,16 @@ export interface ServerRouteError {
 	readonly suggestions?: string[];
 }
 
+export interface SymbolRecord {
+	readonly path: string;
+	readonly name: string;
+	readonly crate: string;
+	readonly kind: string;
+	readonly summary: string | null;
+	readonly href: string;
+	readonly authored: boolean;
+}
+
 export interface DocsServerRouteHelpersOptions {
 	readonly content: DocsContent;
 	readonly artifacts: ArtifactService;
@@ -30,16 +40,18 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 		readonly docsHtml: string;
 		readonly chrome: { readonly slug: string; readonly title: string; readonly section: string; readonly reference: true };
 	}>;
-	loadApiIndex(versionId: string): Promise<{
+	loadSymbolsIndex(versionId: string): Promise<{
 		readonly version: DocsVersion;
-		readonly records: readonly { readonly path: string; readonly name: string; readonly crate: string; readonly kind: string; readonly summary: string | null; readonly href: string; readonly authored: boolean }[];
-		readonly chrome: { readonly slug: 'api'; readonly title: 'API Reference'; readonly section: 'API reference'; readonly reference: true };
+		readonly records: readonly SymbolRecord[];
+		readonly chrome: { readonly slug: 'symbols'; readonly title: 'Symbols'; readonly section: 'Symbols'; readonly reference: true };
 	}>;
 	loadSearch(versionId: string): Promise<SearchIndexResponse>;
 	searchEntries(): { readonly version: string }[];
+	symbolIndexEntries(): { readonly version: string }[];
 } {
 	const { content, artifacts, error, building, buildSearchIndex } = options;
 	const notFound = (body: ServerRouteError): never => error(404, body);
+	const recordsByVersion = new Map<string, Promise<readonly SymbolRecord[]>>();
 
 	function resolveVersion(id: string): DocsVersion {
 		const wanted = id === 'latest' ? content.config.latest : id;
@@ -50,6 +62,36 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 		}
 
 		return version;
+	}
+
+	function symbolRecords(version: DocsVersion): Promise<readonly SymbolRecord[]> {
+		const existing = recordsByVersion.get(version.id);
+
+		if (existing) {
+			return existing;
+		}
+
+		const loading = artifacts.getCatalog(version).then((catalog) => catalog ? catalog.records.filter((record) => record.destination.kind !== 'source').map((record) => ({
+			path: record.path,
+			name: record.name,
+			crate: record.crate,
+			kind: record.kind,
+			summary: record.summary,
+			href: record.destination.href ?? '',
+			authored: record.destination.kind === 'authored'
+		})) : content.symbolPagesFor(version.releaseVersion).filter((page) => !page.draft).map((page) => ({
+			path: page.symbol,
+			name: page.title,
+			crate: page.symbol.split('::')[0].replaceAll('_', '-'),
+			kind: 'page',
+			summary: page.description ?? null,
+			href: content.symbolHref(version.id, page.segments),
+			authored: true
+		})));
+
+		recordsByVersion.set(version.id, loading);
+
+		return loading;
 	}
 
 	return {
@@ -64,8 +106,10 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 				}
 
 				for (const record of catalog.records) {
-					if (record.destination.kind !== 'source') {
-						entries.push({ version: version.id, path: record.destination.kind === 'authored' ? record.destination.page.segments : record.destination.segments });
+					if (record.destination.kind === 'authored') {
+						entries.push({ version: version.id, path: record.destination.page.segments });
+					} else if (record.destination.kind === 'generated') {
+						entries.push({ version: version.id, path: record.destination.segments });
 					}
 				}
 			}
@@ -105,36 +149,20 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 				page,
 				symbol,
 				docsHtml: authored ? '' : await artifacts.getSymbolDocs(version, record.canonical),
-				chrome: { slug: `symbols/${page.segments}`, title: page.title, section: 'API reference', reference: true }
+				chrome: { slug: `symbols/${page.segments}`, title: page.title, section: 'Symbols', reference: true }
 			};
 		},
-		async loadApiIndex(versionId) {
+		async loadSymbolsIndex(versionId) {
 			const version = resolveVersion(versionId);
-			const catalog = await artifacts.getCatalog(version);
-			const records = catalog ? catalog.records.filter((record) => record.destination.kind !== 'source').map((record) => ({
-				path: record.path,
-				name: record.name,
-				crate: record.crate,
-				kind: record.kind,
-				summary: record.summary,
-				href: record.destination.href ?? '',
-				authored: record.destination.kind === 'authored'
-			})) : content.symbolPagesFor(version.releaseVersion).filter((page) => !page.draft).map((page) => ({
-				path: page.symbol,
-				name: page.title,
-				crate: page.symbol.split('::')[0].replaceAll('_', '-'),
-				kind: 'page',
-				summary: page.description ?? null,
-				href: content.symbolHref(version.id, page.segments),
-				authored: true
-			}));
+			const records = await symbolRecords(version);
 
-			return { version, records, chrome: { slug: 'api', title: 'API Reference', section: 'API reference', reference: true } };
+			return { version, records, chrome: { slug: 'symbols', title: 'Symbols', section: 'Symbols', reference: true } };
 		},
 		async loadSearch(versionId) {
 			return buildSearchIndex(resolveVersion(versionId));
 		},
-		searchEntries: () => content.config.versions.map((version) => ({ version: version.id }))
+		searchEntries: () => content.config.versions.map((version) => ({ version: version.id })),
+		symbolIndexEntries: () => content.config.versions.map((version) => ({ version: version.id }))
 	};
 }
 

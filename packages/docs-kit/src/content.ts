@@ -186,17 +186,12 @@ export function createDocsContent(options: DocsContentOptions): DocsContent {
 
 			return load ? (await load()).default : undefined;
 		},
-		navigationFor(version) {
-			const guides = buildGuideTree(
-				pagesFor(version.releaseVersion).filter((page) => !page.draft),
-				(slug) => pageHref(version.id, slug)
-			);
-				return [...guides, {
-					type: 'group', id: 'api', label: 'API reference', order: 1000, defaultOpen: false, kind: 'reference', children: [{
-						type: 'page', id: 'api', title: 'API index', href: pageHref(version.id, 'api'), order: 0, topics: [], reference: true
-					}]
-				}];
-		},
+			navigationFor(version) {
+				return buildGuideTree(
+					pagesFor(version.releaseVersion).filter((page) => !page.draft),
+					(slug) => pageHref(version.id, slug)
+				);
+			},
 		pageHref,
 		symbolHref
 	};

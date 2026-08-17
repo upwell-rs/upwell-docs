@@ -1,4 +1,5 @@
 import { mdsvex } from "mdsvex";
+import { availableParallelism } from "node:os";
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import adapter from "@sveltejs/adapter-node";
@@ -46,6 +47,12 @@ export default defineConfig(({ command }) => {
           ),
       },
       adapter: adapter(),
+      prerender: {
+        // Every static route is explicitly enumerated. Crawling the full symbol tree from every page
+        // only rediscovers those entries and makes prerender work grow quadratically.
+        crawl: false,
+        concurrency: Math.min(8, availableParallelism()),
+      },
       preprocess: [
         // Before mdsvex, while the fences of an `<Example>` are still literal markdown: it reads
         // which blocks belong together so the highlighter can share their declarations.

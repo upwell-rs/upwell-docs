@@ -1,11 +1,65 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveSymbolPagesConfig, type RustdocEnrichmentConfig } from './config.ts';
+import {
+	resolvePrerender,
+	resolveSymbolPagesConfig,
+	type DocsConfig,
+	type RustdocEnrichmentConfig
+} from './config.ts';
+
+const config = (prerender?: DocsConfig['prerender']): DocsConfig => ({
+	framework: { crate: 'test', name: 'Test', repository: '', releaseTag: (version) => version },
+	versions: [],
+	latest: '' as DocsConfig['latest'],
+	cacheDir: '.cache',
+	symbolEnrichmentVersions: [],
+	landingSlug: 'index',
+	topics: [],
+	rustdoc: { directDependencyCrates: [], standardLibraryCrates: [] },
+	...(prerender === undefined ? {} : { prerender })
+});
 
 const rustdoc = (symbolPages?: RustdocEnrichmentConfig['symbolPages']): RustdocEnrichmentConfig => ({
 	directDependencyCrates: 'workspace',
 	standardLibraryCrates: [],
 	...(symbolPages === undefined ? {} : { symbolPages })
+});
+
+describe('resolvePrerender', () => {
+	it('defaults every route to prerendering', () => {
+		expect(resolvePrerender(config(), 'docs', true)).toBe(true);
+		expect(resolvePrerender(config(), 'symbols', false)).toBe(true);
+	});
+
+	it('supports a global setting', () => {
+		expect(resolvePrerender(config(false), 'search', false)).toBe(false);
+		expect(resolvePrerender(config('auto'), 'api', true)).toBe('auto');
+	});
+
+	it('selects environment-specific settings', () => {
+		const configured = config({ development: false, production: 'auto' });
+
+		expect(resolvePrerender(configured, 'symbols', true)).toBe(false);
+		expect(resolvePrerender(configured, 'symbols', false)).toBe('auto');
+	});
+
+	it('uses route settings before the central default', () => {
+		const configured = config({
+			default: false,
+			routes: { symbols: { development: false, production: 'auto' }, search: true }
+		});
+
+		expect(resolvePrerender(configured, 'docs', false)).toBe(false);
+		expect(resolvePrerender(configured, 'symbols', false)).toBe('auto');
+		expect(resolvePrerender(configured, 'search', true)).toBe(true);
+	});
+
+	it('inherits the default when an environment override is omitted', () => {
+		const configured = config({ default: 'auto', routes: { symbols: { development: false } } });
+
+		expect(resolvePrerender(configured, 'symbols', true)).toBe(false);
+		expect(resolvePrerender(configured, 'symbols', false)).toBe('auto');
+	});
 });
 
 describe('resolveSymbolPagesConfig', () => {

@@ -13,9 +13,10 @@
 	silently omits the ten nobody has written a page for yet.
 -->
 <script lang="ts">
-	import { getSymbolInfo } from '../context.ts';
+	import { getSymbolInfoAccessor } from '../context.ts';
 
-	const symbol = getSymbolInfo();
+	const symbolInfo = getSymbolInfoAccessor();
+	const symbol = $derived(symbolInfo());
 </script>
 
 {#if symbol.implementations.length > 0}

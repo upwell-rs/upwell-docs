@@ -24,7 +24,7 @@ const search = createSearchIndexService({
 export const docsServerRoutes = createDocsServerRouteHelpers({
 	content: docsContent,
 	artifacts: docsArtifacts,
-	error: (status, body) => error(status, body),
+	error: (status, body) => error(status, body.message, { suggestions: body.suggestions }),
 	building,
 	buildSearchIndex: search.build
 });

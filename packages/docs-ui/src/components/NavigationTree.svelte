@@ -18,16 +18,26 @@
 	{#each nodes as node (node.id)}
 		<li>
 			{#if node.type === 'group'}
-				<details
-					class="tree__group"
-					data-group-id={node.id}
-					data-reference={node.kind === 'reference' ? 'true' : undefined}
-					open={activeGroups.has(node.id) || isOpen(node.id, node.defaultOpen)}
-					ontoggle={(event) => onToggle(node.id, event.currentTarget.open)}
-				>
-					<summary class="tree__summary">{node.label}</summary>
-					<NavigationTree nodes={node.children} {current} {activeGroups} {isOpen} {onToggle} depth={depth + 1} />
-				</details>
+				{#if node.children.length > 0}
+					<details
+						class="tree__group"
+						data-group-id={node.id}
+						data-reference={node.kind === 'reference' ? 'true' : undefined}
+						open={activeGroups.has(node.id) || isOpen(node.id, node.defaultOpen)}
+						ontoggle={(event) => onToggle(node.id, event.currentTarget.open)}
+					>
+						<summary class="tree__summary" class:tree__summary--current={node.pageId === current}>
+							{#if node.href}
+								<a href={node.href} aria-current={node.pageId === current ? 'page' : undefined} onclick={(event) => event.stopPropagation()}>{node.label}</a>
+							{:else}
+								{node.label}
+							{/if}
+						</summary>
+						<NavigationTree nodes={node.children} {current} {activeGroups} {isOpen} {onToggle} depth={depth + 1} />
+					</details>
+				{:else if node.href}
+					<a class="tree__link" href={node.href} aria-current={node.pageId === current ? 'page' : undefined}><code>{node.label}</code></a>
+				{/if}
 			{:else}
 				<a
 					class="tree__link"
@@ -104,6 +114,16 @@
 
 	.tree__summary:hover {
 		color: var(--text);
+	}
+
+	.tree__summary a {
+		min-width: 0;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.tree__summary--current {
+		color: var(--accent);
 	}
 
 	.tree__link {

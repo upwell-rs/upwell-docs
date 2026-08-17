@@ -28,6 +28,17 @@ export function getSymbolInfo(): SymbolInfo {
 	return symbol();
 }
 
+/** Reactive symbol accessor for components that survive SvelteKit client navigation. */
+export function getSymbolInfoAccessor(): () => SymbolInfo {
+	const symbol = getContext<(() => SymbolInfo) | undefined>(SYMBOL);
+
+	if (!symbol) {
+		throw new Error('No symbol in context. Symbol components must be rendered under a symbol provider.');
+	}
+
+	return symbol;
+}
+
 export function setDocsNotifier(notifier: DocsNotifier): void {
 	setContext(NOTIFIER, notifier);
 }

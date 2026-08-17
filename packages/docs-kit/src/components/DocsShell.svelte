@@ -11,6 +11,8 @@
 	import { setDocsAuthoringContext } from '../authoring-context.svelte.ts';
 	import { type DocsNotifier, type NotificationRuntime, type SidebarState } from '../client.svelte.ts';
 	import DocsSidebar from './DocsSidebar.svelte';
+	import SymbolsSidebar from './SymbolsSidebar.svelte';
+	import type { SymbolRecord } from '../sveltekit-server.ts';
 
 	interface Props {
 		content: DocsContent;
@@ -19,6 +21,7 @@
 		chrome?: PageChrome;
 		previous?: DocSummary;
 		next?: DocSummary;
+		symbolRecords?: readonly SymbolRecord[];
 		searchIndex: SearchIndex;
 		sidebar: SidebarState;
 		notifications: NotificationRuntime;
@@ -27,7 +30,7 @@
 		children: Snippet;
 	}
 
-	let { content, version, pathname, chrome: current, previous, next, searchIndex, sidebar, notifications, navigate, assignLocation, children }: Props = $props();
+	let { content, version, pathname, chrome: current, previous, next, symbolRecords = [], searchIndex, sidebar, notifications, navigate, assignLocation, children }: Props = $props();
 
 	let article = $state<HTMLElement>();
 	let search = $state<ReturnType<typeof Search>>();
@@ -40,6 +43,7 @@
 	});
 
 	const slug = $derived(current?.slug ?? '');
+	const symbols = $derived(slug === 'symbols' || slug.startsWith('symbols/'));
 
 	function changeVersion(id: string): void {
 		const target = content.config.versions.find((candidate) => candidate.id === id);
@@ -48,7 +52,7 @@
 			return;
 		}
 
-			const available = slug === 'api' ? true : slug.startsWith('symbols/')
+		const available = slug === 'symbols' ? true : slug.startsWith('symbols/')
 			? Boolean(content.findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
 			: Boolean(content.findPage(slug, target.releaseVersion));
 
@@ -61,13 +65,20 @@
 	name={content.config.framework.name}
 	repository={content.config.framework.repository}
 	versions={content.config.versions}
+	guidesHref={content.pageHref(version.id, content.config.landingSlug)}
+	symbolsHref={content.pageHref(version.id, 'symbols')}
+	area={symbols ? 'symbols' : 'guides'}
 	onversionchange={changeVersion}
 	onsearch={() => search?.open()}
 >
 	{#snippet nav()}
 		<MobileNav title={version.label} {pathname}>
 			{#snippet navigation()}
-				<DocsSidebar {content} {version} current={slug} state={sidebar} />
+				{#if symbols}
+					<SymbolsSidebar records={symbolRecords} current={slug} indexHref={content.pageHref(version.id, 'symbols')} state={sidebar} />
+				{:else}
+					<DocsSidebar {content} {version} current={slug} state={sidebar} />
+				{/if}
 			{/snippet}
 			{#snippet toc()}
 				<TableOfContents {article} key={pathname} />
@@ -88,14 +99,18 @@
 	bind:this={search}
 	{version}
 	{searchIndex}
-	searchHref={(id) => `${content.pageHref(id, '')}/search.json`}
+	searchHref={(id) => content.pageHref(id, 'search.json')}
 	{navigate}
 />
 <Notifications requested={notifications.toaster.requested} />
 
 <div class="layout">
 	<aside class="layout__sidebar">
-		<DocsSidebar {content} {version} current={slug} state={sidebar} />
+		{#if symbols}
+			<SymbolsSidebar records={symbolRecords} current={slug} indexHref={content.pageHref(version.id, 'symbols')} state={sidebar} />
+		{:else}
+			<DocsSidebar {content} {version} current={slug} state={sidebar} />
+		{/if}
 	</aside>
 
 	<main class="layout__main">
@@ -107,7 +122,7 @@
 			{@render children()}
 		</DocsArticle>
 
-		{#if current?.reference}
+		{#if current?.reference && slug !== 'symbols'}
 			<ReferenceNote backTo={{ href: content.pageHref(version.id, ''), title: 'Back to the guides' }} />
 		{:else}
 			<PageNav {version} {previous} {next} />

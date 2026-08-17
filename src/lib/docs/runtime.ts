@@ -33,5 +33,5 @@ export const docsClient = {
 
 export const docsRoutes = createDocsRouteHelpers({
 	content: docsContent,
-	error: (status, body) => error(status, body)
+	error: (status, body) => error(status, body.message, { suggestions: body.suggestions })
 });

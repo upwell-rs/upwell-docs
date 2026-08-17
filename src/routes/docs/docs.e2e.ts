@@ -248,14 +248,20 @@ test('topic filtering retains matching ancestors and the current page branch', a
 	await expect(sidebar.locator('details[data-group-id="guides:axum"]')).toHaveCount(1);
 });
 
-test('API navigation uses one index leaf instead of listing every symbol', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/api`);
+test('guides and symbols have explicit, independent navigation', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/di/components`);
 
-	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
+	const guideSidebar = page.getByRole('navigation', { name: 'Documentation' });
 
-	await expect(sidebar.locator('details[data-group-id="api"]')).toHaveAttribute('open', '');
-	await expect(sidebar.getByRole('link', { name: 'API index' })).toHaveAttribute('aria-current', 'page');
-	await expect(sidebar.getByRole('link', { name: 'AxumConfig' })).toHaveCount(0);
+	await expect(guideSidebar.getByRole('link', { name: 'API index' })).toHaveCount(0);
+	await page.getByRole('navigation', { name: 'Documentation sections' }).getByRole('link', { name: 'Symbols' }).click();
+	await expect(page).toHaveURL(`/docs/${VERSION}/symbols`);
+
+	const sidebar = page.getByRole('navigation', { name: 'Symbols' });
+
+	await expect(sidebar.getByRole('link', { name: 'All symbols' })).toHaveAttribute('aria-current', 'page');
+	await expect(sidebar.locator('details[data-group-id="symbols:upwell_axum"]')).toHaveAttribute('open', '');
+	await expect(sidebar.locator(`a[href="/docs/${VERSION}/symbols/upwell_axum/config/AxumConfig"]`)).toHaveCount(1);
 });
 
 test('a symbol page shows hand-written prose alongside generated facts', async ({ page }) => {
@@ -266,6 +272,38 @@ test('a symbol page shows hand-written prose alongside generated facts', async (
 	// Facts the build supplied, which no one typed into the page.
 	await expect(page.getByRole('article').getByText('upwell-macros', { exact: true })).toBeVisible();
 	await expect(page.getByRole('link', { name: /crates\/macros\/src\/lib\.rs:\d+/ })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Symbols' }).getByRole('link', { name: 'component', exact: true }).first()).toHaveAttribute('aria-current', 'page');
+});
+
+test('generated symbol and member signatures are syntax highlighted', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/symbols/cargo_upwell/build/BuildError`);
+
+	const signature = page.locator('.signature');
+	const memberSignature = page.locator('.member__signature').first();
+
+	await expect(signature.locator('.token--keyword', { hasText: 'pub' })).toHaveCount(1);
+	await expect(signature.locator('.token--keyword', { hasText: 'enum' })).toHaveCount(1);
+	await expect(signature.locator('.token--type')).toContainText('BuildError');
+	await expect(memberSignature.locator('.token--type')).toContainText(/AmbiguousExecutable|Cancelled|Capture|Failed/);
+});
+
+test('client navigation replaces every generated symbol fact', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/symbols/cargo_upwell/build/BuildError`);
+
+	const symbols = page.getByRole('navigation', { name: 'Symbols' });
+	const target = symbols.locator('.tree__link:visible:not([aria-current="page"])').first();
+	const href = await target.getAttribute('href');
+	const title = (await target.textContent())?.trim();
+
+	await target.click();
+
+	expect(href).toBeTruthy();
+	expect(title).toBeTruthy();
+	await expect(page).toHaveURL(href!);
+	await expect(page.getByRole('heading', { level: 1, name: title! })).toBeVisible();
+	await expect(page.locator('.meta__path code')).not.toContainText('cargo_upwell::build::BuildError');
+	await expect(page.locator('.signature')).not.toContainText('pub enum BuildError');
+	await expect(page.locator('.member__name', { hasText: 'AmbiguousExecutable' })).toHaveCount(0);
 });
 
 test('a symbol with no hand-written page answers with a 404', async ({ page }) => {

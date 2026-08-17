@@ -12,6 +12,7 @@
 	const chrome = $derived(page.data.chrome as PageChrome | undefined);
 	const previous = $derived(page.data.previous as DocSummary | undefined);
 	const next = $derived(page.data.next as DocSummary | undefined);
+	const symbolRecords = $derived(page.data.records);
 
 	function navigate(href: string, external = false): void {
 		if (external) {
@@ -30,6 +31,7 @@
 	{chrome}
 	{previous}
 	{next}
+	{symbolRecords}
 	searchIndex={docsClient.searchIndex}
 	sidebar={docsClient.sidebar}
 	notifications={docsClient.notifications}

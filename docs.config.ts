@@ -27,6 +27,12 @@ export const docsConfig: DocsConfig = {
   cacheDir: ".cache/upwell-docs",
   symbolEnrichmentVersions: [versionId("1.0.0"), versionId("0.20.0")],
   landingSlug: "getting-started",
+  prerender: {
+    routes: {
+      // Serve cached symbols dynamically in dev; emit known symbol routes in production.
+      symbols: { development: false, production: "auto" },
+    },
+  },
   topics: [
     {
       id: "framework",
@@ -66,6 +72,6 @@ export const docsConfig: DocsConfig = {
   rustdoc: {
     directDependencyCrates: "workspace",
     standardLibraryCrates: ["std", "core", "alloc"],
-    symbolPages: 'production'
+    symbolPages: true
   },
 };

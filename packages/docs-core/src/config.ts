@@ -44,6 +44,33 @@ export interface ResolvedSymbolPagesConfig {
   readonly crates: ReadonlySet<string> | null;
 }
 
+export type DocsPrerenderValue = boolean | "auto";
+
+export type DocsPrerenderRoute =
+  | "docs"
+  | "symbols"
+  | "api"
+  | "search"
+  | "redirects";
+
+export type DocsPrerenderSetting =
+  | DocsPrerenderValue
+  | {
+      readonly development?: DocsPrerenderValue;
+      readonly production?: DocsPrerenderValue;
+    };
+
+export interface DocsPrerenderPolicy {
+  readonly default?: DocsPrerenderSetting;
+  readonly routes?: Partial<
+    Readonly<Record<DocsPrerenderRoute, DocsPrerenderSetting>>
+  >;
+}
+
+export type DocsPrerenderConfig =
+  | DocsPrerenderSetting
+  | DocsPrerenderPolicy;
+
 export interface DocsConfig {
   readonly framework: FrameworkCoordinates;
   readonly versions: readonly DocsVersion[];
@@ -54,6 +81,44 @@ export interface DocsConfig {
   readonly landingSlug: string;
   readonly topics: readonly DocsTopic[];
   readonly rustdoc: RustdocEnrichmentConfig;
+  /** Route prerendering policy. Omitted values default to prerendering. */
+  readonly prerender?: DocsPrerenderConfig;
+}
+
+/** Resolves a route's build-time prerender option, defaulting to static output. */
+export function resolvePrerender(
+  config: DocsConfig,
+  route: DocsPrerenderRoute,
+  development: boolean,
+): DocsPrerenderValue {
+  const policy = config.prerender;
+
+  if (policy === undefined || typeof policy !== "object") {
+    return policy ?? true;
+  }
+
+  if ("default" in policy || "routes" in policy) {
+    return (
+      resolvePrerenderSetting(policy.routes?.[route], development) ??
+      resolvePrerenderSetting(policy.default, development) ??
+      true
+    );
+  }
+
+  return (
+    resolvePrerenderSetting(policy as DocsPrerenderSetting, development) ?? true
+  );
+}
+
+function resolvePrerenderSetting(
+  setting: DocsPrerenderSetting | undefined,
+  development: boolean,
+): DocsPrerenderValue | undefined {
+  if (setting === undefined || typeof setting !== "object") {
+    return setting;
+  }
+
+  return development ? setting.development : setting.production;
 }
 
 export function resolveVersion(

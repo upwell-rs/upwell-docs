@@ -14,6 +14,8 @@ export type NavigationNode =
 		readonly type: 'group';
 		readonly id: string;
 		readonly label: string;
+		readonly href?: string;
+		readonly pageId?: string;
 		readonly kind: 'guide' | 'reference';
 		readonly defaultOpen: boolean;
 		readonly children: readonly NavigationNode[];

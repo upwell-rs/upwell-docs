@@ -7,10 +7,11 @@
 	empty — an "unknown" row reads as missing documentation when the truth is "not applicable".
 -->
 <script lang="ts">
-	import { getSymbolInfo } from '../context.ts';
+	import { getSymbolInfoAccessor } from '../context.ts';
 	import Badge from './Badge.svelte';
 
-	const symbol = getSymbolInfo();
+	const symbolInfo = getSymbolInfoAccessor();
+	const symbol = $derived(symbolInfo());
 	const kindLabel = $derived(
 		symbol.procMacro?.kind === 'bang'
 			? 'Function-like macro'
