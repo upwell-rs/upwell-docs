@@ -24,8 +24,8 @@ import path from 'node:path';
 import process from 'node:process';
 
 import type { DocsVersion } from '#lib/docs/config';
-import { pagesFor } from '#lib/docs/content/pages';
-import { symbolPagesFor } from '#lib/docs/content/symbol-pages';
+import { pageSource, pagesFor } from '#lib/docs/content/pages';
+import { symbolPageSource, symbolPagesFor } from '#lib/docs/content/symbol-pages';
 import { indexedDocuments } from '#tools/docs/render/document-index';
 import { getArtifact } from './artifact.ts';
 
@@ -62,48 +62,38 @@ export interface SearchIndex {
 	readonly degraded: boolean;
 }
 
-/**
- * Maps a compiled page's source file back to the slug it serves at.
- *
- * The document store is keyed by absolute file path, because that is what the compiler knows. Any
- * overlay prefix is stripped, so an overlay's prose is indexed under the slug it overrides.
- */
-function toContentPath(file: string, contentDir: string): string | undefined {
-	const relative = path.relative(path.join(process.cwd(), contentDir), file);
+/** Resolves a project-rooted manifest file to the compiler's absolute document key. */
+export function documentKey(file: string, projectRoot: string = process.cwd()): string {
+	return path.resolve(projectRoot, file.slice(1));
+}
 
-	if (relative.startsWith('..') || path.isAbsolute(relative)) {
+/** Selects the compiled prose for the exact content variant chosen for a release. */
+export function effectiveDocument<T extends { file: string }>(
+	documents: readonly T[],
+	source: string | undefined,
+	projectRoot: string = process.cwd()
+): T | undefined {
+	if (!source) {
 		return undefined;
 	}
 
-	const segments = relative.replace(/\.svx$/, '').split(path.sep);
+	const wanted = documentKey(source, projectRoot);
 
-	return (segments[0]?.startsWith('@') ? segments.slice(1) : segments).join('/');
+	return documents.find((document) => path.resolve(document.file) === wanted);
 }
 
 export async function buildSearchIndex(version: DocsVersion): Promise<SearchIndex> {
 	const documents = indexedDocuments();
-	const guides = new Map<string, (typeof documents)[number]>();
-	const symbolDocs = new Map<string, (typeof documents)[number]>();
-
-	for (const document of documents) {
-		const guideSlug = toContentPath(document.file, path.join('src', 'content', 'docs'));
-		const symbolSegments = toContentPath(document.file, path.join('src', 'content', 'symbols'));
-
-		if (guideSlug !== undefined) {
-			guides.set(guideSlug, document);
-		} else if (symbolSegments !== undefined) {
-			symbolDocs.set(symbolSegments, document);
-		}
-	}
 
 	const records: SearchRecord[] = [];
 
-	for (const page of pagesFor(version.frameworkVersion)) {
+	for (const page of pagesFor(version.releaseVersion)) {
 		if (page.draft) {
 			continue;
 		}
 
-		const document = guides.get(page.slug);
+		const source = pageSource(page.slug, version.releaseVersion);
+		const document = effectiveDocument(documents, source);
 
 		records.push({
 			href: `/docs/${version.id}/${page.slug}`,
@@ -116,13 +106,13 @@ export async function buildSearchIndex(version: DocsVersion): Promise<SearchInde
 	}
 
 	const artifact = await getArtifact(version);
-	const pages = symbolPagesFor(version.frameworkVersion).filter((page) => !page.draft);
+	const pages = symbolPagesFor(version.releaseVersion).filter((page) => !page.draft);
 
 	if (!artifact) {
 		// Without an artifact there is no canonical path to key on, so symbol pages are listed as they
 		// stand and framework symbols are absent — the same degradation as the code lens.
 		for (const page of pages) {
-			records.push(fromPage(version, page, symbolDocs.get(page.segments)));
+			records.push(fromPage(version, page, documentForSymbol(page.segments)));
 		}
 
 		return { version: version.id, records, degraded: true };
@@ -146,7 +136,7 @@ export async function buildSearchIndex(version: DocsVersion): Promise<SearchInde
 		const page = pageByCanonical.get(symbol.path);
 
 		if (page) {
-			records.push({ ...fromPage(version, page, symbolDocs.get(page.segments)), symbolKind: symbol.kind, detail: preferred });
+			records.push({ ...fromPage(version, page, documentForSymbol(page.segments)), symbolKind: symbol.kind, detail: preferred });
 
 			continue;
 		}
@@ -171,6 +161,12 @@ export async function buildSearchIndex(version: DocsVersion): Promise<SearchInde
 	}
 
 	return { version: version.id, records, degraded: false };
+
+	function documentForSymbol(segments: string): (typeof documents)[number] | undefined {
+		const source = symbolPageSource(segments, version.releaseVersion);
+
+		return effectiveDocument(documents, source);
+	}
 }
 
 /** A record for a hand-written symbol page. */

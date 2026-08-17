@@ -1,0 +1,29 @@
+---
+title: PluginRelation
+description: One static dependency, conflict, or ordering declaration in plugin composition.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import SymbolMembers from '#lib/docs/components/SymbolMembers.svelte';
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `PluginRelation`
+
+<SymbolMeta />
+
+`PluginRelation` pairs one `RelationKind` with a `RelationTarget`. Plugins publish these values through `Plugin::RELATIONS`; declarations are sorted and deduplicated as part of canonical composition metadata.
+
+<SymbolSignature />
+
+## Semantics
+
+`Requires` requires the target and orders it before the source. `Conflicts` prevents the source and effective target from coexisting. `Before` and `After` constrain order only when their target is present. A `RelationTarget::Plugin` selects one concrete `PluginId`; `RelationTarget::Slot` selects whichever effective implementation occupies that capability slot.
+
+Relations describe structure before plugin code runs. They must not be used to conditionally probe runtime state or to model a contribution-level dependency. The resolver reports missing requirements, conflicts, and cycles as composition diagnostics.
+
+See [Express composition statically](/docs/latest/extensions/plugins#express-composition-statically) for the authoring workflow and inspect `kind` and `target` when explaining a resolved plan programmatically.
+
+<SymbolMembers />

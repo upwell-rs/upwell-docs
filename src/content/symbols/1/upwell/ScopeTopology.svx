@@ -1,0 +1,24 @@
+---
+title: ScopeTopology
+description: Declares and validates the complete static parent topology for protocol-owned custom scopes.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `ScopeTopology`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`ScopeTopology` is the protocol's immutable declaration of every scope boundary it may open. Set it through `ProtocolDefinition::SCOPE_TOPOLOGY`; the application prepares it before validating component descriptors against protocol scope reachability.
+
+Build a topology with `ScopeTopology::new` and static [`ScopeBoundary`](./ScopeBoundary) values, or use `empty` when the protocol has no custom scopes. Each boundary has exactly one [`ScopeParent`](./ScopeParent): the application root or another boundary in the same topology.
+
+`prepare` rejects duplicate and reserved IDs, missing parents, self-parenting, cycles, and invalid lifetime-rank ordering. At runtime, open only a declared boundary beneath its declared parent. Components may use a custom scope only when that scope appears in the prepared topology.
+
+See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for a connection/request topology.
+
+<SymbolMembers title="Associated items" />

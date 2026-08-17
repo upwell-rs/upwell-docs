@@ -9,7 +9,7 @@ bun install
 bun run dev
 ```
 
-The site is immediately usable without a Rust framework checkout. Replace the starter page at `src/content/docs/getting-started.svx`, then add more `.svx` pages under `src/content/docs`. A file's path becomes its URL.
+The site is immediately usable without a Rust framework checkout. One version directory selector gates a content candidate without appearing in URLs, navigation, breadcrumbs, search paths, or Rust symbol paths. `1` matches stable `>=1.0.0, <2.0.0`; `1.4` matches stable `>=1.4.0, <1.5.0`; full selectors such as `1.4.0` and `1.4.0-rc.1` replace a candidate at their lower bound and carry forward. For example, `src/content/docs/1/framework/application-model.svx` serves `/docs/1.0.0/framework/application-model`; the selector may appear at any directory depth. Partial prereleases, build metadata, legacy `@` directories, and paths with multiple selectors are rejected. Shared unversioned files are the baseline. A path-selected candidate must not also declare frontmatter `since`.
 
 Before publishing, update the placeholder values in `src/lib/docs/config.ts`:
 
@@ -17,7 +17,9 @@ Before publishing, update the placeholder values in `src/lib/docs/config.ts`:
 - `framework.name`: the display name shown in the header
 - `framework.repository`: the repository URL used by the header and source links
 - `framework.releaseTag`: the tag convention for your releases
-- `versions`: the framework version the site currently documents
+- `versions`: explicit public releases; `releaseVersion` is the public URL, picker, content-gate, and cache identity
+- `symbolEnrichmentVersions`: releases whose artifact provenance matches the current framework identity and may provide symbol facts and links
+- `latest`: the explicit release id that the `/docs/latest` redirect alias targets
 - `topics`: optional sidebar filters and the framework crates they classify
 - `rustdoc.directDependencyCrates`: external crates considered plausible imports in ambiguous snippets; use `workspace` or an explicit list
 - `rustdoc.standardLibraryCrates`: first-tier external crates to enrich from `rust-docs-json`
@@ -30,7 +32,7 @@ Prepare an artifact from a local checkout when you want framework-aware code exa
 bun run docs:prepare --local ../framework
 ```
 
-`docs:prepare` runs nightly rustdoc JSON over the workspace and writes the resulting artifact to `.cache/framework-docs/<version>/`. The documentation site remains fully usable without it; Rust fences are highlighted but have no API annotations.
+`docs:prepare --version <release>` runs nightly rustdoc JSON over the workspace and writes the resulting artifact to `.cache/upwell-docs/<release>/`. The manifest records the requested public documentation release and the source package provenance. Releases listed in `docsConfig.readOnlyArtifactVersions` are historical records and the command refuses to replace their cache directories; the bundled `0.20.0` artifact is read-only. Its preserved provenance is not eligible to enrich current Upwell symbols, so 0.20 remains guide-only: authored pages, routes, and search work, while Rust fences are highlighted without symbol facts, links, or API pages. Only releases in `docsConfig.symbolEnrichmentVersions` may provide code-lens data and symbol search records.
 
 Set `FRAMEWORK_CHECKOUT` to avoid repeating `--local`:
 
@@ -53,13 +55,12 @@ rustup component add rust-docs-json --toolchain nightly
 
 ## Writing pages
 
-Every guide is an `.svx` file under `src/content/docs`:
+Every guide is an `.svx` file beneath `src/content/docs`. Visible directories derive navigation groups; there is no configured root `Guides` group and no `group:` frontmatter. Put a page under a full SemVer selector directory to introduce or replace it at that release:
 
 ````svx
 ---
 title: Middleware
 description: Wrap requests with cross-cutting behavior.
-section: Guides
 order: 20
 ---
 
@@ -93,11 +94,13 @@ Components available from `#lib/docs`: `Badge`, `Callout`, `PackageInstall`, `St
 
 ## Handwritten API pages
 
-To give a framework symbol deeper prose documentation, create an `.svx` page under `src/content/symbols`. Its location is its Rust path:
+To give a framework symbol deeper prose documentation, create an `.svx` page under `src/content/symbols`. Its visible location is its Rust path:
 
 ```text
-src/content/symbols/framework/prelude/component.svx  ->  framework::prelude::component
+src/content/symbols/1/upwell_macros/component.svx  ->  upwell_macros::component
 ```
+
+Version directory selectors and frontmatter `since`/`until` ranges use public `releaseVersion`. A full selector is selected at its lower boundary and remains selected until a later candidate at the same normalized path replaces it; major and minor selectors match only their stable major or minor ranges. The selected file's `until` or `versions` range decides when it stops being visible; the resolver never falls back to an earlier candidate. Legacy `@<SemVer>` directories and paths with multiple selectors are rejected. Artifact cache directories use the public release, while `manifest.documentation.sourcePackageVersion` preserves the Cargo source provenance.
 
 Use `SymbolMeta`, `SymbolSignature`, `SymbolMembers`, and `SymbolImpls` inside those pages to render facts from the prepared artifact. A symbol page is optional: symbols without one still show hover cards in code blocks.
 

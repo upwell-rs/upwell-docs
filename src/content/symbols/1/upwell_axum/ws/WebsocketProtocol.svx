@@ -1,0 +1,49 @@
+---
+title: WebsocketProtocol
+description: Implements a pluggable WebSocket subprotocol's registration, endpoint construction, framing, dispatch, shutdown, and subprotocol policy.
+topics: ['web']
+---
+
+<script>
+	import { SymbolImpls, SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `WebsocketProtocol`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`WebsocketProtocol` is the server-side seam for a complete WebSocket subprotocol. Implement it in a protocol crate only when that crate owns the raw frame vocabulary and connection lifecycle. Applications normally select an implementation on `#[controller(ws = Protocol)]` and mount it with `AxumAppBuilder::register_ws`.
+
+```rust
+use upwell::axum::prelude::*;
+
+struct AcmeProtocol;
+
+impl WebsocketProtocol for AcmeProtocol {
+    type Payload = AcmePayload;
+    type Outcome = AcmeOutcome;
+    type Options = AcmeOptions;
+    type BuildError = AcmeBuildError;
+
+    const SUBPROTOCOLS: &'static [&'static str] = &["acme.v1"];
+    const REQUIRE_SUBPROTOCOL: bool = true;
+
+    // register, build, and serve define the endpoint lifecycle.
+}
+```
+
+## Lifecycle
+
+`register` contributes protocol-owned DI components before root-container validation. `build` receives generated `WsControllerDescriptor` values, the application runtime, and one endpoint's options; it returns the endpoint state or a typed startup failure. `serve` owns one upgraded socket: it performs protocol framing, opens message scopes under the supplied connection scope, dispatches to generated message routes, and races socket activity with `WsShutdown` for graceful termination.
+
+`SUBPROTOCOLS` is the server-preference-ordered RFC 6455 token list. Set `REQUIRE_SUBPROTOCOL` when an upgrade without a negotiated token is invalid. HTTP metadata from the upgrade is available through `WebsocketUpgradeMeta`; use protocol state rather than a controller to enforce handshake and serializer rules.
+
+## Controller boundary
+
+The framework stays generic over this trait and does not store a trait object. A `#[controller(ws = P)]` expansion provides a `WebsocketController` implementation and a descriptor whose message routes are built from `#[message]` methods. The protocol decides how an inbound frame selects one of those destinations and how the handler `Outcome` becomes an outbound frame.
+
+`WebsocketProtocol` alone does not imply typed topics. Add `MessagingProtocol` and `PubSubProtocol` only when the protocol supplies a topic body/codec and subscriber-delivery framing.
+
+<SymbolMembers />
+<SymbolImpls />

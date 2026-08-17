@@ -1,0 +1,22 @@
+---
+title: ScopeParent
+description: Names the application root or another declared boundary as a protocol scope's structural parent.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `ScopeParent`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`ScopeParent` describes where a [`ScopeBoundary`](./ScopeBoundary) may be opened. `Root` names the framework-owned application root. `of::<T>()` names another static scope type declared by the same [`ScopeTopology`](./ScopeTopology); `boundary` provides the equivalent identity-based form.
+
+The parent must be present in the topology unless it is `Root`, and it must have a lower, longer-lived rank than its child. These checks establish the containment rules that runtime scope opening and dependency validation use.
+
+Choose the immediate transport containment relationship, not an arbitrary scope that happens to be longer lived. A request scope nested inside a connection should name the connection boundary; a connection scope should name `Root`.
+
+<SymbolMembers title="Associated items" />

@@ -29,27 +29,27 @@ class GroupState {
 	readonly #expanded = new SvelteSet<string>(read(EXPANDED_KEY));
 
 	/** Whether a group should render open, given what it would do untouched. */
-	isOpen(title: string, fallback: boolean): boolean {
-		if (this.#collapsed.has(title)) {
+	isOpen(id: string, fallback: boolean): boolean {
+		if (this.#collapsed.has(id)) {
 			return false;
 		}
 
-		if (this.#expanded.has(title)) {
+		if (this.#expanded.has(id)) {
 			return true;
 		}
 
 		return fallback;
 	}
 
-	set(title: string, collapsed: boolean): void {
+	set(id: string, collapsed: boolean): void {
 		const [add, remove] = collapsed ? [this.#collapsed, this.#expanded] : [this.#expanded, this.#collapsed];
 
-		if (add.has(title) && !remove.has(title)) {
+		if (add.has(id) && !remove.has(id)) {
 			return;
 		}
 
-		add.add(title);
-		remove.delete(title);
+		add.add(id);
+		remove.delete(id);
 
 		write(COLLAPSED_KEY, this.#collapsed);
 		write(EXPANDED_KEY, this.#expanded);

@@ -13,6 +13,8 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
+import { type SemVer } from '../../src/lib/docs/version/semver.ts';
+import { groupByPath, normalizeVersionPath, resolveCandidate } from '../../src/lib/docs/content/overlay.ts';
 import { type LoadedArtifact, suggestSymbols } from './artifact/load.ts';
 
 /** A symbol page and the symbol it documents. */
@@ -36,15 +38,12 @@ export class ValidationError extends Error {
 /**
  * Lists every `.svx` under the symbol content directory as a candidate reference.
  *
- * A leading `@<release>` segment is an overlay, not part of the symbol path, so it is stripped: the
- * trunk page and each overlay of it document the same symbol. Several files therefore map to one
- * symbol legitimately, and only the first is kept — the duplicate check below is for two *different*
- * paths resolving to one symbol, which is a genuine mistake.
+ * Exact SemVer directory segments are release gates, not symbol segments. The selected candidate is
+ * the same effective path candidate used by routes, navigation, search, and rendering.
  */
-async function discover(symbolsDir: string, projectRoot: string): Promise<SymbolPageRef[]> {
+async function discover(symbolsDir: string, projectRoot: string, releaseVersion: SemVer): Promise<SymbolPageRef[]> {
 	const entries = await readdir(symbolsDir, { withFileTypes: true, recursive: true }).catch(() => []);
-	const seen = new Set<string>();
-	const refs: SymbolPageRef[] = [];
+	const candidates: { relativePath: string; value: SymbolPageRef }[] = [];
 
 	for (const entry of entries) {
 		if (!entry.isFile() || !entry.name.endsWith('.svx')) {
@@ -52,18 +51,19 @@ async function discover(symbolsDir: string, projectRoot: string): Promise<Symbol
 		}
 
 		const absolute = path.join(entry.parentPath, entry.name);
-		const relative = path.relative(symbolsDir, absolute).replace(/\.svx$/, '').split(path.sep);
-		const segments = (relative[0]?.startsWith('@') ? relative.slice(1) : relative).join('/');
+		const relativePath = path.relative(symbolsDir, absolute).replace(/\.svx$/, '').split(path.sep).join('/');
+		const { path: segments } = normalizeVersionPath(relativePath, 'Symbol page');
 
-		if (segments === '' || seen.has(segments)) {
-			continue;
-		}
-
-		seen.add(segments);
-		refs.push({ symbol: segments.split('/').join('::'), segments, file: path.relative(projectRoot, absolute) });
+		candidates.push({
+			relativePath,
+			value: { symbol: segments.split('/').join('::'), segments, file: path.relative(projectRoot, absolute) }
+		});
 	}
 
-	return refs.sort((a, b) => a.symbol.localeCompare(b.symbol));
+	return [...groupByPath(candidates, 'Symbol page').values()]
+		.map((variants) => resolveCandidate(variants, releaseVersion))
+		.filter((ref): ref is SymbolPageRef => ref !== undefined)
+		.sort((a, b) => a.symbol.localeCompare(b.symbol));
 }
 
 /**
@@ -76,9 +76,10 @@ async function discover(symbolsDir: string, projectRoot: string): Promise<Symbol
 export async function resolveSymbolPages(
 	artifact: LoadedArtifact,
 	symbolsDir: string,
-	projectRoot: string
+	projectRoot: string,
+	releaseVersion: SemVer
 ): Promise<Map<string, SymbolPageRef>> {
-	const refs = await discover(symbolsDir, projectRoot);
+	const refs = await discover(symbolsDir, projectRoot, releaseVersion);
 	const byCanonical = new Map<string, SymbolPageRef>();
 	const problems: string[] = [];
 

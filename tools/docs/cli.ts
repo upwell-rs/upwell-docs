@@ -18,7 +18,7 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
-import { docsConfig, resolveVersion } from '../../src/lib/docs/config.ts';
+import { docsConfig, isArtifactReadOnly, resolveVersion } from '../../src/lib/docs/config.ts';
 import { generateArtifact, GenerateError } from './artifact/generate.ts';
 import { artifactDir } from './artifact/load.ts';
 import { packArtifact } from './artifact/pack.ts';
@@ -85,7 +85,7 @@ docs:prepare — prepare a framework documentation artifact.
 
   --local <path>     Generate an artifact from a framework checkout.
                      Defaults to $FRAMEWORK_CHECKOUT when set.
-  --version <ver>    Framework version to prepare. Defaults to the version
+	  --version <ver>    Documentation release identity to prepare. Defaults to the
                      configured as latest in src/lib/docs/config.ts.
   --pack             Also write dist/<name>-docs-<version>.tar.zst.
   --reuse-rustdoc    Reuse existing target/doc JSON instead of re-running
@@ -122,7 +122,7 @@ async function main(): Promise<number> {
 	}
 
 	const projectRoot = process.cwd();
-	const requested = args.version ?? resolveVersion(docsConfig, docsConfig.latest)?.frameworkVersion.raw ?? null;
+	const requested = args.version ?? resolveVersion(docsConfig, docsConfig.latest)?.releaseVersion.raw ?? null;
 
 	if (!requested) {
 		process.stderr.write('docsConfig.latest does not resolve to a configured version.\n');
@@ -132,6 +132,14 @@ async function main(): Promise<number> {
 
 	const output = artifactDir(projectRoot, docsConfig.cacheDir, requested);
 
+	if (isArtifactReadOnly(docsConfig, requested)) {
+		process.stderr.write(
+			`The ${requested} artifact is a read-only historical record and will not be regenerated.\n\n  Cache: ${path.relative(projectRoot, output)}\n\nOnly prepare a release not listed in docsConfig.readOnlyArtifactVersions.\n`
+		);
+
+		return 1;
+	}
+
 	process.stdout.write(`Generating ${docsConfig.framework.name} docs artifact from ${checkout}\n`);
 
 	const result = await generateArtifact({
@@ -139,6 +147,7 @@ async function main(): Promise<number> {
 		outputDir: output,
 		origin: 'local',
 		frameworkName: docsConfig.framework.name,
+		releaseVersion: requested,
 		tagPrefix: `${docsConfig.framework.crate}-v`,
 		reuseRustdoc: args.reuseRustdoc,
 		directDependencyCrates: docsConfig.rustdoc.directDependencyCrates,
@@ -146,16 +155,9 @@ async function main(): Promise<number> {
 		onProgress: (message) => process.stdout.write(`  ${message}\n`)
 	});
 
-	if (result.manifest.framework.version !== requested) {
-		process.stderr.write(
-			`\nCheckout is at ${result.manifest.framework.version}, but ${requested} was requested.\n\nEither check out ${docsConfig.framework.releaseTag(requested)} in ${checkout}, or add ${result.manifest.framework.version} to docsConfig.versions.\n`
-		);
-
-		return 1;
-	}
-
 	process.stdout.write(
-		`  version   ${result.manifest.framework.version}${result.manifest.git.dirty ? ' (dirty checkout)' : ''}\n` +
+		`  release   ${result.manifest.documentation.releaseVersion}\n` +
+		`  source    ${result.manifest.documentation.sourcePackageVersion}${result.manifest.git.dirty ? ' (dirty checkout)' : ''}\n` +
 		`  commit    ${result.manifest.git.sha.slice(0, 12)}${result.manifest.git.tag ? ` (${result.manifest.git.tag})` : ''}\n` +
 		`  crates    ${result.crateCount} documented\n` +
 		`  symbols   ${result.symbolCount} (${result.aliasCount} re-export paths)\n` +
@@ -167,7 +169,7 @@ async function main(): Promise<number> {
 
 		await mkdir(distDir, { recursive: true });
 
-		const archive = await packArtifact(output, distDir, docsConfig.framework.crate, result.manifest.framework.version);
+		const archive = await packArtifact(output, distDir, docsConfig.framework.crate, result.manifest.documentation.releaseVersion);
 
 		process.stdout.write(`  archive   ${path.relative(projectRoot, archive)}\n`);
 	}

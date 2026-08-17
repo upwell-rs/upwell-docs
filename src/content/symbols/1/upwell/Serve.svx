@@ -1,0 +1,26 @@
+---
+title: Serve
+description: Serves a built protocol runtime over one concrete endpoint type while observing application shutdown.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `Serve`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`Serve<E>` attaches a built [`ProtocolRuntime`](./ProtocolRuntime) to one concrete endpoint type `E`. Its `serve` method receives the runtime, `AppRuntime`, a `ShutdownSignal`, and the endpoint, then returns the endpoint-serving future.
+
+## Ownership contract
+
+The implementation owns endpoint resources and protocol-spawned work. On shutdown it must stop accepting new work and complete its documented drain or cancellation behavior before the future resolves. It should not initiate application shutdown itself.
+
+The caller owns the application lifecycle envelope: startup hooks, reload coordination, shutdown initiation, and final cleanup. `Serve` therefore watches the supplied signal rather than owning a `ShutdownHandle`. This boundary allows an application to host one runtime through several endpoint types while preserving one shutdown authority.
+
+Construct the runtime in [`PreparedProtocol::build`](./PreparedProtocol), not in `serve`. See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for a staged serving example.
+
+<SymbolMembers title="Methods" />

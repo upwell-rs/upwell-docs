@@ -1,0 +1,30 @@
+---
+title: PreparedProtocol
+description: Holds validated protocol state until the application root DI runtime can build dispatch resources.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `PreparedProtocol`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`PreparedProtocol` is the immutable hand-off between application validation and runtime construction. Its value is retained by the prepared application and is the authoritative place for validated routes, selected codecs, scope-aware dispatch plans, and stable tooling facts.
+
+## Build contract
+
+`build(self, runtime: &AppRuntime)` runs only after the root DI container exists. Use it to create `Runtime`, the protocol's dispatch or serve layer. It may wire resolvers, routers, codecs, and transport-facing handles that depend on the validated application runtime.
+
+Do not repeat descriptor or scope-topology validation in `build`; those concerns are complete before this point. Do not start the endpoint loop here either. Endpoint work begins when the resulting runtime is passed to [`Serve`](./Serve).
+
+## Tooling contract
+
+`tooling` reports stable protocol-owned metadata retained by prepared state. It must not require a live listener, connection, task, or endpoint. This keeps tooling deterministic and available before serving begins.
+
+The associated `Runtime` type implements [`ProtocolRuntime`](./ProtocolRuntime). See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for the full definition-to-runtime lifecycle.
+
+<SymbolMembers title="Associated items" />

@@ -1,0 +1,59 @@
+---
+title: injectable
+description: Complete reference for declaring injectable trait-object provider surfaces.
+topics: ['framework']
+---
+
+<script>
+	import { Callout, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[injectable]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`#[injectable]` applies to a trait and makes its `Arc<dyn Trait>` object surface available to Upwell's DI descriptors. It marks a trait; it neither implements that trait for a component nor registers a provider.
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[injectable]
+trait AuditSink: Send + Sync {
+    fn write(&self, event: &Event);
+}
+
+#[component(provide = dyn AuditSink)]
+struct FileAuditSink;
+```
+
+## Grammar
+
+```text
+#[injectable(
+    upwell = ::facade_path,
+    crate = ::plugin_crate_path,
+)]
+trait TraitName: Send + Sync { ... }
+```
+
+Only the optional `upwell` and `crate` path overrides are accepted. Attribute entries are comma-separated; unknown keys are compile errors. The macro parses a trait item, so it cannot be placed on a struct, enum, impl, function, or trait implementation.
+
+## Requirements And Expansion
+
+The trait must be object-safe and declare `Send + Sync` as supertraits when it will be requested as `Arc<dyn Trait>`. On native targets the macro adds the runtime descriptor supertrait and generates descriptor support for the trait object. The annotated trait's methods and existing supertraits remain part of its normal Rust contract.
+
+On WebAssembly the macro leaves the original trait intact and omits native DI descriptor wiring. This permits shared trait declarations while keeping server-only registration out of client targets.
+
+## Providing And Injecting
+
+After marking the trait, expose a concrete `#[component]` with `provide = dyn Trait` or a list of trait surfaces. The provider view aliases the concrete component already constructed by the container; injecting both `Arc<Concrete>` and `Arc<dyn Trait>` does not construct two instances. Use component `qualifier`, `primary`, `priority`, `before`, and `after` settings to control provider selection and collection order.
+
+<Callout type="warning" title="Marker, not registration">
+
+`#[injectable]` alone creates no component, provider, factory, or implementation. A concrete component still needs a Rust `impl Trait for Concrete` and a `#[component(provide = dyn Trait)]` declaration before a trait-object dependency can resolve.
+
+</Callout>
+
+`upwell = ::path` and `crate = ::path` are intended for facade or plugin wrappers that must redirect generated paths. Ordinary user code imports `upwell::prelude::*` and omits both overrides.

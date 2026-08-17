@@ -40,7 +40,7 @@ export interface ManifestEntry {
 	/**
 	 * Path relative to its content root, without the extension.
 	 *
-	 * Keeps any overlay prefix (`@0.21.0/…`), because the overlay is part of how the page is
+	 * Keeps any exact-SemVer directory, because the path gate is part of how the page is
 	 * resolved and stripping it here would lose which version the entry belongs to.
 	 */
 	readonly relativePath: string;

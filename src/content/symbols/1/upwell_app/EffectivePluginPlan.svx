@@ -1,0 +1,29 @@
+---
+title: EffectivePluginPlan
+description: Immutable record of resolved plugin composition and provenance-aware emitted contributions.
+topics: ['framework', 'tooling']
+---
+
+<script lang="ts">
+	import SymbolMembers from '#lib/docs/components/SymbolMembers.svelte';
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `EffectivePluginPlan`
+
+<SymbolMeta />
+
+`EffectivePluginPlan` is the immutable plugin record attached to a prepared application and runtime application. It is the authoritative record of selected structure and plugin emissions, before or alongside the final application registry's own view.
+
+<SymbolSignature />
+
+## Inspection
+
+`resolution` exposes deterministic effective plugins, slot selections, replacement decisions, and suppressions through the resolved plan. `emitted_contributions` preserves resolution order and each contributor-local emission order. Together they let tooling distinguish an installed plugin from an emission that was later displaced or rejected while the registry was lowered.
+
+Read the plan from `PreparedApp::plugin_plan` or `App::plugin_plan`; do not reconstruct selection from registration calls. Cargo Upwell projects the same preparation facts into `inspect`, `explain`, graph, and export workflows.
+
+Use [Inspect the effective plan](/docs/latest/extensions/plugins#inspect-the-effective-plan) for command-line diagnosis and [Inspect and query an application](/docs/latest/cargo-upwell/inspect-and-graph) for selectors and machine output.
+
+<SymbolMembers />

@@ -1,0 +1,29 @@
+---
+title: ProtocolPluginRegistrar
+description: Protocol-owned registrar for mandatory and slot-backed default plugin installations.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import SymbolMembers from '#lib/docs/components/SymbolMembers.svelte';
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `ProtocolPluginRegistrar`
+
+<SymbolMeta />
+
+`ProtocolPluginRegistrar` is the protocol construction API for plugins the protocol owns. It records deterministic protocol provenance and assigns each default to a named capability slot and mutation policy.
+
+<SymbolSignature />
+
+## Slot policies
+
+`mandatory` installs a protocol requirement with no application mutation path. `replaceable_default` installs a default that an application may replace through the same slot. `optional_default` installs a default that an application may replace or explicitly suppress. Slot IDs are public capability identities, not plugin implementation IDs.
+
+The registrar does not resolve an application graph by itself. It supplies protocol-owned declarations to composition, where application choices and static relations are validated. Application code should not attempt to emulate protocol defaults with late builder plugins.
+
+Follow [Choose protocol defaults deliberately](/docs/latest/extensions/plugins#choose-protocol-defaults-deliberately) for the workflow and use [`ApplicationPluginRegistrar`](/docs/latest/symbols/upwell_app/ApplicationPluginRegistrar) for application-side replacement and suppression.
+
+<SymbolMembers />

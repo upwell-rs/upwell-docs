@@ -48,7 +48,7 @@
 	const slug = $derived(current?.slug ?? '');
 </script>
 
-<DocsHeader version={data.version} {slug} onsearch={() => search?.open()}>
+	<DocsHeader version={data.version} {slug} onsearch={() => search?.open()}>
 	{#snippet nav()}
 		<MobileNav version={data.version} current={slug} {article} />
 	{/snippet}

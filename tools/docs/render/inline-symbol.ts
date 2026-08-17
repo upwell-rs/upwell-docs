@@ -87,14 +87,16 @@ async function render(path: string, attributes: SymbolAttributes, context: Rende
 	const canonical = context.index?.paths[path];
 	const symbol = canonical ? context.index?.symbols.get(canonical) : undefined;
 
-	if (!symbol) {
+	if (!canonical || !symbol) {
 		throw new InlineSymbolError(
 			`<Symbol path="${path}" /> does not resolve.\n\n  ${describeMiss(path, context)}\n\nA symbol referenced in prose must exist, because unlike an identifier in a code block there is no sensible way to render it unlinked.`
 		);
 	}
 
 	const text = displayText(path, attributes);
-	const documented = context.docsHref?.(path);
+	// Symbol pages are keyed by canonical identity, so the same authored reference is found whether
+	// prose spells a symbol through the facade or through its defining crate.
+	const documented = context.docsHref?.(canonical);
 	const properties: Record<string, string> = {
 		class: 'symbol',
 		'data-symbol': path,

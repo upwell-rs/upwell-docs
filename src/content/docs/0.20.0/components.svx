@@ -1,0 +1,58 @@
+---
+title: Components and dependency injection
+description: Register singleton components and request dependencies in an Upwell 0.20 application.
+order: 30
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Components and dependency injection
+
+In Upwell 0.20, `#[component]` marks an application value for construction by the container. Register the component in the `app!` builder, then describe its dependencies as fields.
+
+<Example title="Construct a component from a dependency">
+
+```rust plain
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[component]
+struct Database;
+```
+
+Make the consumer a component and use `Arc<T>` for its managed dependency:
+
+```rust plain
+#[component]
+struct Catalog {
+    database: Arc<Database>,
+}
+
+impl Catalog {
+    async fn find(&self, id: u64) -> String {
+        let _ = &self.database;
+        format!("catalog item {id}")
+    }
+}
+```
+
+Register both application values in the builder-form host:
+
+```rust plain
+app! {
+    App::builder("catalog")
+        .with_component(Database)
+        .with_component(Catalog)
+}
+```
+
+</Example>
+
+The container owns the constructed component instances. Keep dependencies in the component graph and pass ordinary, per-operation input as method arguments.
+
+## Moving to 1.0
+
+The current [components and injection guide](/docs/1.0.0/di/components) describes the 1.0 component model, including forms and capabilities that are not asserted for 0.20. Apply it while migrating rather than retrofitting its examples to a 0.20 application.

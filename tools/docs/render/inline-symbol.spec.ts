@@ -40,7 +40,7 @@ function context(): RenderContext {
 		},
 		// Only `component` has a hand-written page.
 		docsHref: (path) =>
-			path === 'upwell::prelude::component'
+			path === 'upwell_macros::component'
 				? { href: '/docs/__DOCS_VERSION__/symbols/upwell/prelude/component', title: 'component' }
 				: undefined,
 		sourceHref: () => 'https://example.invalid/src#L12'
@@ -99,10 +99,11 @@ describe('inlineSymbolPreprocessor', () => {
 		expect(code).toContain('the request scope');
 	});
 
-	it('links a symbol that has a hand-written page', async () => {
+	it('links a facade re-export to its canonical symbol page', async () => {
 		const code = await preprocess('<Symbol path="upwell::prelude::component" />');
 
-		// Version resolved per render, as in a code block.
+		// The resolver canonicalises the facade path before looking up authored references. Version is
+		// resolved per render, as in a code block.
 		expect(code).toContain('href="/docs/{__docsVersion}/symbols/upwell/prelude/component"');
 	});
 

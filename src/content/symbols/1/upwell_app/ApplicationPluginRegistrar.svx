@@ -1,0 +1,29 @@
+---
+title: ApplicationPluginRegistrar
+description: Registrar for parser-visible static application plugin declarations, replacements, and suppressions.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import SymbolMembers from '#lib/docs/components/SymbolMembers.svelte';
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `ApplicationPluginRegistrar`
+
+<SymbolMeta />
+
+`ApplicationPluginRegistrar` collects early, application-owned composition directives. Its declarations are resolved before dynamic builder configuration and retain `ApplicationDeclaration` provenance for diagnostics and inspection.
+
+<SymbolSignature />
+
+## Operations
+
+`register` constructs a `Default` plugin; `with_plugin` retains a supplied instance. `replace` and `replace_with` select a replacement for a protocol's replaceable default slot. `suppress` explicitly disables an optional default slot. The selected plugin still has to satisfy its static relations, and a replacement cannot mutate a mandatory installation.
+
+Use this registrar from a generated application host declaration when a plugin must be visible to generated CLI setup or participate in early composition. Do not use it as an ad hoc runtime service locator. Runtime-selected instances belong on the direct builder and are monotonic late additions.
+
+Follow [Install through the correct boundary](/docs/latest/extensions/plugins#install-through-the-correct-boundary) for the host-versus-builder workflow. The protocol counterpart is [`ProtocolPluginRegistrar`](/docs/latest/symbols/upwell_app/ProtocolPluginRegistrar).
+
+<SymbolMembers />

@@ -11,7 +11,7 @@
 
 import process from 'node:process';
 
-import { docsConfig, type DocsVersion } from '#lib/docs/config';
+import { docsConfig, isSymbolEnrichmentEligible, type DocsVersion } from '#lib/docs/config';
 import { findSymbolPage } from '#lib/docs/content/symbol-pages';
 import type { SymbolInfo, SymbolLink, SymbolMember } from '#lib/docs/symbol.svelte';
 import { artifactDir, findSymbol, type LoadedArtifact, loadArtifact, symbolSourceLink } from '#tools/docs/artifact/load';
@@ -29,7 +29,11 @@ const cache = new Map<string, Promise<LoadedArtifact | null>>();
  * annotated and symbol pages have no facts to show, so they are not generated for it.
  */
 export function getArtifact(version: DocsVersion): Promise<LoadedArtifact | null> {
-	const key = version.frameworkVersion.raw;
+	if (!isSymbolEnrichmentEligible(docsConfig, version)) {
+		return Promise.resolve(null);
+	}
+
+	const key = artifactVersion(version);
 	const existing = cache.get(key);
 
 	if (existing) {
@@ -41,6 +45,11 @@ export function getArtifact(version: DocsVersion): Promise<LoadedArtifact | null
 	cache.set(key, loading);
 
 	return loading;
+}
+
+/** Artifact identity is the public documentation release. Source provenance stays in its manifest. */
+export function artifactVersion(version: DocsVersion): string {
+	return version.releaseVersion.raw;
 }
 
 /**
@@ -84,7 +93,7 @@ export async function getSymbolInfo(version: DocsVersion, symbolPath: string): P
  */
 function toLink(artifact: LoadedArtifact, version: DocsVersion, canonical: string): SymbolLink {
 	const path = preferredPath(artifact, canonical);
-	const page = findSymbolPage(path.replaceAll('::', '/'), version.frameworkVersion);
+	const page = findSymbolPage(path.replaceAll('::', '/'), version.releaseVersion);
 
 	return {
 		path,

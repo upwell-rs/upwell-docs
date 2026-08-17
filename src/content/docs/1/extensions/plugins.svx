@@ -1,0 +1,223 @@
+---
+title: Compose plugins
+description: Build a plugin, declare its composition, install it at the right phase, and inspect the resulting application plan.
+order: 30
+topics: ['framework', 'tooling']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Compose plugins
+
+A plugin is a retained application extension. It has a stable implementation identity, declares its structural relationships before the application is built, and then emits app-neutral contributions after the effective composition is selected. Use a plugin when a feature must travel as one installable unit; register a one-off component or protocol item directly when it belongs only to one binary.
+
+## Build a portable plugin
+
+Start by giving the plugin a package-owned `PluginId`. Treat it as a public compatibility identity: diagnostics, relations, and inspection all use it. Keep the plugin state that is needed for discovery or contribution on the instance rather than in globals.
+
+<Example title="Define an audit plugin">
+
+```rust
+use upwell::prelude::*;
+use upwell_app::{namespaced_id, ContributionId, Plugin, PluginContributions, PluginId};
+
+#[derive(Default)]
+struct AuditPlugin;
+
+#[component]
+struct AuditSink;
+```
+
+Implement the plugin with a stable identity and contribute each independent payload under its own stable `ContributionId`:
+
+```rust
+impl Plugin for AuditPlugin {
+    const ID: PluginId = namespaced_id!(PluginId, "acme/audit");
+
+    fn contribute(self, contributions: &mut PluginContributions) {
+        contributions.component::<AuditSink>(namespaced_id!(ContributionId, "acme/audit-sink"));
+    }
+}
+```
+
+</Example>
+
+The lifecycle is deliberate: installation retains the plugin instance; composition resolves static identities, slots, and relations; `auto_discover` folds link-time state into each effective instance; then `contribute` consumes that instance into the plan. Contributions are validated and lowered with the regular application registry before the runtime starts. `auto_discover` must only merge discovered state, while `contribute` must deterministically emit the selected plugin's portable components, providers, and configuration bindings. The canonical [`Plugin`](/docs/latest/symbols/upwell_app/Plugin) and [`PluginContributions`](/docs/latest/symbols/upwell_app/PluginContributions) pages define the complete contract.
+
+## Preserve provenance while contributing
+
+Contribution IDs identify emissions, not their payload types. Allocate one literal for every component, provider, configuration binding, CLI facet, or tooling record the plugin owns. This lets Cargo Upwell explain both the selected plugin and the exact emission that produced a registry entry.
+
+<Example title="Emit component, provider, and configuration provenance">
+
+```rust
+use upwell_app::{contribute, namespaced_id, ContributionId, Plugin, PluginContributions, PluginId};
+
+struct SearchPlugin;
+```
+
+Give the implementation and every emission an ID from the extension's namespace:
+
+```rust
+impl Plugin for SearchPlugin {
+    const ID: PluginId = namespaced_id!(PluginId, "acme/search");
+
+    fn contribute(self, contributions: &mut PluginContributions) {
+        contribute! {
+            to contributions,
+            components: [
+                "acme/search-index" => type SearchIndex,
+            ],
+            providers: [
+                "acme/search-provider" => search_provider(),
+            ],
+            configs: [
+                "acme/search-config" => SearchConfig => "search",
+            ],
+        }
+    }
+}
+```
+
+</Example>
+
+Use the collector methods when a branch or loop makes the macro declaration less clear. Do not reuse one contribution ID, infer it from a descriptor, or use the reserved `upwell/` namespace in a third-party plugin. Duplicate local IDs and reserved namespaces fail plan finalization before the application runs. The [`contribute!` reference](/docs/latest/symbols/upwell_app/contribute) documents the macro grammar.
+
+## Express composition statically
+
+Relations are static metadata, not runtime checks. Put `Requires` on a plugin that cannot function without another effective plugin or slot; use `Conflicts` for incompatible selections; use `Before` and `After` only when both plugins can exist and their contribution order matters. Target a plugin ID for one concrete implementation, or a slot ID when any replacement occupying that capability is acceptable.
+
+<Example title="Require an authentication capability">
+
+```rust
+use upwell_app::{namespaced_id, Plugin, PluginId, PluginRelation, PluginSlotId, RelationKind, RelationTarget};
+
+struct AuditPlugin;
+
+const AUTHENTICATION: PluginSlotId = namespaced_id!(PluginSlotId, "acme/authentication");
+```
+
+Declare the requirement on the plugin type so resolution can validate it before contribution collection:
+
+```rust
+impl Plugin for AuditPlugin {
+    const ID: PluginId = namespaced_id!(PluginId, "acme/audit");
+    const RELATIONS: &'static [PluginRelation] = &[
+        PluginRelation::new(RelationKind::Requires, RelationTarget::Slot(AUTHENTICATION)),
+    ];
+
+    fn contribute(self, contributions: &mut PluginContributions) {
+        // Emit audit descriptors.
+    }
+}
+```
+
+</Example>
+
+Relations are canonicalized, so declaration order and repeated equivalent relations do not change plugin identity. A failed requirement, conflict, invalid target, or ordering cycle is a composition diagnostic. See [`PluginRelation`](/docs/latest/symbols/upwell_app/PluginRelation) for the exact target and kind model.
+
+## Choose protocol defaults deliberately
+
+Protocol authors declare mandatory plugins and named default slots through `ProtocolPluginRegistrar`. A mandatory installation cannot be displaced. A replaceable default names a slot that the application may replace. An optional default names a slot that the application may either replace or explicitly suppress. Plugin authors consume those slots through relations; application authors choose the final implementation.
+
+<Example title="Declare protocol-owned defaults">
+
+```rust
+use upwell_app::{namespaced_id, PluginSlotId, ProtocolPluginRegistrar};
+
+const AUTHENTICATION: PluginSlotId = namespaced_id!(PluginSlotId, "acme/authentication");
+const TELEMETRY: PluginSlotId = namespaced_id!(PluginSlotId, "acme/telemetry");
+```
+
+Install a compulsory core plugin, a replaceable security capability, and an optional feature:
+
+```rust
+fn register_plugins(plugins: &mut ProtocolPluginRegistrar) {
+    plugins.mandatory(CoreRoutingPlugin::default());
+    plugins.replaceable_default(AUTHENTICATION, PasswordAuthPlugin::default());
+    plugins.optional_default(TELEMETRY, TelemetryPlugin::default());
+}
+```
+
+</Example>
+
+The registrar is protocol-owned construction-time API, not an application customization point. Use [`ProtocolPluginRegistrar`](/docs/latest/symbols/upwell_app/ProtocolPluginRegistrar) for the full slot-policy contract.
+
+## Install through the correct boundary
+
+Static application declarations are parser-visible and are resolved before dynamic builder configuration. Use `ApplicationPluginRegistrar` from an application host declaration when a plugin provides CLI facets, must participate in early composition, or replaces/suppresses a protocol default. Its `register`, `with_plugin`, `replace`, `replace_with`, and `suppress` operations preserve application-declaration provenance.
+
+<Example title="Install plugins through a generated host">
+
+```rust
+use upwell::axum::Axum;
+use upwell::prelude::*;
+```
+
+Give the host the plugin instances it owns; its generated setup feeds them into early application composition before CLI parsing:
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        plugins: [AuditPlugin::default(), OidcAuthPlugin::default()],
+    }
+}
+```
+
+</Example>
+
+Use the direct builder when the process owns its assembly dynamically, such as tests, embedding, or a runtime-selected plugin instance. Builder plugins are late extensions: they cannot revise the early parser-visible plan, its replacements, or suppressions.
+
+<Example title="Install a runtime-selected plugin with the builder">
+
+```rust
+use upwell::axum::App;
+use upwell::prelude::*;
+
+let audit = AuditPlugin::from_environment()?;
+```
+
+Add the instance while assembling the directly owned process, then build and run it:
+
+```rust
+let app = App::builder("catalog-api")
+    .auto_discover()
+    .plugin(audit)
+    .build()
+    .await?;
+
+app.run().await?;
+```
+
+</Example>
+
+Do not use dynamic builder installation to stand in for a host declaration. Choose `app!` when the generated host owns startup, CLI, and early static composition; choose `App::builder` when the surrounding program owns the process boundary. [`ApplicationPluginRegistrar`](/docs/latest/symbols/upwell_app/ApplicationPluginRegistrar) documents the early declaration contract used by host integration, and [Application model](/docs/latest/framework/application-model) covers the broader host-versus-builder decision.
+
+## Inspect the effective plan
+
+When a plugin is missing, replaced, ordered unexpectedly, or contributes the wrong payload, inspect the prepared application rather than reconstructing its graph from source. `EffectivePluginPlan` is the immutable record of deterministic resolution and emitted contribution provenance that the application exposes after preparation.
+
+<Example title="Diagnose plugin composition">
+
+```sh
+cargo upwell inspect --kind plugin --plugin acme/audit
+```
+
+Explain the selected plugin and graph the slot it depends on:
+
+```sh
+cargo upwell explain plugin:acme/audit
+
+cargo upwell graph \
+  --resource plugin-slot:acme/authentication \
+  --family composition \
+  --direction both
+```
+
+</Example>
+
+Use `inspect` to obtain stable IDs, `explain` to see provenance and decisions, and `graph` to follow requirements, ordering, replacements, and suppressions. Export JSON or a diagnostic envelope for CI instead of parsing terminal output. The [`EffectivePluginPlan`](/docs/latest/symbols/upwell_app/EffectivePluginPlan) reference describes programmatic inspection; [Inspect and query an application](/docs/latest/cargo-upwell/inspect-and-graph) documents Cargo Upwell selectors and output formats.

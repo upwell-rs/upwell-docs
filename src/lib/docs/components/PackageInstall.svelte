@@ -30,7 +30,7 @@
 
 	const version = getDocsVersion();
 
-	const spec = $derived(pin ? `${crate}@${formatVersion(version.frameworkVersion)}` : crate);
+	const spec = $derived(pin ? `${crate}@${formatVersion(version.releaseVersion)}` : crate);
 
 	const command = $derived(
 		features.length > 0 ? `cargo add ${spec} --features ${features.join(',')}` : `cargo add ${spec}`

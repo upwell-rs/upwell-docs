@@ -5,7 +5,7 @@
  * documented versions — the filesystem cannot own a URL that contains a version. Two mechanisms
  * narrow that, and they answer different questions:
  *
- * - **overlays** (`@0.21.0/…`) — this version says something *different*
+ * - **SemVer directories** (`0.21.0/…`) — this version says something *different*
  * - **`since` / `until`** — this page *exists* in these versions
  *
  * Both are keyed by **framework version**, not by URL id, because both are usually written before
@@ -23,15 +23,14 @@ import type { Component } from 'svelte';
 import { manifest } from 'virtual:docs-manifest';
 
 import { appliesTo, type CompiledRange, compileRange } from './applies.ts';
+import { buildGuideTree, navigationLeaves } from './navigation-tree.ts';
 import type { SemVer } from '../version/semver.ts';
-import { groupBySlug, resolveVariant, splitOverlay, type Variant } from './overlay.ts';
+import { groupByPath, normalizeVersionPath, rejectRedundantSince, resolveCandidate, type PathCandidate } from './overlay.ts';
 import { assertKnownTopics } from './topics.ts';
 import {
 	type DocFrontmatter,
-	type DocSection,
 	type DocSummary,
-	FALLBACK_ORDER,
-	FALLBACK_SECTION
+	FALLBACK_ORDER
 } from './types.ts';
 
 /**
@@ -75,7 +74,6 @@ function toVariant(file: string, slug: string, frontmatter: Partial<DocFrontmatt
 			slug,
 			title: frontmatter.title,
 			description: frontmatter.description,
-			section: frontmatter.section ?? FALLBACK_SECTION,
 			order: frontmatter.order ?? FALLBACK_ORDER,
 			draft: frontmatter.draft ?? false,
 			topics
@@ -87,65 +85,43 @@ function toVariant(file: string, slug: string, frontmatter: Partial<DocFrontmatt
 	};
 }
 
-const variantsBySlug: Map<string, Variant<PageVariant>[]> = buildVariants();
+const variantsBySlug: Map<string, PathCandidate<PageVariant>[]> = buildVariants();
 
-function buildVariants(): Map<string, Variant<PageVariant>[]> {
-	return groupBySlug(
-		manifest.guides.map((entry) => {
-			const { slug } = splitOverlay(entry.relativePath);
+function buildVariants(): Map<string, PathCandidate<PageVariant>[]> {
+	return groupByPath(manifest.guides.map((entry) => {
+		const normalized = normalizeVersionPath(entry.relativePath, 'Guide');
+		const frontmatter = entry.frontmatter as Partial<DocFrontmatter>;
 
-			return {
-				relativePath: entry.relativePath,
-				value: toVariant(entry.file, slug, entry.frontmatter as Partial<DocFrontmatter>)
-			};
-		}),
-		'Content'
-	);
+		rejectRedundantSince(normalized.selector, frontmatter.since, `Guide ${entry.file}`);
+
+		return {
+			relativePath: entry.relativePath,
+			value: toVariant(entry.file, normalized.path, frontmatter)
+		};
+	}), 'Guide');
 }
 
-/**
- * Sidebar order: by section, then by `order` within it, then alphabetically.
- *
- * A section's rank is the lowest `order` any of its pages declares, so promoting a page can promote
- * its whole section — which is what an author expects when they renumber.
- */
 function orderPages(summaries: DocSummary[]): DocSummary[] {
-	const ranks = new Map<string, number>();
-
-	for (const summary of summaries) {
-		const current = ranks.get(summary.section);
-
-		if (current === undefined || summary.order < current) {
-			ranks.set(summary.section, summary.order);
-		}
-	}
-
-	const rankOf = (section: string) => ranks.get(section) ?? FALLBACK_ORDER;
-
-	return summaries.sort((a, b) => {
-		if (a.section !== b.section) {
-			return rankOf(a.section) - rankOf(b.section) || a.section.localeCompare(b.section);
-		}
-
-		return a.order - b.order || a.title.localeCompare(b.title);
-	});
+	return summaries.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
 }
 
-/** The page variant a version sees for a slug, before `since` / `until` is applied. */
-function variantFor(slug: string, frameworkVersion: SemVer): PageVariant | undefined {
+/** The selector winner a version sees for a slug, before its frontmatter is applied. */
+function variantFor(slug: string, releaseVersion: SemVer): PageVariant | undefined {
 	const variants = variantsBySlug.get(slug);
 
-	return variants ? resolveVariant(variants, frameworkVersion) : undefined;
+	const variant = variants ? resolveCandidate(variants, releaseVersion) : undefined;
+
+	return variant;
 }
 
 /** Guides that apply to one framework version, in sidebar order. */
-export function pagesFor(frameworkVersion: SemVer): readonly DocSummary[] {
+export function pagesFor(releaseVersion: SemVer): readonly DocSummary[] {
 	const resolved: DocSummary[] = [];
 
 	for (const slug of variantsBySlug.keys()) {
-		const variant = variantFor(slug, frameworkVersion);
+		const variant = variantFor(slug, releaseVersion);
 
-		if (variant && appliesTo(variant.range, frameworkVersion)) {
+		if (variant && appliesTo(variant.range, releaseVersion)) {
 			resolved.push(variant.summary);
 		}
 	}
@@ -156,26 +132,18 @@ export function pagesFor(frameworkVersion: SemVer): readonly DocSummary[] {
 /** Every slug the site has, across all versions. Used for diagnostics, not for navigation. */
 export const slugs: readonly string[] = [...variantsBySlug.keys()].sort();
 
-/** Pages grouped into sidebar sections for a version, drafts excluded. */
-export function sections(frameworkVersion: SemVer): readonly DocSection[] {
-	const grouped = new Map<string, DocSummary[]>();
+/** Guide metadata for a slug, if it applies to the version. */
+export function findPage(slug: string, releaseVersion: SemVer): DocSummary | undefined {
+	const variant = variantFor(slug, releaseVersion);
 
-	for (const page of pagesFor(frameworkVersion)) {
-		if (page.draft) {
-			continue;
-		}
-
-		(grouped.get(page.section) ?? grouped.set(page.section, []).get(page.section)!).push(page);
-	}
-
-	return [...grouped].map(([title, group]) => ({ title, pages: group }));
+	return variant && appliesTo(variant.range, releaseVersion) ? variant.summary : undefined;
 }
 
-/** Guide metadata for a slug, if it applies to the version. */
-export function findPage(slug: string, frameworkVersion: SemVer): DocSummary | undefined {
-	const variant = variantFor(slug, frameworkVersion);
+/** Exact source file selected for a slug and release, used by the search document index. */
+export function pageSource(slug: string, releaseVersion: SemVer): string | undefined {
+	const variant = variantFor(slug, releaseVersion);
 
-	return variant && appliesTo(variant.range, frameworkVersion) ? variant.summary : undefined;
+	return variant && appliesTo(variant.range, releaseVersion) ? variant.file : undefined;
 }
 
 /**
@@ -184,10 +152,10 @@ export function findPage(slug: string, frameworkVersion: SemVer): DocSummary | u
  * Asynchronous because the component is a separate chunk: this is the import that fetches the page
  * the reader asked for, and nothing else.
  */
-export async function loadPage(slug: string, frameworkVersion: SemVer): Promise<Component | undefined> {
-	const variant = variantFor(slug, frameworkVersion);
+export async function loadPage(slug: string, releaseVersion: SemVer): Promise<Component | undefined> {
+	const variant = variantFor(slug, releaseVersion);
 
-	if (!variant || !appliesTo(variant.range, frameworkVersion)) {
+	if (!variant || !appliesTo(variant.range, releaseVersion)) {
 		return undefined;
 	}
 
@@ -202,9 +170,9 @@ export async function loadPage(slug: string, frameworkVersion: SemVer): Promise<
 	return (await load()).default;
 }
 
-/** Previous and next page in sidebar order, within one version. */
-export function siblings(slug: string, frameworkVersion: SemVer): { previous?: DocSummary; next?: DocSummary } {
-	const visible = pagesFor(frameworkVersion).filter((page) => !page.draft);
+/** Previous and next guide in depth-first navigation-tree leaf order. */
+export function siblings(slug: string, releaseVersion: SemVer): { previous?: DocSummary; next?: DocSummary } {
+	const visible = guideLeafOrder(releaseVersion);
 	const position = visible.findIndex((page) => page.slug === slug);
 
 	if (position === -1) {
@@ -212,4 +180,12 @@ export function siblings(slug: string, frameworkVersion: SemVer): { previous?: D
 	}
 
 	return { previous: visible[position - 1], next: visible[position + 1] };
+}
+
+/** Visible guides in the same depth-first order as the recursive sidebar. */
+export function guideLeafOrder(releaseVersion: SemVer): readonly DocSummary[] {
+	const pages = pagesFor(releaseVersion).filter((page) => !page.draft);
+	const summaries = new Map(pages.map((page) => [page.slug, page]));
+
+	return navigationLeaves(buildGuideTree(pages, '')).map((leaf) => summaries.get(leaf.id)!);
 }

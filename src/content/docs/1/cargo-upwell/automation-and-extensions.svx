@@ -1,0 +1,130 @@
+---
+title: Automation and extension points
+description: Use stable JSON, exit codes, catalogs, renderers, templates, and shell completions safely.
+order: 30
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Automation and extension points
+
+Use structured output, explicit targets, and catalog-backed extensions rather than parsing terminal text. This guide builds on a validated application from [Cargo Upwell](/docs/latest/getting-started).
+
+## Automate validation
+
+Write a JSON report before branching on the process status. A failed validation can still produce structured diagnostics that belong in a CI artifact.
+
+<Example title="Keep a doctor report in CI">
+
+```sh
+mkdir -p target/upwell
+```
+
+Run `doctor` with the same explicit target selection used by your build:
+
+```sh
+if ! cargo upwell doctor \
+  --package api \
+  --bin api-server \
+  --format json > target/upwell/doctor.json; then
+  jq '.outcome, .diagnostics[] | {code, severity, message, fix}' target/upwell/doctor.json
+  exit 1
+fi
+```
+
+</Example>
+
+`check --format json` and `doctor --format json` emit one versioned command report with `schema`, `command`, `outcome`, `exit_code`, target facts when available, and canonical diagnostics. Treat those fields as the machine contract.
+
+Exit code `0` is success; `1` is validation failure; `2` is CLI misuse; `3` is target selection failure; `4` is Cargo build failure; `5` is probe failure; and `6` is an operational failure such as cancellation or a lock. Retain both the exit category and diagnostics. For a failed `export --format envelope` or graph JSON, preserve stdout before handling its nonzero exit status.
+
+### Keep compatibility checks explicit
+
+`doctor` compares the selected application's framework version with the installed `cargo-upwell` release. Keep that comparison in automation rather than deriving compatibility from a documentation label. Tooling documents and probe envelopes also carry a semantic tooling-schema version; consumers should validate it with a semantic-version requirement, and a renderer must declare matching renderer-ABI and tooling-schema requirements before Cargo Upwell invokes it.
+
+## Generate a project from a known template
+
+List the templates active for the current machine or project, choose an ID, then generate non-interactively. Passing the template explicitly keeps the workflow reproducible outside a terminal.
+
+<Example title="Create a catalog-backed service">
+
+```sh
+cargo upwell templates --catalog .upwell/catalog.toml
+```
+
+Generate the selected template and avoid initializing version control when another tool owns it:
+
+```sh
+cargo upwell init apps/payments \
+  --name payments \
+  --template upwell/application \
+  --define workspace=false \
+  --no-vcs
+```
+
+</Example>
+
+Built-in templates are `upwell/application`, `upwell/plugin`, and `upwell/protocol`. Use `--workspace` to register a generated project in its immediate parent Cargo workspace; the generator rolls back the directory if that registration fails. During development against an unreleased framework checkout, use `--upwell-path /path/to/upwell`.
+
+For a one-off local template, pass `--template-path ../templates/schema-viewer`; it conflicts with `--template` and `--catalog`. The default catalog path is platform-native. On macOS it is `~/Library/Application Support/org.upwell-rs.Upwell/catalog.toml`; `UPWELL_CATALOG_PATH` or `--catalog` selects another file. An absent default leaves built-ins active, while an explicitly selected catalog must exist and validate.
+
+## Add one renderer without duplicating the catalog reference
+
+Catalogs can define templates, metadata-only tools, and WebAssembly renderers. Start from a small project catalog, then use the new format on the command it declares.
+
+<Example title="Register and use an inspection renderer">
+
+```toml
+schema = "1"
+
+[[entries]]
+type = "renderer"
+id = "acme/summary"
+component = "renderers/summary.component.wasm"
+commands = ["inspect"]
+format = "summary"
+media-type = "text/plain"
+utf8 = true
+abi = "^0.1"
+tooling-schema = "^0.20"
+```
+
+Inspect with the format the catalog provides:
+
+```sh
+cargo upwell inspect --catalog .upwell/catalog.toml --format summary
+```
+
+</Example>
+
+Catalog IDs are lowercase, namespaced identifiers. Relative component and template paths resolve from the catalog file. Catalog schema `1` has additional renderer capabilities and priority settings; use the installed command help and catalog validation instead of copying every option into a project catalog.
+
+Cargo Upwell runs a renderer without host imports in a limited sandbox and validates its ABI, tooling-schema requirement, response claims, and configured UTF-8 requirement. If it fails, the command reports the renderer problem on stderr and falls back to its native default. Retain stderr and a native JSON export when renderer output must be lossless.
+
+## Make local completion useful
+
+Install the shell integration once, then refresh the private workspace cache after changing packages, binaries, or features.
+
+<Example title="Enable Zsh completion for one workspace">
+
+```sh
+cargo upwell completions generate zsh > ~/.zfunc/_cargo-upwell
+```
+
+Refresh resource-aware values for the intended binary:
+
+```sh
+cargo upwell completions refresh \
+  --package api \
+  --bin api-server \
+  --features metrics
+```
+
+</Example>
+
+Bash, Elvish, Fish, PowerShell, and Zsh are supported. Source the generated registration from the shell startup configuration; for Fish, write it below `~/.config/fish/conf.d/`. Regenerate after upgrading Cargo Upwell.
+
+Completion never runs Cargo or application code while you press Tab. Workspace-aware values come from the cache, which successful inspection commands also refresh on a best-effort basis. Use the absolute `UPWELL_COMPLETION_CACHE_DIR` path to isolate state in CI or separate development environments.

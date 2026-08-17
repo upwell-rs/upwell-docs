@@ -1,0 +1,22 @@
+---
+title: ScopeBoundary
+description: Declares one protocol-openable static scope and its only permitted parent boundary.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `ScopeBoundary`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`ScopeBoundary` joins one `StaticScope` to its sole valid [`ScopeParent`](./ScopeParent). Construct it as a static value with `ScopeBoundary::new(&ScopeType, parent)` and place it in the protocol's [`ScopeTopology`](./ScopeTopology).
+
+The boundary captures stable scope identity, diagnostic name, and rank from `StaticScope`. The parent relation is structural rather than advisory: a runtime cannot correctly open the boundary under another parent, and the application rejects topology declarations whose parent cannot outlive the child.
+
+Use one boundary per openable protocol scope. Do not use boundaries to restate the framework-owned root scope; select `ScopeParent::Root` for a protocol scope whose immediate parent is the application root.
+
+<SymbolMembers title="Associated items" />

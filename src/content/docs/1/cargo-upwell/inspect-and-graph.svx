@@ -1,0 +1,110 @@
+---
+title: Inspect and query an application
+description: Inspect the prepared tooling document, export canonical data, and query resource relationships.
+order: 20
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Inspect and query an application
+
+Start after [validating the application](/docs/latest/getting-started#validate-one-application). Each command prepares the selected application's probe before reading its canonical tooling document; no command infers relationships from source files.
+
+## Find the resource you need
+
+Begin with the readable inventory, then narrow it only after you have seen the application’s stable resource IDs.
+
+<Example title="Locate an HTTP plugin resource">
+
+```sh
+cargo upwell inspect
+```
+
+Limit the human-oriented view to the resources and facets you are investigating:
+
+```sh
+cargo upwell inspect \
+  --kind component,config-binding \
+  --plugin acme/http \
+  --facet acme/routes \
+  --scope public-api
+```
+
+Copy the stable ID from the result and inspect its focused explanation:
+
+```sh
+cargo upwell explain plugin:acme/http
+```
+
+</Example>
+
+Selectors accept an exact stable ID or an exact unique name. If a display name is ambiguous, use the ID from `inspect` or `graph`; IDs are the durable choice for scripts. `inspect` filters combine across dimensions, while `explain` accepts one resource selector. Its JSON form supplies a structured explanation when a program consumes it:
+
+```sh
+cargo upwell explain plugin:acme/http --format json
+```
+
+Use `--color never --pager never` when saving a readable inspection transcript. `inspect --format json` is different: it emits the complete, unfiltered canonical document and therefore rejects inspection filters.
+
+## Trace a relationship
+
+Once you know a stable ID, ask for the relationships around it. Choose `text` while deciding what to follow, then switch to a graph format for a diagram or downstream processing.
+
+<Example title="Map dependencies from one resource">
+
+```sh
+cargo upwell graph \
+  --resource plugin-slot:acme/auth \
+  --family composition \
+  --direction downstream
+```
+
+Render the same selected graph for documentation:
+
+```sh
+cargo upwell graph \
+  --resource plugin-slot:acme/auth \
+  --family composition \
+  --direction downstream \
+  --format dot > architecture.dot
+dot -Tsvg architecture.dot > architecture.svg
+```
+
+</Example>
+
+Use `--direction upstream`, `downstream`, or `both`. Add `--plugin` or `--contributor` roots when that expresses the question better. Root selectors can repeat and are exact values, so commas in an ID are not split. `text`, `mermaid`, `dot`, and `json` are built in; only the text renderer supports color and paging.
+
+Graph JSON can contain known nodes and diagnostics even after preparation fails. Check its `complete` field and the command exit status before treating its edges as authoritative.
+
+## Preserve the canonical result
+
+Export the document when a later job or another tool needs the exact result that Cargo Upwell prepared. Prefer `--output` to shell redirection when the destination's permissions matter: supported file exports replace the file atomically and preserve existing permissions where the platform permits it.
+
+<Example title="Save a document and retain failed-probe evidence">
+
+```sh
+cargo upwell export \
+  --format document \
+  --output target/upwell/document.json
+```
+
+Use an envelope when an artifact collector must retain structured diagnostics even if preparation fails:
+
+```sh
+cargo upwell export \
+  --format envelope \
+  --output target/upwell/envelope.json
+```
+
+</Example>
+
+`document` succeeds only with a valid probe and produces the same bytes as `inspect --format json`. `envelope` can still write a valid probe envelope on failure. Choose `document` when downstream work must stop without a document, and `envelope` when the failure itself is an artifact. The [automation guide](/docs/latest/cargo-upwell/automation-and-extensions#automate-validation) explains how to handle nonzero exit statuses while retaining structured output.
+
+## Choose an output deliberately
+
+Use terminal formats for a person, and choose an explicit machine format for every script. Built-in formats are `terminal` and `json` for `check` and `doctor`; `text` and `json` for `inspect` and `explain`; `document` and `envelope` for `export`; and `text`, `mermaid`, `dot`, and `json` for `graph`.
+
+Configured renderers can add command-specific formats. Run the command's `--help` to discover the active catalog rather than reproducing renderer capabilities or selector schemas in a script. Explicitly requesting an unsupported pager, color mode, or file output is command misuse.

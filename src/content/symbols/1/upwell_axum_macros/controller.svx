@@ -1,0 +1,63 @@
+---
+title: '#[controller]'
+description: Declares an Axum HTTP or WebSocket singleton controller and its generated registration surface.
+topics: ['web']
+---
+
+<script>
+	import { SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[controller]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+Declares a controller component. HTTP controllers own a base path and receive route methods from inherent `#[handlers]` implementations. A controller with `ws = Protocol` instead receives `#[message]` methods for that WebSocket protocol. Import it through the facade:
+
+```rust
+use upwell::axum::prelude::*;
+
+#[controller(path = "/users")]
+struct UsersController;
+```
+
+## Syntax
+
+```rust
+#[controller(
+    // ordinary component keys,
+    path = "/base",
+    routes_slice = ControllerRoutes,
+    middleware = [RequireUser, AuditRequest],
+    ws = Protocol,
+)]
+struct Controller;
+```
+
+The attribute applies only to a struct. It accepts the normal component declaration keys as well as these controller keys:
+
+| Key | Meaning |
+| --- | --- |
+| `path = "..."` | HTTP base path. Every HTTP route is joined below it. The default is the empty path. |
+| `routes_slice = Name` | Name of the controller's route registry. The default is `{Controller}Routes`. `#[handlers]` blocks targeting a custom registry must use the same `routes_slice = Name`. |
+| `middleware = [Type, ...]` | DI-backed `AxumMiddleware` singleton components applied to all HTTP routes. The first entry is outermost; controller middleware is inside application middleware and outside route middleware. |
+| `ws = Protocol` | Selects the WebSocket-controller surface for a `WebsocketProtocol` instead of the HTTP-controller surface. |
+
+Controllers are always singleton components. A non-singleton scope is rejected. `path`, `routes_slice`, and controller middleware describe HTTP routing; do not combine them as a substitute for a WebSocket endpoint. WebSocket mounting is configured on the Axum app builder with the protocol's `register_ws` API.
+
+## Containment
+
+`#[controller]` establishes the target type for one or more inherent `#[handlers]` blocks. An HTTP `#[handlers]` block may contain route markers; a WebSocket `#[handlers(ws = Protocol)]` block may contain `#[message]` markers and must name the same protocol selected by `ws = Protocol` here. A marker outside that containment is an error.
+
+## Generated artifacts
+
+For HTTP, the expansion provides component metadata, a `Controller` implementation, a `ControllerDescriptor` in the controller discovery slice, and the per-controller route registry. The generated router resolves the singleton once from the application runtime, mounts every collected handler under the base path, and retains static `HttpRouteDescriptor` metadata. `Axum::auto_discover()` can discover these descriptors.
+
+With the `client` feature of the Axum macro crate, route collection also produces `{Controller}Client<C>` and typed methods for routes whose request and response shape can be represented by the client. Native router and descriptor output is native-only.
+
+For WebSocket controllers, the generated surface is a WebSocket controller descriptor and message registration metadata rather than an Axum HTTP router. Duplicate destinations for the selected protocol are rejected during preparation.
+
+## Features
+
+Use the `upwell::axum` facade rather than direct macro-crate paths. HTTP server registration is native-only. Generated HTTP clients require the macro crate's `client` feature. A WebSocket controller additionally requires the Axum WebSocket support and a registered endpoint for its selected protocol.

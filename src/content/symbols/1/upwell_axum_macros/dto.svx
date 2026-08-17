@@ -1,0 +1,42 @@
+---
+title: '#[dto]'
+description: Marks a struct or enum as Axum HTTP wire data and derives its serialization contract.
+topics: ['web']
+---
+
+<script>
+	import { SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[dto]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+Marks a struct or enum as HTTP wire data. Use the facade import and apply it to application types that cross a handler's JSON/form body, decoded response, path, or query boundary.
+
+```rust
+use upwell::axum::prelude::*;
+
+#[dto]
+#[derive(Clone, Debug)]
+struct CreateUser {
+    name: String,
+}
+```
+
+## Syntax
+
+```rust
+#[dto]
+#[dto(no_serde)]
+struct OrEnum { /* fields or variants */ }
+```
+
+`no_serde` is the only option. The default derives `serde::Serialize` and `serde::Deserialize`; `no_serde` suppresses those derives when the type supplies compatible serialization itself. The macro implements `upwell::axum::Dto` in both forms.
+
+## Wire contract
+
+`#[handlers]` asserts `Dto` only for inferred wire positions, not for dependencies injected with `Inject<T>`. Scalars, `Option<T>`, `Vec<T>`, path tuples, unit, and borrowed response references have built-in coverage where applicable. A handler can still return a server-valid opaque, borrowed, or status-only response for which the generated client cannot satisfy its decoding bounds; this affects that client method rather than making all controller routes unavailable.
+
+On wasm targets the default expansion derives `tsify::Tsify` for typed browser bindings. With OpenAPI support enabled, DTO expansion also derives and registers schema information. Browser-only conversion does not add `tsify` or `wasm-bindgen` to a native server solely because the type is annotated.

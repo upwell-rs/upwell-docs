@@ -1,0 +1,210 @@
+---
+title: Advanced dependency injection
+description: Choose provider selection, lifetime, live values, and delayed resolution only when a simple component dependency is insufficient.
+order: 30
+topics: ['framework']
+---
+
+<script lang="ts">
+	import Example from '#lib/docs/components/Example.svelte';
+</script>
+
+# Advanced dependency injection
+
+Most components should inject `Arc<T>` and let the container construct one shared value. Reach for the following tools only when the application's behavior requires selection, a different lifetime, a changing value, or resolution after construction.
+
+## Choose one provider or use them all
+
+Use a qualifier when a consumer needs one named implementation. Use a collection when each implementation is part of the work, such as a notification fan-out.
+
+<Example title="Select one notifier and collect all notifiers">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[injectable]
+trait Notifier: Send + Sync {
+    fn send(&self, message: &str);
+}
+```
+
+Expose the concrete components through the shared capability. Mark the natural default as `primary`.
+
+```rust
+#[component(provide = dyn Notifier, qualifier = "email", primary)]
+struct EmailNotifier;
+
+impl Notifier for EmailNotifier {
+    fn send(&self, message: &str) {
+        eprintln!("email: {message}");
+    }
+}
+
+#[component(provide = dyn Notifier, qualifier = "log")]
+struct LogNotifier;
+
+impl Notifier for LogNotifier {
+    fn send(&self, message: &str) {
+        eprintln!("log: {message}");
+    }
+}
+```
+
+Select the provider needed for one operation, or inject every provider for a fan-out operation.
+
+```rust
+#[component]
+struct Notifications {
+    default: Arc<dyn Notifier>,
+    #[qualifier = "log"]
+    audit: Arc<dyn Notifier>,
+    all: Vec<Arc<dyn Notifier>>,
+}
+```
+
+</Example>
+
+An unqualified single dependency needs one unambiguous provider. A qualifier is more precise than `primary`; it names the implementation the component expects. See [`#[component]`](/docs/latest/symbols/upwell_macros/component) and [`#[injectable]`](/docs/latest/symbols/upwell_macros/injectable) for provider declarations and ordering controls.
+
+## Match the component lifetime to its state
+
+Leave ordinary shared services at the default singleton lifetime. Use a protocol scope when state belongs to that connection or request, and use transient only when construction must happen for every resolution.
+
+<Example title="Keep request state inside the request scope">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+struct PeerInfo;
+```
+
+Place state in the scope that owns it. A request component can use connection state because the connection outlives the request.
+
+```rust
+#[component(scope = upwell::daemon::Connection)]
+struct Session {
+    peer: PeerInfo,
+}
+
+#[component(scope = upwell::daemon::Request)]
+struct RequestLog {
+    session: Arc<Session>,
+}
+```
+
+Construct per-resolution work as transient rather than storing it in a longer-lived component.
+
+```rust
+#[component(scope = transient)]
+struct TraceId {
+    #[default]
+    id: uuid::Uuid,
+}
+```
+
+</Example>
+
+The important direction is from shorter-lived to equal- or longer-lived dependencies: a request may use a singleton, while a singleton must not capture a request. Redesign an invalid graph instead of using a shorter lifetime to hide it.
+
+## Observe values that can change
+
+An `Arc<T>` is the instance selected while the consumer is constructed. Use `Dep<T>` when component replacement should be visible later, and `Cfg<T>` when the component should read reloaded configuration.
+
+<Example title="Read a live component and live configuration">
+
+```rust
+use upwell::prelude::*;
+
+struct SearchIndex;
+
+impl SearchIndex {
+    fn query(&self, text: &str) -> Vec<String> {
+        vec![text.into()]
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[config(path = "http.limits")]
+struct LimitConfig {
+    max_body_bytes: usize,
+}
+```
+
+Inject live handles only where later replacement is part of the component's contract.
+
+```rust
+#[component]
+struct Search {
+    index: Dep<SearchIndex>,
+    limits: Cfg<LimitConfig>,
+}
+```
+
+Read the current value when handling the operation rather than retaining it indefinitely.
+
+```rust
+impl Search {
+    fn query(&self, text: &str) -> Vec<String> {
+        let _maximum = self.limits.get().max_body_bytes;
+        self.index.get().query(text)
+    }
+}
+```
+
+</Example>
+
+Use `Dynamic<H>` instead when a protocol or framework supplies a value only at runtime. It is not a reload mechanism and does not make an otherwise missing component optional. The [`#[config]` symbol page](/docs/latest/symbols/upwell_macros/config) documents configuration declarations and bindings.
+
+## Delay resolution for a real need
+
+Use `Lazy<H>` when a valid dependency is expensive and used only on some paths. Use `Fresh<H>` when each operation needs a new factory-built value. Use `Deferred<T>` only when one side of a valid cycle is needed after construction.
+
+<Example title="Create an expensive exporter only when it is used">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+struct Exporter;
+
+impl Exporter {
+    async fn write(&self, report: String) -> Result<(), AppError> {
+        let _ = report;
+        Ok(())
+    }
+}
+```
+
+Keep the delayed handle on the consumer.
+
+```rust
+#[component]
+struct Reports {
+    exporter: Lazy<Arc<Exporter>>,
+}
+```
+
+Resolve it at the point where export work actually starts.
+
+```rust
+impl Reports {
+    async fn export(&self, report: String) -> Result<(), AppError> {
+        self.exporter.get_or_create().await?.write(report).await
+    }
+}
+```
+
+</Example>
+
+Delayed handles preserve the consumer's scope and do not bypass dependency validation. They are not substitutes for an optional dependency or a provider qualifier. When a dependency is required during construction, inject it directly.
+
+## Reference pages
+
+Use the macro references for complete accepted forms and constraints:
+
+- [`#[component]`](/docs/latest/symbols/upwell_macros/component)
+- [`#[methods]`](/docs/latest/symbols/upwell_macros/methods)
+- [`#[injectable]`](/docs/latest/symbols/upwell_macros/injectable)
+- [`#[config]`](/docs/latest/symbols/upwell_macros/config)

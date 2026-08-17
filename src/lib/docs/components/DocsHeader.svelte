@@ -5,15 +5,13 @@
 	actively misleading. The selector is a plain list of documented releases; `latest` never appears
 	as a choice, since it is an alias that resolves to one of them.
 
-	A moving id such as `latest` also shows the exact version it currently documents. Without that,
-	"latest" would be the only thing a reader could tell anyone, and it means something different
-	after every release.
 -->
 <script lang="ts">
 	import { docsConfig, type DocsVersion } from '../config.ts';
-	import { formatVersion } from '../version/semver.ts';
+	import { findPage } from '../content/pages.ts';
+	import { findSymbolPage } from '../content/symbol-pages.ts';
 
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 
 	interface Props {
 		version: DocsVersion;
@@ -26,9 +24,14 @@
 	}
 
 	let { version, slug, onsearch, nav }: Props = $props();
+	let hydrated = $state(false);
+
+	onMount(() => {
+		hydrated = true;
+	});
 </script>
 
-<header class="header">
+<header class="header" data-hydrated={hydrated || undefined}>
 	{#if nav}{@render nav()}{/if}
 
 	<a class="header__brand" href="/">{docsConfig.framework.name}</a>
@@ -44,12 +47,18 @@
 			id="docs-version"
 			class="header__select"
 			onchange={(event) => {
-				window.location.href = `/docs/${event.currentTarget.value}/${slug}`;
+				const selected = event.currentTarget;
+				const target = docsConfig.versions.find((candidate) => candidate.id === selected.value)!;
+				const available = slug.startsWith('symbols/')
+					? Boolean(findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
+					: Boolean(findPage(slug, target.releaseVersion));
+
+				window.location.href = `/docs/${target.id}/${available ? slug : docsConfig.landingSlug}`;
 			}}
 		>
 			{#each docsConfig.versions as option (option.id)}
 				<option value={option.id} selected={option.id === version.id}>
-					{option.label}{option.moving ? ` (${formatVersion(option.frameworkVersion)})` : ''}
+					{option.label}
 				</option>
 			{/each}
 		</select>

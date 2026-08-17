@@ -1,0 +1,34 @@
+---
+title: ProtocolDefinition
+description: Defines a selected protocol's identity, composition, topology, validation, and prepared state.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `ProtocolDefinition`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`ProtocolDefinition` is the mutable, pre-validation representation of the protocol selected by `App<P>`. It owns protocol identity, plugin declarations, descriptors, scope topology, and the transition into validated prepared state. It does not own a root DI runtime, a listener, or long-running work.
+
+## Lifecycle contract
+
+The application calls `register_plugins` before plugin composition resolves, then applies composition and calls `auto_discover` when requested. `register` and `pre_build` contribute declarations before the app validates its component graph. Finally, `prepare` consumes the definition after validation inputs are finalized.
+
+`register_plugins` declares required and default protocol plugin participation. `register` contributes protocol descriptors. `pre_build` contributes protocol-owned components and configuration bindings that must be part of application validation. `prepare` validates finalized protocol state and returns `Prepared`; it must not construct listeners, background tasks, or dispatch resources.
+
+`ID` is a stable protocol identity used by composition, diagnostics, and tooling. `SCOPE_TOPOLOGY` declares every protocol-owned scope boundary. Declare `ScopeTopology::empty()` when the protocol opens no custom scope; otherwise make the full static parent chain explicit.
+
+## Authoring boundary
+
+Keep definition state cheap to mutate and safe to validate repeatedly: route declarations, codecs selected by configuration, plugin-collected descriptors, and static metadata belong here. Move validated snapshots into [`PreparedProtocol`](./PreparedProtocol). Build resources that need `AppRuntime` only from its `build` method.
+
+`auto_discover` should fold only link-time protocol descriptors into the existing definition. It is not a general application discovery hook and must not duplicate registrations already owned by `AppRegistry`.
+
+See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for an example-led lifecycle and [ScopeTopology](./ScopeTopology) for custom-scope ownership.
+
+<SymbolMembers title="Associated items" />

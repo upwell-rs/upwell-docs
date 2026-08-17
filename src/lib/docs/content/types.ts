@@ -34,9 +34,7 @@ export interface DocFrontmatter extends CommonFrontmatter {
 	 * an unclassified page is more likely to be general than to be irrelevant.
 	 */
 	readonly topics?: readonly string[];
-	/** Sidebar group. Pages without one are grouped under the fallback section. */
-	readonly section?: string;
-	/** Sort key within a section. Pages without one sort last, then alphabetically. */
+	/** Sort key among pages and child groups. Pages without one sort last, then alphabetically. */
 	readonly order?: number;
 }
 
@@ -66,7 +64,6 @@ export interface DocSummary {
 	readonly slug: string;
 	readonly title: string;
 	readonly description?: string;
-	readonly section: string;
 	readonly order: number;
 	readonly draft: boolean;
 	readonly topics: readonly string[];
@@ -107,11 +104,27 @@ export interface PageChrome {
 	readonly reference: boolean;
 }
 
-/** One sidebar group. */
-export interface DocSection {
+export interface NavigationPage {
+	readonly type: 'page';
+	readonly id: string;
 	readonly title: string;
-	readonly pages: readonly DocSummary[];
+	readonly href: string;
+	readonly order: number;
+	readonly topics: readonly string[];
+	readonly reference: boolean;
 }
+
+export interface NavigationGroup {
+	readonly type: 'group';
+	readonly id: string;
+	readonly label: string;
+	readonly order: number;
+	readonly defaultOpen: boolean;
+	readonly kind: 'guide' | 'reference';
+	readonly children: readonly NavigationNode[];
+}
+
+export type NavigationNode = NavigationGroup | NavigationPage;
 
 /** A heading extracted from a rendered page, for the table of contents. */
 export interface DocHeading {
@@ -120,9 +133,6 @@ export interface DocHeading {
 	/** 2 or 3. `h1` is the page title and is never listed. */
 	readonly depth: 2 | 3;
 }
-
-/** Section used for pages that declare none. */
-export const FALLBACK_SECTION = 'Guides';
 
 /** Sort key for pages that declare no order. */
 export const FALLBACK_ORDER = Number.MAX_SAFE_INTEGER;

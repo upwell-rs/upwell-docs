@@ -1,0 +1,102 @@
+---
+title: Application model
+description: Assemble an Upwell application, run its lifecycle, and choose between a generated host and direct control.
+order: 20
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Application model
+
+An `App<P>` is the assembled dependency graph and runtime for one protocol `P`. It owns configuration, directories, hooks, shutdown, and the selected protocol's dispatch surface. Most binaries declare that runtime through `app!`; use the builder when the surrounding process needs direct control.
+
+## Assemble an application
+
+Start with the facade prelude, the protocol type, and the values your application registers. The
+`App` alias in the protocol prelude keeps the application type tied to that protocol without a
+manual generic parameter.
+
+<Example title="Build an application directly">
+
+```rust
+use upwell::axum::App;
+use upwell::prelude::*;
+
+#[component]
+struct Catalog;
+```
+
+Create the builder, discover linked registrations, then add the values and plugins this process owns:
+
+```rust
+let app = App::builder("catalog-api")
+    .auto_discover()
+    .with_component(Catalog)
+    .build()
+    .await?;
+```
+
+</Example>
+
+`build()` is asynchronous because factories may perform asynchronous work. After it completes,
+components have been validated and the selected protocol has built its runtime surface. Register
+protocol-specific routes, services, and middleware through that protocol's builder extensions before
+calling `build()`.
+
+## Run the lifecycle
+
+Use `run()` for a worker or another application whose components own all background work. It starts the application lifecycle and waits for Ctrl-C or `ShutdownHandle::shutdown()`.
+
+<Example title="Run a background worker">
+
+```rust
+use upwell::axum::App;
+use upwell::prelude::*;
+
+#[component]
+struct Indexer;
+```
+
+Build the worker's application, then let Upwell manage startup and shutdown hooks:
+
+```rust
+let app = App::builder("catalog-indexer")
+    .auto_discover()
+    .build()
+    .await?;
+
+app.run().await?;
+```
+
+</Example>
+
+When the protocol accepts an explicit endpoint, call `app.serve(endpoint).await?` instead. The same lifecycle envelope starts hooks and reload triggers before serving, then runs shutdown cleanup when serving ends.
+
+## Choose the process boundary
+
+Use `app!` for the conventional application binary. It declares a named host and generates the process integration that direct builder code intentionally leaves to you.
+
+<Example title="Let the host own the process">
+
+```rust
+use upwell::axum::Axum;
+use upwell::prelude::*;
+```
+
+Declare the host instead of calling `.build().await` yourself:
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+    }
+}
+```
+
+</Example>
+
+`app!` and `App::<P>::builder` are complementary: choose the macro for generated startup, CLI, lifecycle, and Cargo Upwell tooling support; choose the builder for embedding or manually owned process behavior. See [the `app!` guide](app-macro) for a host-focused workflow and the [canonical `app!` reference](/docs/latest/symbols/upwell_macros/app) for every macro option.

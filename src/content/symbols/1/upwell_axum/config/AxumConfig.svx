@@ -1,0 +1,34 @@
+---
+title: AxumConfig
+description: Configures the HTTP server address, base path, request limits, and shutdown behavior for an Axum application.
+topics: ['web']
+---
+
+<script>
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `AxumConfig`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`AxumConfig` is the protocol configuration for an Upwell Axum application. Bind it through the application configuration system when the server address, URL prefix, request limits, or graceful shutdown window must vary by deployment. Keep route policy in controllers and middleware; this type owns the server envelope shared by those routes.
+
+## Server settings
+
+`bind` selects the socket address and `base_path` prefixes every controller route. Use a base path when the application is mounted below a reverse proxy path, rather than repeating the prefix in every `#[controller]` declaration.
+
+<SymbolMembers title="Server settings" only={['bind', 'base_path']} />
+
+## Request limits
+
+Set body and stream limits before accepting untrusted input. The ordinary body limit applies to one buffered request; the stream limits separately bound streamed request size, item count, and time. Choose limits that match the largest useful payload for the endpoint instead of relying on an upstream proxy alone.
+
+<SymbolMembers title="Request limits" only={['max_request_body_bytes', 'max_stream_request_bytes', 'max_stream_request_items', 'request_timeout_ms', 'stream_request_timeout_ms']} />
+
+## Connection shutdown
+
+The WebSocket limits protect long-lived connections, while `graceful_shutdown_timeout_ms` bounds how long the server waits for in-flight work after application shutdown begins. Set these values from the expected client and deployment behavior, and keep a reverse proxy's timeouts compatible with them.
+
+<SymbolMembers title="Connection and shutdown" only={['max_websocket_connections', 'max_websocket_frame_bytes', 'max_websocket_message_bytes', 'websocket_idle_timeout_ms', 'graceful_shutdown_timeout_ms']} />

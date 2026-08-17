@@ -47,6 +47,8 @@ export interface GenerateOptions {
 	readonly origin: ArtifactOrigin;
 	/** Display name of the framework, e.g. `Framework`. */
 	readonly frameworkName: string;
+	/** Public docs release the artifact represents; intentionally independent of Cargo package versions. */
+	readonly releaseVersion: string;
 	/** Release tag prefix, e.g. `framework-v`. Used to recognise the tag the checkout sits on. */
 	readonly tagPrefix: string;
 	/** Skip running rustdoc and use whatever is already in `target/doc`. */
@@ -147,6 +149,7 @@ export async function generateArtifact(options: GenerateOptions): Promise<Genera
 			version: workspace.version,
 			crates: workspace.crates.map((crate) => crate.name)
 		},
+		documentation: { releaseVersion: options.releaseVersion, sourcePackageVersion: workspace.version },
 		git: { sha: git.sha, tag: git.tag, repository, dirty: git.dirty },
 		generatedAt: new Date().toISOString(),
 		generator: {

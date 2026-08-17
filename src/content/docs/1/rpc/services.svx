@@ -1,0 +1,161 @@
+---
+title: RPC services
+description: Build an RPC service with typed requests, injected dependencies, and streaming when needed.
+order: 100
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# RPC services
+
+Use an RPC service when another process needs typed request/reply operations. Define the wire types, declare a service, then expose async methods from a handler implementation.
+
+## Define a service and one operation
+
+<Example title="Add a typed RPC operation">
+
+```rust
+use serde::{Deserialize, Serialize};
+use upwell::daemon::{Payload, handlers, rpc, service};
+
+#[derive(Deserialize)]
+struct AddRequest {
+    left: i64,
+    right: i64,
+}
+
+#[derive(Serialize)]
+struct AddResponse {
+    total: i64,
+}
+```
+
+Declare the singleton that owns the operation.
+
+```rust
+#[service]
+struct Calculator;
+```
+
+Add an inherent handler implementation. `Payload<T>` decodes the request body.
+
+```rust
+#[handlers]
+impl Calculator {
+    #[rpc]
+    async fn add(&self, Payload(request): Payload<AddRequest>) -> AddResponse {
+        AddResponse {
+            total: request.left + request.right,
+        }
+    }
+}
+```
+
+</Example>
+
+Register or auto-discover the service in the daemon application configuration. The generated server descriptor collects all RPCs from its `#[handlers]` blocks; client support generates a typed client when enabled.
+
+## Resolve a dependency per call
+
+Add `Inject<T>` for a dependency that belongs to the request handling scope. Keep the payload as the one request body parameter.
+
+<Example title="Create through an injected store">
+
+```rust context
+#[service]
+struct Calculator;
+```
+
+```rust
+use upwell::daemon::{Inject, Payload};
+use upwell::Dep;
+
+struct CreateCustomer {
+    name: String,
+}
+
+struct Customer {
+    name: String,
+}
+
+struct CreateCustomerError;
+
+struct CustomerStore;
+
+impl CustomerStore {
+    async fn create(&self, request: CreateCustomer) -> Result<Customer, CreateCustomerError> {
+        Ok(Customer { name: request.name })
+    }
+}
+```
+
+Accept the payload and the dependency in the same handler.
+
+```rust
+#[handlers]
+impl Calculator {
+    #[rpc]
+    async fn create_customer(
+        &self,
+        Payload(request): Payload<CreateCustomer>,
+        Inject(store): Inject<Dep<CustomerStore>>,
+    ) -> Result<Customer, CreateCustomerError> {
+        store.get().create(request).await
+    }
+}
+```
+
+</Example>
+
+Use `Result<T, E>` when the caller needs a typed failure; return `T` directly for operations that cannot fail. RPC methods are async and may take no receiver or exactly `&self`; the shared service cannot take `self` or `&mut self`.
+
+## Stream values only when the operation needs them
+
+Use a request stream for client-supplied sequences and return a stream for subscriptions or long-lived results.
+
+<Example title="Sum uploaded values and watch events">
+
+```rust context
+#[service]
+struct Calculator;
+```
+
+```rust
+use futures_core::Stream;
+use futures_util::StreamExt;
+use upwell::daemon::RequestStream;
+
+struct Event;
+```
+
+Mark the operations in the existing service handler block.
+
+```rust
+#[handlers]
+impl Calculator {
+    #[rpc]
+    async fn sum(&self, values: RequestStream<i64>) -> i64 {
+        values.fold(0, |sum, value| async move { sum + value }).await
+    }
+
+    #[rpc]
+    async fn watch(&self) -> impl Stream<Item = Event> {
+        futures_util::stream::empty()
+    }
+}
+```
+
+</Example>
+
+An RPC accepts at most one streaming input, and that stream is the complete request body, so do not combine it with `Payload<T>`. Add `#[rpc(stream)]` only when a concrete return type hides its streaming shape.
+
+## Reference pages
+
+The canonical references list all accepted options, generated artifacts, and edge cases:
+
+- [`#[service]`](/docs/latest/symbols/upwell_rpc_macros/service)
+- [`#[handlers]`](/docs/latest/symbols/upwell_rpc_macros/handlers)
+- [`#[rpc]`](/docs/latest/symbols/upwell_rpc_macros/rpc)

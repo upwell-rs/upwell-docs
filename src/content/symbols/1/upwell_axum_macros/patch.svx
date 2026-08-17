@@ -1,0 +1,21 @@
+---
+title: '#[patch]'
+description: Shorthand for a PATCH route in an Axum controller handler implementation.
+topics: ['web']
+---
+
+<script>import { SymbolMeta, SymbolSignature } from '#lib/docs';</script>
+
+# `#[patch]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+PATCH shorthand for `#[route(PATCH, path, ...)]` inside an HTTP `#[handlers]` implementation.
+
+```rust
+#[patch("/{id}")]
+async fn patch(&self, Path(id): Path<u64>, Json(input): Json<UserPatch>) -> Json<User> { todo!() }
+```
+
+It accepts an optional controller-relative string path followed by the shared route modifiers. `#[patch]` and `#[patch(streamed)]` mount at the controller base. It is a consumed marker, not a standalone function attribute. See [`#[route]`](./route) for complete grammar, modifier rules, containment, generated artifacts, and feature behavior.

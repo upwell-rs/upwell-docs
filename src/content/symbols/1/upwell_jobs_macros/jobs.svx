@@ -1,0 +1,98 @@
+---
+title: "#[jobs]"
+description: Collect scheduled job methods from an inherent component implementation.
+topics: ['jobs']
+---
+
+<script lang="ts">
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `#[jobs]`
+
+`#[jobs]` expands an inherent implementation that contains scheduled methods marked `#[job(...)]`. The expansion consumes those markers, creates descriptors and call wrappers, and registers them in the global `JOBS` link-time slice. Use the facade import, not `upwell_jobs_macros` directly.
+
+<SymbolMeta />
+<SymbolSignature />
+
+```rust
+use upwell::jobs::{JobProgress, JobRunContext, job, jobs};
+use upwell::prelude::*;
+
+#[component]
+struct Reports;
+
+#[jobs]
+impl Reports {
+    #[job(every = "10m", run_on_startup)]
+    async fn refresh(&self, cx: JobRunContext) {
+        cx.progress(JobProgress::phase("refreshing")).await;
+    }
+}
+```
+
+## Syntax and generated artifacts
+
+Apply `#[jobs]` to an inherent implementation for a component type. The attribute itself accepts no job-specific arguments; scheduling options belong to each `#[job(...)]` method.
+
+For every marked method, expansion emits a `JobDescriptor` and an async call wrapper. The wrapper resolves the component and ordinary dependencies for each run, supplies `JobRunContext` when requested, invokes the method, and normalizes its completion into `JobOutcome`. The descriptor is registered in the global `JOBS` slice with the name `{Component}::{method}`.
+
+`#[jobs]` does not install a scheduler, manage schedules at runtime, or generate a client. Add the facade's jobs support and install the jobs scheduler/plugin in application configuration for registered descriptors to execute.
+
+## Containment and composition
+
+`#[job]` is a marker consumed by `#[jobs]`; a marker outside an appropriate implementation is a compile error. A component may have multiple `#[jobs]` blocks, and all marked methods contribute to the same global job registry.
+
+The component may also expose RPC or HTTP handlers, but use a separate inherent implementation for each collector macro.
+
+```rust
+use upwell::daemon::{handlers, rpc};
+use upwell::jobs::{job, jobs};
+
+#[handlers]
+impl Reports {
+    #[rpc]
+    async fn status(&self) -> &'static str {
+        "ready"
+    }
+}
+
+#[jobs]
+impl Reports {
+    #[job(cron = "@hourly")]
+    async fn archive(&self) {}
+}
+```
+
+Shared `#[init]` and `#[hook(...)]` methods are supported as component lifecycle methods. Only `#[job]` methods produce scheduled descriptors.
+
+## Method requirements and injection
+
+A scheduled method must be `async` and receive exactly `&self`. `self` and `&mut self` are rejected because the component is shared. Every ordinary parameter is resolved from the root DI container for each run; unlike RPC handlers, do not wrap them in `Inject<T>`.
+
+```rust
+use std::sync::Arc;
+use upwell::jobs::{job, jobs};
+use upwell::prelude::*;
+
+#[jobs]
+impl Reports {
+    #[job(every = "5m")]
+    async fn export(&self, writer: Arc<ReportWriter>, config: Cfg<ReportConfig>) {
+        writer.write(config.snapshot()).await;
+    }
+}
+```
+
+`JobRunContext` is the special exception: it is supplied by the scheduler rather than resolved from DI, and provides progress and run-scoped information.
+
+## Return behavior and errors
+
+`()` and every other non-`Result` return is discarded after the future completes, producing a successful run. A `Result<T, E>` maps `Ok(_)` to success and records `Err(E)` as the run failure; `E` must be boxable as a thread-safe standard error.
+
+Compilation fails when `#[jobs]` decorates an unsupported or non-inherent implementation, a `#[job]` method is non-async or has an invalid receiver, a parameter is not container-resolvable, or a marked method violates the schedule attribute's syntax or type constraints. Duration and cron schedules are parsed and validated by the scheduler when it starts. It also fails if `#[job]` is used outside this macro's containment.
+
+## Feature note
+
+The macros declare static jobs and their registration metadata. Runtime scheduling, manual triggers, observability, and dynamic named schedules are jobs-runtime APIs. Import from `upwell::jobs` so the application uses the configured facade paths and feature set.

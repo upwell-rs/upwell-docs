@@ -1,0 +1,35 @@
+---
+title: Plugin
+description: Typed, retained application extension with static composition metadata and deterministic contributions.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import SymbolImpls from '#lib/docs/components/SymbolImpls.svelte';
+	import SymbolMembers from '#lib/docs/components/SymbolMembers.svelte';
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `Plugin`
+
+<SymbolMeta />
+
+`Plugin` is the public contract for a retained application extension. The resolver reads its identity and static relations before it collects contributions; the retained effective instance then receives discovery and contributes portable registry inputs.
+
+<SymbolSignature />
+
+## Contract
+
+`ID` is a stable, package-owned `PluginId` and is the identity used by composition, diagnostics, and tooling. `RELATIONS` is static graph metadata and must not depend on runtime configuration. `contribute` consumes the effective plugin and must emit deterministic app-neutral contributions. `auto_discover` is optional and may merge link-time-discovered state into that retained instance before contribution. With the `cli` feature, `cli` declares parser-visible facets without consuming the instance.
+
+An implementation is `Send + 'static`. Use `PluginWithOptions` when a reusable plugin needs explicit synchronous options; install the resulting instance with the registrar or builder rather than putting process configuration in global state.
+
+## Composition
+
+The resolver canonicalizes relations and validates requirements, conflicts, replacements, suppressions, and ordering before `contribute` runs. A plugin that is not effective does not contribute. Contributions retain their `PluginId` plus each `ContributionId`, so a later diagnostic can name both the installed extension and the emission that produced a payload.
+
+Follow the [plugin composition workflow](/docs/latest/extensions/plugins) for installation phases, slots, and diagnostics. Use [`PluginContributions`](/docs/latest/symbols/upwell_app/PluginContributions) for the collector contract and [`PluginRelation`](/docs/latest/symbols/upwell_app/PluginRelation) for static graph declarations.
+
+<SymbolMembers />
+<SymbolImpls />

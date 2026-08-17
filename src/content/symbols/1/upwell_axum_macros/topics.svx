@@ -1,0 +1,54 @@
+---
+title: '#[topics]'
+description: Declares typed publish-subscribe topic destinations and generated subscription clients.
+topics: ['web']
+---
+
+<script>
+	import { SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[topics]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+Declares a non-empty enum of outbound typed publications and matching client subscriptions. `#[topic]` on each variant and `#[content]` on templated payload fields are helper syntax consumed and stripped by this macro; they have no standalone meaning.
+
+```rust
+use upwell::axum::prelude::*;
+
+#[topics(protocol = Stomp)]
+enum Notifications {
+    #[topic("/topic/system")]
+    System(SystemEvent),
+
+    #[topic("/topic/rooms/{room}")]
+    Room {
+        room: String,
+        #[content]
+        event: RoomEvent,
+    },
+}
+```
+
+## Syntax
+
+```text
+topics       := #[topics(protocol = Protocol [, codec = Codec])] enum Name { variant, ... }
+static        := #[topic("destination")] Variant(Payload)
+templated     := #[topic("destination/{hole}")] Variant {
+                     hole: Type,
+                     #[content] payload: Payload,
+                 }
+```
+
+`protocol = Protocol` is required and names a messaging protocol. `codec = Codec` is optional; without it, encoding and decoding use `<Protocol as MessagingProtocol>::DefaultCodec`. No other `#[topics]` arguments are accepted.
+
+Every variant has exactly one `#[topic("destination")]`. A static destination is a tuple variant with exactly one payload field. A templated destination is a struct variant with exactly one `#[content]` payload field. Every `{hole}` needs a same-named non-content field, every non-content field must fill a hole, and client subscription methods take those parameters in template order. Templates support `{name}` holes and literal braces escaped as `{{` and `}}`; empty or unmatched braces are errors.
+
+## Generated artifacts and features
+
+Expansion keeps the enum, implements `upwell::axum::Topic` with `destination()` and codec-backed `encode()`, and creates `{Enum}Client<C>` when the macro crate's `client` feature is enabled. The client has `subscribe_<variant>()` methods returning decoded typed subscriptions; static destinations need no arguments and templated destinations take their hole arguments.
+
+The wasm wrapper additionally requires the compatible WebSocket transport feature. It is not emitted for generic topic enums because wasm-bindgen exported types cannot be generic. With wasm TypeScript support, subscription callbacks preserve typed payload names.

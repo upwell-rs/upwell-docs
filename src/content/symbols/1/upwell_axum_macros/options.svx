@@ -1,0 +1,21 @@
+---
+title: '#[options]'
+description: Shorthand for an OPTIONS route in an Axum controller handler implementation.
+topics: ['web']
+---
+
+<script>import { SymbolMeta, SymbolSignature } from '#lib/docs';</script>
+
+# `#[options]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+OPTIONS shorthand for `#[route(OPTIONS, path, ...)]` inside an HTTP `#[handlers]` implementation.
+
+```rust
+#[options("/")]
+async fn options(&self) -> StatusCode { todo!() }
+```
+
+It accepts an optional controller-relative string path followed by the shared route modifiers. `#[options]` and `#[options(streamed)]` mount at the controller base. It is a consumed marker, not a standalone function attribute. See [`#[route]`](./route) for complete grammar, modifier rules, containment, generated artifacts, and feature behavior.

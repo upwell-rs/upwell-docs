@@ -1,0 +1,10 @@
+---
+title: Path version selectors
+description: How version directory selectors choose documentation content.
+order: 95
+---
+
+# Path version selectors
+
+This guide is authored beneath the `1` directory selector. It is visible for stable 1.x releases,
+but its URL and navigation location are simply `path-version-selectors`.

@@ -16,7 +16,7 @@ import type { ExternalSymbol, Symbol } from '../rustdoc/symbols.ts';
  * Bump for any change a consumer must know about. Additive, optional fields do not require a bump;
  * removing a field, changing its meaning, or making an optional field required does.
  */
-export const ARTIFACT_SCHEMA_VERSION = 2;
+export const ARTIFACT_SCHEMA_VERSION = 3;
 
 /**
  * Schema versions this build of the website can read.
@@ -25,7 +25,7 @@ export const ARTIFACT_SCHEMA_VERSION = 2;
  * compact `search.json`. A version 1 artifact is rejected rather than half-read; regenerating one
  * is a single command, so supporting both would be carrying a migration nobody needs.
  */
-export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [2];
+export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [3];
 
 /**
  * Optional tiers of artifact content.
@@ -47,10 +47,15 @@ export interface ArtifactManifest {
 		readonly name: string;
 		/** Facade crate, e.g. `framework`. */
 		readonly crate: string;
-		/** Exact release version this artifact documents. */
+		/** Cargo package version of the source facade crate. */
 		readonly version: string;
 		/** Every workspace crate the index covers. */
 		readonly crates: readonly string[];
+	};
+	/** Public documentation release and the separate source identity it was generated from. */
+	readonly documentation: {
+		readonly releaseVersion: string;
+		readonly sourcePackageVersion: string;
 	};
 	readonly git: {
 		readonly sha: string;
@@ -255,6 +260,7 @@ export function parseManifest(value: unknown): ArtifactManifest {
 	}
 
 	const framework = requireObject(root.framework, 'manifest.framework');
+	const documentation = requireObject(root.documentation, 'manifest.documentation');
 	const git = requireObject(root.git, 'manifest.git');
 	const generator = requireObject(root.generator, 'manifest.generator');
 	const rust = requireObject(root.rust, 'manifest.rust');
@@ -285,6 +291,10 @@ export function parseManifest(value: unknown): ArtifactManifest {
 			crate: requireString(framework.crate, 'manifest.framework.crate'),
 			version: requireString(framework.version, 'manifest.framework.version'),
 			crates: requireStringArray(framework.crates, 'manifest.framework.crates')
+		},
+		documentation: {
+			releaseVersion: requireString(documentation.releaseVersion, 'manifest.documentation.releaseVersion'),
+			sourcePackageVersion: requireString(documentation.sourcePackageVersion, 'manifest.documentation.sourcePackageVersion')
 		},
 		git: {
 			sha: requireString(git.sha, 'manifest.git.sha'),

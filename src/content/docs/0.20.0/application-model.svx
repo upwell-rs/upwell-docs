@@ -1,0 +1,40 @@
+---
+title: Application model
+description: Assemble an Upwell 0.20 host with the pre-1.0 builder-form app macro.
+order: 20
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Application model
+
+An Upwell 0.20 application is declared through `app!` around an `App::builder(...)` expression. The builder collects the name and application registrations; the macro declares the host that runs the assembled application.
+
+<Example title="Assemble a small application">
+
+```rust plain
+use upwell::prelude::*;
+
+#[component]
+struct Inventory;
+```
+
+Build the host from that component:
+
+```rust plain
+app! {
+    App::builder("inventory")
+        .with_component(Inventory)
+}
+```
+
+</Example>
+
+## Keep the boundary explicit
+
+Use the builder chain for values the process owns, including components and protocol integrations. The macro is the application boundary, not a replacement for normal Rust composition inside a component.
+
+This is specifically the 0.20 application declaration. The [1.0 application model](/docs/1.0.0/framework/application-model) uses a named `app!` declaration and documents current lifecycle and protocol guidance.

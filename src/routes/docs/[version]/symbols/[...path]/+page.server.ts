@@ -11,7 +11,7 @@
 import { building } from '$app/env';
 import { error } from '@sveltejs/kit';
 
-import { docsConfig, resolveVersion } from '#lib/docs/config';
+import { docsConfig, isSymbolEnrichmentEligible, resolveVersion } from '#lib/docs/config';
 import { findSymbolPage, symbolPagesFor } from '#lib/docs/content/symbol-pages';
 import { topicForCrate } from '#lib/docs/content/topics';
 import { getArtifact, getSymbolInfo } from '#lib/server/artifact';
@@ -34,11 +34,11 @@ export const entries: EntryGenerator = async () => {
 	for (const version of docsConfig.versions) {
 		// A release without a prepared artifact has no facts to put on a symbol page, so it gets
 		// none. Its guides still render, with highlighting but no code lens.
-		if (!(await getArtifact(version))) {
+		if (!isSymbolEnrichmentEligible(docsConfig, version) || !(await getArtifact(version))) {
 			continue;
 		}
 
-		for (const page of symbolPagesFor(version.frameworkVersion)) {
+		for (const page of symbolPagesFor(version.releaseVersion)) {
 			generated.push({ version: version.id, path: page.segments });
 		}
 	}
@@ -53,7 +53,11 @@ export const load: PageServerLoad = async ({ params }) => {
 		error(404, { message: `There is no documentation for version "${params.version}".` });
 	}
 
-	const page = findSymbolPage(params.path, version.frameworkVersion);
+	const page = findSymbolPage(params.path, version.releaseVersion);
+
+	if (!isSymbolEnrichmentEligible(docsConfig, version)) {
+		error(404, { message: `${version.releaseVersion.raw} publishes authored guides without API symbol pages.` });
+	}
 
 	if (!page) {
 		const artifact = await getArtifact(version);
@@ -62,10 +66,10 @@ export const load: PageServerLoad = async ({ params }) => {
 		// A symbol with no page is an ordinary miss, not a mistake: most symbols have none, and are
 		// annotated in code blocks without one. Suggestions point at symbols that *do* have a page.
 		error(404, {
-			message: `No page documents "${requested}" in ${docsConfig.framework.name} ${version.frameworkVersion.raw}.`,
+			message: `No page documents "${requested}" in ${docsConfig.framework.name} docs ${version.releaseVersion.raw}.`,
 			suggestions: artifact
 				? suggestSymbols(artifact, requested)
-					.filter((candidate) => Boolean(findSymbolPage(candidate.replaceAll('::', '/'), version.frameworkVersion)))
+					.filter((candidate) => Boolean(findSymbolPage(candidate.replaceAll('::', '/'), version.releaseVersion)))
 				: []
 		});
 	}
@@ -76,7 +80,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		// Unreachable in a complete build: the same check runs over every symbol page when the
 		// artifact loads, so this would already have failed. Kept because the load path must not
 		// depend on that having happened.
-		error(404, { message: `The ${version.frameworkVersion.raw} release has no symbol "${page.symbol}".` });
+		error(404, { message: `The ${version.releaseVersion.raw} artifact has no symbol "${page.symbol}".` });
 	}
 
 	if (building) {

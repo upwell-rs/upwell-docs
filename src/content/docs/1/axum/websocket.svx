@@ -1,0 +1,229 @@
+---
+title: WebSocket protocols
+description: Use a registered WebSocket protocol for typed controllers, or implement WebsocketProtocol to own framing and connection behavior.
+order: 120
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# WebSocket protocols
+
+A WebSocket endpoint has two separate concerns. An application **uses** a protocol by selecting it on controllers and mounting it at an HTTP upgrade path. A protocol crate **implements** <Symbol path="upwell::axum::WebsocketProtocol" /> when it must define a new frame vocabulary, dispatch loop, endpoint state, or subprotocol contract. Most applications only use an existing protocol such as `JsonWs` or `Stomp`.
+
+The <Symbol path="upwell::axum::AxumAppBuilder" /> extension owns endpoint registration. Controller macros only contribute typed message destinations; they do not create an Axum route or choose its URL.
+
+## Use an existing protocol
+
+Start with DTOs and a controller that selects the protocol. The controller remains a singleton; `ws = JsonWs` changes its generated surface from HTTP route collection to WebSocket message collection.
+
+<Example title="Define a JSON WebSocket controller">
+
+```rust
+use upwell::axum::prelude::*;
+
+#[dto]
+struct Greet {
+    who: String,
+}
+
+#[dto]
+struct Greeting {
+    message: String,
+}
+```
+
+Declare the controller against the protocol that frames its messages.
+
+```rust
+#[controller(ws = JsonWs)]
+struct GreetingSocket;
+```
+
+Add destinations in an inherent handler implementation for that same protocol.
+
+```rust
+#[handlers(ws = JsonWs)]
+impl GreetingSocket {
+    #[message("greet")]
+    async fn greet(&self, input: Greet) -> Greeting {
+        Greeting {
+            message: format!("Hello, {}", input.who),
+        }
+    }
+}
+```
+
+</Example>
+
+`#[controller(ws = P)]` and `#[handlers(ws = P)]` must use the identical protocol type. Each `#[message("destination")]` produces a <Symbol path="upwell::axum::WsRoute" />: a destination and an erased handler that receives `P::Payload`. The controller expansion then contributes a <Symbol path="upwell::axum::WsControllerDescriptor" /> and implements <Symbol path="upwell::axum::WebsocketController" />. At application preparation, descriptors for the mounted protocol are collected into its controller route table; duplicate destinations for that protocol fail before the server starts.
+
+A non-unit return infers request/reply. A unit return infers fire-and-forget. Use `#[message("...", request)]` or `#[message("...", send)]` when the method's return type is an outcome or `Result` whose interaction mode is not obvious. The generated client seam, when the Axum macro crate's `client` feature is enabled, exposes matching typed request or send methods for supported handler shapes.
+
+## Mount the endpoint
+
+Register the protocol on the Axum application builder. This is the build and serve lifecycle boundary: registration contributes protocol-owned dependencies before DI validation, `build()` constructs one protocol instance per registered endpoint, and serving mounts the generic upgrade route at the supplied path.
+
+<Example title="Mount the controller protocol">
+
+```rust context
+use upwell::prelude::*;
+use upwell::axum::prelude::*;
+
+#[controller(ws = JsonWs)]
+struct GreetingSocket;
+```
+
+Register the default endpoint options. The path is an HTTP route for the WebSocket upgrade, not a controller path.
+
+```rust
+let app = App::builder("greetings")
+    .register_ws::<JsonWs>("/ws")
+    .build()
+    .await?;
+```
+
+Use explicit endpoint options when the protocol needs configuration. One protocol type may be mounted at multiple distinct paths, each with its own options.
+
+```rust
+let app = App::builder("greetings")
+    .register_ws_with::<Stomp>("/stomp", StompConfig::default())
+    .build()
+    .await?;
+```
+
+</Example>
+
+`register_ws::<P>(path)` requires `P::Options: Default`. `register_ws_with::<P>(path, options)` accepts explicit per-endpoint settings instead. Both calls select only controllers whose generated `WebsocketController::Protocol` is `P`; a controller declaration alone is inert until an endpoint for its protocol is registered. Paths must be absolute and unique across WebSocket mounts.
+
+At connection time, the framework opens one <Symbol path="upwell::axum::WebsocketConnection" /> scope after a successful upgrade. The protocol opens a child <Symbol path="upwell::axum::WebsocketMessage" /> scope for every decoded application message. Resolve connection-wide identity, session state, and upgrade metadata once from the connection scope; resolve message-specific `Inject<T>` dependencies in the message scope. `#[message]` permits one decoded body parameter plus any number of injected values, so application handlers should not parse transport frames or manufacture scopes themselves.
+
+## Implement a protocol only when you own the wire contract
+
+Implement `WebsocketProtocol` in a protocol crate when an existing protocol cannot represent the frames, correlation behavior, authentication handshake, backpressure policy, or endpoint state you need. It is not the trait to implement merely to add a new controller: use `#[controller(ws = ExistingProtocol)]` for that.
+
+<Example title="Protocol implementation responsibilities">
+
+```rust context
+use std::sync::Arc;
+
+use upwell::axum::prelude::*;
+use upwell::axum::axum::extract::ws::WebSocket;
+```
+
+The protocol declares its payload, handler outcome, endpoint options, construction error, and RFC 6455 subprotocol policy.
+
+```rust
+struct AcmeProtocol;
+
+impl WebsocketProtocol for AcmeProtocol {
+    type Payload = AcmePayload;
+    type Outcome = AcmeOutcome;
+    type Options = AcmeOptions;
+    type BuildError = AcmeBuildError;
+
+    const SUBPROTOCOLS: &'static [&'static str] = &["acme.v1"];
+    const REQUIRE_SUBPROTOCOL: bool = true;
+
+    fn register(registry: &mut AppRegistry) {
+        AcmeSession::register(registry);
+    }
+}
+```
+
+Build endpoint state from the generated controller table and then drive each accepted connection.
+
+```rust
+impl WebsocketProtocol for AcmeProtocol {
+    // Associated types and constants omitted.
+
+    fn build(
+        controllers: &[WsControllerDescriptor],
+        runtime: &AppRuntime,
+        options: Self::Options,
+    ) -> Result<Self, Self::BuildError> {
+        Self::from_controllers(controllers, runtime.clone(), options)
+    }
+
+    fn serve(
+        self: Arc<Self>,
+        socket: WebSocket,
+        connection: Arc<ScopeContainer>,
+        shutdown: WsShutdown,
+    ) -> impl Future + Send {
+        async move {
+            self.run(socket, connection, shutdown).await;
+        }
+    }
+}
+```
+
+</Example>
+
+`register` runs before the root DI container is validated, so it is the place to contribute protocol-owned components and scope seeds. `build` runs once for each `register_ws` or `register_ws_with` entrypoint after controllers have been prepared; use the descriptor slice to index destinations and retain runtime access needed to open message scopes. Do not make `build` infallible by panicking: its `BuildError` is the typed startup failure channel.
+
+`serve` owns framing and dispatch. It reads raw WebSocket frames, validates protocol state, turns an inbound frame into a destination and `Payload`, opens the message scope under the supplied connection scope, and invokes the matching generated `WsRoute` handler. It then frames the handler's `Outcome` or dispatch failure according to the protocol's wire contract. The framework supplies <Symbol path="upwell::axum::WsShutdown" /> so the loop can race socket input with graceful shutdown and close or drain long-lived connections deliberately. <Symbol path="upwell::axum::WsIdle" /> is available for protocols that need probe-and-timeout idle handling.
+
+`SUBPROTOCOLS` lists accepted RFC 6455 tokens in server preference order. During the upgrade, the framework selects one offered token and exposes request metadata through <Symbol path="upwell::axum::WebsocketUpgradeMeta" />. With `REQUIRE_SUBPROTOCOL = true`, reject upgrades that do not negotiate one of those tokens; with `false`, a protocol may continue without a selected subprotocol. Keep serializer selection and handshake validation inside the protocol's connection state, not in controllers.
+
+## Add typed pub/sub only when the protocol supports it
+
+Topics are an optional extension, not a requirement of `WebsocketProtocol`. A protocol that carries typed publications implements <Symbol path="upwell::axum::MessagingProtocol" /> for its body and default codec, and <Symbol path="upwell::axum::PubSubProtocol" /> for server-side subscriber framing. A `#[topics]` enum implements <Symbol path="upwell::axum::Topic" /> and can be injected through <Symbol path="upwell::axum::Publisher" />.
+
+<Example title="Publish typed room events over STOMP">
+
+```rust context
+use upwell::axum::prelude::*;
+
+#[dto]
+struct RoomEvent {
+    message: String,
+}
+```
+
+Declare the destinations once for both server publication and the generated subscription client.
+
+```rust
+#[topics(protocol = Stomp)]
+enum Notifications {
+    #[topic("/topic/system")]
+    System(RoomEvent),
+
+    #[topic("/topic/rooms/{room}")]
+    Room {
+        room: String,
+        #[content]
+        event: RoomEvent,
+    },
+}
+```
+
+Inject the publisher where an application event should fan out.
+
+```rust
+#[handlers(ws = Stomp)]
+impl GreetingSocket {
+    #[message("/app/announce", send)]
+    fn announce(&self, Inject(publisher): Inject<Publisher<Notifications>>) {
+        let _ = publisher.emit(Notifications::System(RoomEvent {
+            message: String::from("hello"),
+        }));
+    }
+}
+```
+
+</Example>
+
+Use `emit` when a full subscriber buffer may drop an event, `publish` when the send must wait for backpressure, and `publish_to::<N>` to choose fan-out concurrency. A static topic is a one-payload tuple variant. A templated topic is a struct variant: every `{hole}` has a same-named routing field and exactly one `#[content]` field supplies the encoded payload. The `#[topics]` client seam generates typed `subscribe_<variant>` methods when client support is enabled.
+
+## Reference pages
+
+- <Symbol path="upwell::axum::WebsocketProtocol" />
+- <Symbol path="upwell::axum::AxumAppBuilder" />
+- <Symbol path="upwell::axum::WebsocketController" />
+- <Symbol path="upwell::axum::Topic" />
+- [`#[controller]`](/docs/latest/symbols/upwell_axum_macros/controller)
+- [`#[message]`](/docs/latest/symbols/upwell_axum_macros/message)
+- [`#[topics]`](/docs/latest/symbols/upwell_axum_macros/topics)

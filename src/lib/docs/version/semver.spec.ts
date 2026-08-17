@@ -5,6 +5,7 @@ import {
 	parseRequirement,
 	parseVersion,
 	satisfies,
+	tryParseVersionDirectorySelector,
 	tryParseVersion,
 	versionsEqual
 } from './semver.ts';
@@ -44,6 +45,24 @@ describe('parseVersion', () => {
 
 	it('explains what it wanted', () => {
 		expect(() => v('latest')).toThrowError(/is not a version: "latest"/);
+	});
+});
+
+describe('tryParseVersionDirectorySelector', () => {
+	it('preserves authored major, minor, and full precision', () => {
+		expect(tryParseVersionDirectorySelector('1')).toMatchObject({ raw: '1', precision: 1, lower: { raw: '1', minor: 0, patch: 0 } });
+		expect(tryParseVersionDirectorySelector('1.4')).toMatchObject({ raw: '1.4', precision: 2, lower: { raw: '1.4', patch: 0 } });
+		expect(tryParseVersionDirectorySelector('1.4.0')).toMatchObject({ raw: '1.4.0', precision: 3, lower: { raw: '1.4.0' } });
+	});
+
+	it('allows prereleases only with a complete SemVer release', () => {
+		expect(tryParseVersionDirectorySelector('1.4.0-rc.1')).toMatchObject({ precision: 3, lower: { prerelease: ['rc', 1] } });
+		expect(tryParseVersionDirectorySelector('1-rc.1')).toBeUndefined();
+		expect(tryParseVersionDirectorySelector('1.4-rc.1')).toBeUndefined();
+	});
+
+	it('rejects build metadata', () => {
+		expect(tryParseVersionDirectorySelector('1.4.0+build.1')).toBeUndefined();
 	});
 });
 

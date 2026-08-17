@@ -1,0 +1,51 @@
+---
+title: '#[route]'
+description: Declares an explicit HTTP route and defines the shared route-marker grammar.
+topics: ['web']
+---
+
+<script>
+	import { SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[route]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+Declares an HTTP route with an explicit verb. It is the shared grammar reference for the verb shorthand macros. Import route macros through `upwell::axum::prelude::*`.
+
+```rust
+#[route(POST, "/import")]
+async fn import(&self, Json(input): Json<Import>) -> Json<ImportResult> { todo!() }
+```
+
+## Grammar
+
+```text
+route      := #[route(METHOD, "relative-path" [, modifier ...])]
+shorthand  := #[get(["relative-path"] [, modifier ...])]
+            | #[post(["relative-path"] [, modifier ...])]
+            | #[put(["relative-path"] [, modifier ...])]
+            | #[delete(["relative-path"] [, modifier ...])]
+            | #[patch(["relative-path"] [, modifier ...])]
+            | #[head(["relative-path"] [, modifier ...])]
+            | #[options(["relative-path"] [, modifier ...])]
+modifier   := streamed
+            | middleware = [Type, ...]
+            | returns = Type
+            | responses = [(status = NNN [, body = Type | redirect = "/target"]), ...]
+            | response = Type
+```
+
+`METHOD` is an identifier, case-insensitive, and must be one of `get`, `post`, `put`, `delete`, `patch`, `head`, or `options`; arbitrary extension verbs are not accepted. A shorthand may omit the path entirely, including `#[get]` and `#[get(streamed)]`; that mounts it at the controller base. Paths are controller-relative string literals.
+
+Each modifier is comma-separated and may occur at most once. `middleware` names DI-backed `AxumMiddleware` singletons, with the first outermost. Route middleware runs inside controller middleware. `streamed` makes server-streaming intent explicit when the declared return type cannot be classified; it does not choose framing.
+
+`returns = Type` supplies a decoded success body for an opaque `IntoResponse`. `responses` supplies authoritative status-specific alternatives: each status is unique and must be in `100..=599`; a case has `body = Type`, omits a body, or declares `redirect = "/target"`. `response = Type` selects a user-owned common client type for heterogeneous alternatives. These declarations drive generated client and, when enabled, OpenAPI metadata.
+
+## Containment and output
+
+`#[route]` and every verb shorthand are markers consumed only by `#[handlers]` on an inherent impl of an HTTP `#[controller]`. A standalone use reports a compile error and retains the original function to avoid cascading diagnostics. The consuming expansion builds route dispatch wrappers, static `HttpRouteDescriptor` entries, controller router registrations, and client method metadata when `client` is enabled.
+
+Recognized response forms include typed unary responses, status/response tuples, opaque `IntoResponse`, NDJSON streams, raw streams, and custom stream wrappers. Use `returns`, `responses`, or `streamed` only when inference needs an explicit declaration.

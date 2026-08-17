@@ -1,0 +1,73 @@
+---
+title: "#[handlers]"
+description: Collect RPC handler methods from an inherent service implementation.
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `#[handlers]`
+
+`#[handlers]` expands an inherent implementation for an RPC service. It consumes `#[rpc]` markers, creates erased dispatch wrappers and descriptors, and adds them to the service's link-time RPC slice. Import it from the facade.
+
+<SymbolMeta />
+<SymbolSignature />
+
+```rust
+use upwell::daemon::{handlers, rpc, service};
+
+#[service]
+struct Calculator;
+
+#[handlers]
+impl Calculator {
+    #[rpc]
+    async fn add(&self, left: i64, right: i64) -> i64 {
+        left + right
+    }
+}
+```
+
+## Syntax and arguments
+
+The macro applies only to an inherent `impl` for a type declared with `#[service]`.
+
+```rust
+#[handlers(rpc_slice = BillingMethods)]
+impl BillingService {
+    #[rpc]
+    async fn charge(&self) {}
+}
+```
+
+| Argument | Accepted value | Default |
+| --- | --- | --- |
+| `rpc_slice` | Identifier for the service's RPC link-time slice. | The service's `{Service}Rpcs` slice. |
+| `client_trait` | Identifier retained for compatibility. | None; it no longer changes generated code. |
+
+Use `rpc_slice` only when the service selected a custom slice, and use the same identifier. Multiple `#[handlers]` blocks may target one service and add methods to its registry.
+
+## Marked and ordinary methods
+
+Only methods marked `#[rpc]` become protocol operations. The macro also supports shared `#[init]` and `#[hook(...)]` method facilities, but those participate in component lifecycle behavior and do not become RPC routes unless they also carry `#[rpc]`.
+
+An RPC method must be `async`. It may be an associated async function or take exactly `&self`; `self` and `&mut self` are rejected because service instances are shared. Non-RPC methods remain ordinary implementation methods subject to normal Rust rules.
+
+## Generated artifacts
+
+For every marked method, `#[handlers]` emits an erased dispatch wrapper and an RPC descriptor. The descriptor records the operation shape used by the server and, when enabled, by the generated client. The wrapper resolves request extractors and dependencies for each call, invokes the async method, and converts its result to the protocol response form.
+
+The expansion appends those descriptors to the selected service slice. It does not define a second service descriptor or client type; those come from `#[service]`, and client methods are emitted only when the RPC macro crate enables its `client` feature.
+
+## Containment and errors
+
+`#[handlers]` must decorate an inherent implementation of a `#[service]` type. `#[rpc]` is a marker consumed by this macro; it is not a standalone function attribute. Applying it to a free function, to an implementation without `#[handlers]`, or to a handler implementation for a non-service type is a compile error.
+
+Compilation also fails for a non-inherent implementation, a non-async RPC, an invalid receiver, unsupported extractor or streaming combinations, and an RPC slice that does not match the service registry. Duplicate RPC names or protocol metadata conflicts are rejected during generated registration rather than producing an ambiguous dispatch table.
+
+## Feature note
+
+Server-side wrappers and descriptors are native-target output. Prefer `upwell::daemon::{handlers, rpc, service}` so generated paths follow the integrated facade; direct macro-crate use is for crate authors that must provide their own paths.

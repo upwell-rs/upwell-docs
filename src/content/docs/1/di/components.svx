@@ -1,0 +1,164 @@
+---
+title: Components and injection
+description: Build components from dependencies, choose explicit construction when needed, and expose trait providers.
+order: 20
+topics: ['framework']
+---
+
+<script lang="ts">
+	import Example from '#lib/docs/components/Example.svelte';
+</script>
+
+# Components and injection
+
+Start with the value your application needs, then make its dependencies fields. The <Symbol path="upwell::prelude::component" label="#[component]" /> attribute turns that type into a registered, singleton-scoped component whose ordinary fields are resolved from the container.
+
+<Example title="Build a component from injected fields">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[component]
+struct Database;
+
+impl Database {
+    async fn search(&self, query: &str) -> Vec<String> {
+        vec![query.into()]
+    }
+}
+
+#[derive(Default)]
+struct QueryCache;
+```
+
+Make the application value a component. `Arc<Database>` is injected; `#[default]` keeps local state out of the dependency graph.
+
+```rust
+#[component]
+struct Catalog {
+    database: Arc<Database>,
+    #[default]
+    cache: QueryCache,
+}
+```
+
+Use the constructed component normally. The container creates it once and shares that instance with its consumers.
+
+```rust
+impl Catalog {
+    async fn search(&self, query: &str) -> Vec<String> {
+        let _ = &self.cache;
+        self.database.search(query).await
+    }
+}
+```
+
+</Example>
+
+Use this shape when fields already describe construction. Fields can also express optional dependencies, a selected trait provider, a collection of providers, or a configuration binding. Choose the smallest handle that matches the component's contract; the [advanced DI guide](advanced) helps with cases that need live or delayed values.
+
+## Use a constructor for setup work
+
+Move construction into `#[init]` when initialization needs I/O, validation, derived state, or can fail. `#[methods]` registers the constructor, which replaces the generated field factory.
+
+<Example title="Connect during construction">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[component]
+struct Database;
+
+impl Database {
+    async fn open_connection(&self) -> Result<usize, AppError> {
+        Ok(1)
+    }
+}
+```
+
+Declare the finished component. Its fields are implementation details rather than injection instructions here.
+
+```rust
+#[component]
+struct DatabaseConnection {
+    id: usize,
+}
+```
+
+Accept dependencies in an initializer and return the completed value.
+
+```rust
+#[methods]
+impl DatabaseConnection {
+    #[init]
+    async fn connect(database: Arc<Database>) -> Result<Self, AppError> {
+        Ok(Self {
+            id: database.open_connection().await?,
+        })
+    }
+}
+```
+
+</Example>
+
+The initializer can be synchronous or asynchronous and can return either the component directly or a `Result`. Use `#[hook(...)]` in the same `#[methods]` implementation for lifecycle behavior that runs after construction. See the [methods symbol page](/docs/latest/symbols/upwell_macros/methods) for hook and initializer signatures.
+
+## Depend on behavior, not an implementation
+
+When consumers need a capability rather than one concrete type, mark the object-safe trait `#[injectable]`, expose a component through `provide`, and inject the trait object.
+
+<Example title="Provide and select a trait implementation">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[injectable]
+trait AuditSink: Send + Sync {
+    fn write(&self, event: &str);
+}
+```
+
+Register a concrete implementation as the named provider for that capability.
+
+```rust
+#[component(provide = dyn AuditSink, qualifier = "file")]
+struct FileAuditSink;
+
+impl AuditSink for FileAuditSink {
+    fn write(&self, event: &str) {
+        eprintln!("{event}");
+    }
+}
+```
+
+Ask for that provider where it is used. A qualifier chooses a particular implementation.
+
+```rust
+#[component]
+struct Checkout {
+    #[qualifier = "file"]
+    audit: Arc<dyn AuditSink>,
+}
+
+impl Checkout {
+    fn complete(&self) {
+        self.audit.write("checkout completed");
+    }
+}
+```
+
+</Example>
+
+Injecting both the concrete component and its trait view still uses one constructed instance. Use an unqualified trait dependency when one provider is available or a provider is marked primary; use a collection only when every provider should participate.
+
+## Reference pages
+
+This guide focuses on choosing and assembling a component. The canonical symbol pages cover attributes, accepted forms, and edge cases:
+
+- [`#[component]`](/docs/latest/symbols/upwell_macros/component)
+- [`#[methods]`](/docs/latest/symbols/upwell_macros/methods)
+- [`#[injectable]`](/docs/latest/symbols/upwell_macros/injectable)
+- [`#[config]`](/docs/latest/symbols/upwell_macros/config)

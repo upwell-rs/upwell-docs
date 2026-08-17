@@ -1,0 +1,70 @@
+---
+title: methods
+description: Complete reference for component constructors and hooks declared in inherent impl blocks.
+topics: ['framework']
+---
+
+<script>
+	import { Callout, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[methods]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`#[methods]` applies to an inherent `impl` for a component. It finds method helper attributes, registers an explicit constructor and lifecycle hooks, and leaves ordinary inherent methods alone.
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[methods]
+impl Database {
+    #[init]
+    async fn connect(pool: Arc<Pool>) -> Self {
+        Self::open(pool).await
+    }
+}
+```
+
+## Grammar
+
+```text
+#[methods(
+    factory_slice = RegistrationSlice,
+    upwell = ::facade_path,
+    crate = ::plugin_crate_path,
+)]
+impl Type {
+    #[init]
+    [async] fn constructor(dependencies...) -> Type | Result<Type, Error> { ... }
+
+    #[hook(HookKind)]
+    async fn listener(&self | /* no receiver */, extractors...) -> Output | Result<Output, Error> { ... }
+}
+```
+
+Only `factory_slice`, `upwell`, and `crate` are core `#[methods]` arguments. Protocol extension macros may add their own arguments, but those are not part of this macro's base grammar. The target must be an inherent `impl` whose self type identifies the component; trait implementation blocks and non-impl items are invalid.
+
+## `#[init]` Constructor
+
+One `#[init]` method in the block becomes the component factory and takes precedence over generated field injection. It must not take `self`. Parameters use the standard `FromContainer` shapes: required or optional handles, qualified trait providers, collections, `Cfg`, and delayed handles. The method may be synchronous or `async`; its result is either the component directly or `Result<Component, E>`, where the error can be converted into the factory error surface.
+
+An explicit `factory = path` on `#[component]` is an alternative to `#[init]`, not a second construction path. Multiple `#[init]` methods or competing explicit factories are invalid.
+
+## `#[hook(HookKind)]`
+
+Each hook is registered against its hook kind in source order. Hook methods must be `async` and may take `&self` or no receiver; `&mut self` is unsupported. The hook kind determines valid extractor parameters and the required output shape. A hook returns the kind output directly or `Result<Output, E>` where `E` can be boxed by the hook runtime.
+
+Use a parameter helper such as `#[config("path")]` when a hook's `Cfg<T>` or `CfgNext<T>` input must select a path-specific binding. For configuration reload hooks, `CfgNext<T>` is the proposed read-only value; it is not published until hooks accept the proposal.
+
+## Registration And Overrides
+
+`factory_slice = Name` chooses the distributed registration-slice identifier. All `#[component]`, `#[methods]`, and extension method blocks for the same component must use the identical override, because factories and hooks share that registration surface. `upwell = ::path` and `crate = ::path` are generated-path overrides for wrappers; normal application code should omit them.
+
+<Callout type="warning" title="No implicit method discovery">
+
+`#[methods]` does not turn every method into an injectable operation. Only methods carrying recognized helper attributes, such as `#[init]` and `#[hook(...)]`, participate in generated registration. Keep ordinary business methods free of those attributes.
+
+</Callout>

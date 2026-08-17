@@ -1,0 +1,93 @@
+---
+title: "#[service]"
+description: Declare a singleton RPC service and its link-time method registry.
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `#[service]`
+
+`#[service]` turns a struct into an RPC service: a shared singleton component with service metadata and a registry into which `#[handlers]` contributes RPC descriptors. Use the macro through the facade, `upwell::daemon`; do not import `upwell_rpc_macros` directly in application code.
+
+<SymbolMeta />
+<SymbolSignature />
+
+```rust
+use upwell::daemon::{handlers, rpc, service};
+
+#[service]
+struct Catalog;
+
+#[handlers]
+impl Catalog {
+    #[rpc]
+    async fn health(&self) -> &'static str {
+        "ok"
+    }
+}
+```
+
+## Syntax
+
+Apply the attribute to a struct item. It accepts the normal component arguments as well as the RPC-specific arguments below.
+
+```rust
+#[service(
+    id = "billing",
+    version = "1.2",
+    rpc_slice = BillingMethods,
+)]
+struct BillingService;
+```
+
+| Argument | Accepted value | Default |
+| --- | --- | --- |
+| Component arguments | The ordinary component identity and construction arguments accepted by the component macro. | Component defaults. |
+| `version` | String literal service version. | No version in service metadata. |
+| `rpc_slice` | Identifier naming the service's link-time RPC slice. | `{Service}Rpcs`. |
+
+The component arguments determine the generated component identity in the usual way. `#[service]` fixes the service scope to a shared singleton; an explicitly non-singleton scope is rejected.
+
+## Generated artifacts
+
+For a native target, expansion emits the normal singleton component metadata plus:
+
+| Artifact | Purpose |
+| --- | --- |
+| Service descriptor | Identifies the service, carries its component/service metadata and exposes its collected RPC methods. |
+| `{Service}Rpcs` link-time slice | The default registry receiving descriptors emitted by `#[handlers]` blocks. `rpc_slice` changes its name. |
+| Service registration glue | Makes the descriptor discoverable by the daemon/RPC protocol builder. |
+| `{Service}Client<C>` | Generated only with the RPC macro crate's `client` feature; it has typed methods for marked RPCs. |
+
+The service macro does not itself mount a transport endpoint or instantiate a server. Register or auto-discover the service through the daemon protocol/application configuration.
+
+## Containment and composition
+
+`#[service]` belongs on the service struct, while RPC methods belong in one or more inherent `#[handlers] impl Service` blocks. The blocks may be separated by concern, but they must target this service and contribute to the same default registry unless a matching `rpc_slice` is selected.
+
+```rust
+use upwell::daemon::{handlers, rpc, service};
+
+#[service(rpc_slice = CatalogMethods)]
+struct Catalog;
+
+#[handlers(rpc_slice = CatalogMethods)]
+impl Catalog {
+    #[rpc]
+    async fn lookup(&self) -> String {
+        String::from("catalog")
+    }
+}
+```
+
+The type can also have lifecycle methods supplied by the component facilities and a separate `#[jobs]` implementation for scheduled work. Keep RPC handlers and scheduled jobs in separate inherent implementations so each collecting macro owns its marker attributes.
+
+## Features and errors
+
+Use the facade feature that enables daemon/RPC support. Native builds receive service and descriptor registration; generated clients are separately gated by the macro crate's `client` feature.
+
+Compilation fails when the target is not a supported struct, when component arguments request a non-singleton scope, or when an RPC handler is attached to a type that is not declared as a service. A registry mismatch between `rpc_slice` settings leaves handlers unable to contribute to the intended service registry; use the same identifier on the service and every customized handler block.

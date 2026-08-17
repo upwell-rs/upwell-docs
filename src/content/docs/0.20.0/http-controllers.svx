@@ -1,0 +1,46 @@
+---
+title: HTTP controllers
+description: Define typed HTTP endpoints with the Upwell 0.20 Axum controller macros.
+order: 110
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# HTTP controllers
+
+Upwell 0.20 HTTP applications use the Axum integration and its controller macros. Define a DTO for the wire value, group endpoints with `#[controller]`, and mark route methods in `#[handlers]`.
+
+<Example title="Expose a typed GET endpoint">
+
+```rust plain
+use upwell::axum::prelude::*;
+
+#[dto]
+struct Health {
+    status: String,
+}
+
+#[controller(path = "/health")]
+struct HealthController;
+```
+
+Add the handler to that controller:
+
+```rust plain
+#[handlers]
+impl HealthController {
+    #[get]
+    async fn get(&self) -> Json<Health> {
+        Json(Health {
+            status: String::from("ok"),
+        })
+    }
+}
+```
+
+</Example>
+
+Register the controller through the 0.20 application builder and its Axum integration. Keep route shapes and generated HTTP behavior under the 0.20 release boundary; the current [HTTP controller guide](/docs/1.0.0/axum/http) is a 1.0 guide, not a compatibility statement for this release.

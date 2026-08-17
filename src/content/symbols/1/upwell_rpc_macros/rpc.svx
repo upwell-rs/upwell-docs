@@ -1,0 +1,114 @@
+---
+title: "#[rpc]"
+description: Mark an async service method as a unary or streaming RPC operation.
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `#[rpc]`
+
+`#[rpc]` marks one async method inside an inherent `#[handlers] impl` for a `#[service]` type. `#[handlers]` consumes the marker and generates the operation descriptor and dispatch wrapper. It has no standalone meaning outside that containment.
+
+<SymbolMeta />
+<SymbolSignature />
+
+```rust
+use upwell::daemon::{Payload, handlers, rpc, service};
+
+#[service]
+struct Calculator;
+
+#[handlers]
+impl Calculator {
+    #[rpc]
+    async fn add(&self, Payload(input): Payload<AddRequest>) -> AddResponse {
+        AddResponse {
+            total: input.left + input.right,
+        }
+    }
+}
+```
+
+## Syntax
+
+The attribute has one optional argument:
+
+```rust
+#[rpc]
+#[rpc(stream)]
+```
+
+| Argument | Meaning | Default |
+| --- | --- | --- |
+| `stream` | Explicitly declares server-streaming when a concrete return type hides its stream implementation. | Stream shape inferred from arguments and return type. |
+
+No other arguments are accepted. `stream` changes operation classification only; it does not choose a serializer or transform the concrete stream item type.
+
+## Method and containment rules
+
+The marked function must be `async` and must appear inside an inherent `#[handlers] impl` for a `#[service]` struct. It may be an associated function or receive `&self`. A consuming `self` receiver and `&mut self` are invalid for a shared service. The marker is removed by `#[handlers]`, so use it neither on free functions nor as an independently expanded attribute.
+
+## Extractors and ordinary returns
+
+The generated wrapper obtains parameters from each RPC call context. `Payload<T>` extracts the unary request body; `Inject<T>` resolves a dependency from the call context.
+
+```rust
+use upwell::daemon::{Inject, Payload, handlers, rpc, service};
+use upwell::Dep;
+
+#[service]
+struct Customers;
+
+#[handlers]
+impl Customers {
+    #[rpc]
+    async fn create(
+        &self,
+        Payload(request): Payload<CreateCustomer>,
+        Inject(store): Inject<Dep<CustomerStore>>,
+    ) -> Result<Customer, CreateCustomerError> {
+        store.get().create(request).await
+    }
+}
+```
+
+A non-`Result` return follows the normal responder path. For `Result<T, E>`, `T` is the decoded success response and `E` must be representable as the protocol response error. The generated client, when the client feature is enabled, derives its success and error shapes from the method signature.
+
+A normal call may combine `Payload<T>` with context-resolvable parameters. It may not combine `Payload<T>` with a streaming request parameter, because a request stream is the complete request body.
+
+## Streaming classification
+
+The macro infers inbound streaming from `RequestStream<T>` or `Streaming<T>`, and output streaming from recognized `Stream<Item = T>`, `Stream<Item = Result<T, E>>`, or `ResponseStream<T>` returns. It supports unary, client-streaming, server-streaming, and bidirectional operations.
+
+```rust
+use futures_core::Stream;
+use upwell::daemon::{RequestStream, handlers, rpc, service};
+
+#[service]
+struct Events;
+
+#[handlers]
+impl Events {
+    #[rpc]
+    async fn sum(&self, values: RequestStream<i64>) -> i64 {
+        todo!()
+    }
+
+    #[rpc(stream)]
+    async fn watch(&self) -> EventReceiver {
+        todo!()
+    }
+}
+```
+
+There can be at most one streaming input. A stream item `Result<T, E>` preserves per-item failure; a plain item stream is wrapped as a response stream. Add `stream` only when the returned concrete type prevents inference.
+
+## Generated behavior and errors
+
+`#[handlers]` uses this marker to emit the method descriptor and call wrapper into the service's selected RPC slice. On native targets, those descriptors participate in service registration. Client methods are emitted only under the RPC macro crate's `client` feature.
+
+Compilation fails for use outside `#[handlers]`, a non-service handler implementation, a non-async method, an invalid receiver, unknown attribute arguments, more than one streaming input, or a stream input combined with `Payload<T>`. It also fails when the macro cannot form the required request/response extraction or responder conversion.

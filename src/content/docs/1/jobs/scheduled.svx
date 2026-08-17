@@ -1,0 +1,126 @@
+---
+title: Scheduled jobs
+description: Register scheduled component methods with dependencies, progress, and execution policies.
+order: 130
+topics: ['jobs']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Scheduled jobs
+
+Use a scheduled job for background work that belongs to a component. Declare the component, add an async `&self` method in a `#[jobs]` implementation, then install the jobs scheduler in the application.
+
+## Schedule recurring work
+
+<Example title="Refresh reports every ten minutes">
+
+```rust
+use std::sync::Arc;
+use upwell::jobs::{JobProgress, JobRunContext, job, jobs};
+use upwell::prelude::*;
+
+#[component]
+struct ReportStore;
+
+impl ReportStore {
+    async fn refresh(&self) {}
+}
+
+#[component]
+struct Reports;
+```
+
+Add the scheduled method. Ordinary parameters are resolved from the container for each run; `JobRunContext` comes from the scheduler.
+
+```rust
+#[jobs]
+impl Reports {
+    #[job(every = "10m", run_on_startup)]
+    async fn refresh(&self, store: Arc<ReportStore>, cx: JobRunContext) {
+        cx.progress(JobProgress::phase("refreshing")).await;
+        store.refresh().await;
+    }
+}
+```
+
+</Example>
+
+Install the jobs scheduler or plugin in application configuration so registered descriptors run. A job method must be async and use exactly `&self`; unlike protocol handlers, its dependencies are plain container-resolvable types, not `Inject<T>` wrappers.
+
+## Return a failure the scheduler can record
+
+Return `Result` when the scheduler needs to record a failed run.
+
+<Example title="Record an upstream synchronization failure">
+
+```rust context
+#[component]
+struct Reports;
+```
+
+```rust
+struct SyncError;
+
+impl std::fmt::Display for SyncError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("upstream synchronization failed")
+    }
+}
+
+impl std::error::Error for SyncError {}
+```
+
+Add the result-returning job to the same component.
+
+```rust
+#[jobs]
+impl Reports {
+    #[job(every = "15m")]
+    async fn sync(&self) -> Result<(), SyncError> {
+        Err(SyncError)
+    }
+}
+```
+
+</Example>
+
+Any non-`Result` return is discarded after a successful completion. `Result::Err` must be a thread-safe standard error so the scheduler can retain the failure.
+
+## Choose a cron policy for calendar work
+
+Use `every` for elapsed intervals. Choose `cron` when the work must run on a calendar schedule, then add timeout, jitter, or overlap policy only for a concrete execution need.
+
+<Example title="Reconcile once per hour without overlapping runs">
+
+```rust context
+#[component]
+struct Reports;
+```
+
+```rust
+#[jobs]
+impl Reports {
+    #[job(
+        cron = "@hourly",
+        timeout = "30s",
+        overlap = CancelPrevious,
+    )]
+    async fn reconcile(&self) {
+        // Reconcile report state.
+    }
+}
+```
+
+</Example>
+
+Schedule strings are validated when the scheduler starts. Keep jobs in a separate inherent implementation from RPC or HTTP handlers so each collector macro owns its marked methods.
+
+## Reference pages
+
+The canonical references list every schedule option, method constraint, and runtime interaction:
+
+- [`#[jobs]`](/docs/latest/symbols/upwell_jobs_macros/jobs)
+- [`#[job]`](/docs/latest/symbols/upwell_jobs_macros/job)

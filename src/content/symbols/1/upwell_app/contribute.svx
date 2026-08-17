@@ -1,0 +1,121 @@
+---
+title: contribute!
+description: Emits explicit, provenance-aware component, provider, and configuration contributions from a plugin.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `contribute!`
+
+<SymbolMeta />
+
+`contribute!` records app-neutral plugin contributions in a supplied `PluginContributions` collector. It is a concise form for the collector's component, provider, and configuration APIs while preserving an explicit `ContributionId` for every emission.
+
+<SymbolSignature />
+
+## Grammar
+
+```text
+contribute! {
+    to <PluginContributions mutable expression>,
+    components: [
+        <contribution id literal> => type <component type>,
+        <contribution id literal> => <ComponentDescriptor expression>,
+    ],
+    providers: [
+        <contribution id literal> => <ProviderDescriptor expression>,
+    ],
+    configs: [
+        <contribution id literal> => <ConfigProperties type> => <config path expression>,
+    ],
+}
+```
+
+`to` is required and must evaluate to `&mut PluginContributions`; both `contributions` and `&mut contributions` are valid when their resulting expression has that type. Every section is optional, but present sections must occur in this exact order: `components`, then `providers`, then `configs`. Sections and entries may use trailing commas.
+
+The macro accepts no other sections. Its syntax is deliberately limited to contributions that are independent of a particular protocol; register protocol-specific behavior through that protocol's APIs.
+
+## Accepted entries
+
+### `components`
+
+The preferred typed form is:
+
+```text
+"<contribution id>" => type <component type>
+```
+
+The type must implement `Descriptor<ComponentDescriptor>`. The macro calls `PluginContributions::component::<T>` and uses `T`'s static descriptor.
+
+The explicit descriptor form is:
+
+```text
+"<contribution id>" => <ComponentDescriptor expression>
+```
+
+It calls `component_descriptor`. Use it for a dynamically assembled descriptor or a component that cannot implement `Descriptor<ComponentDescriptor>`. The `type` marker is required for the typed form because a bare path can be parsed as either a type or an expression.
+
+### `providers`
+
+```text
+"<contribution id>" => <ProviderDescriptor expression>
+```
+
+Each entry calls `PluginContributions::provider`. The expression must produce a `ProviderDescriptor`; the macro does not synthesize one from a provider type.
+
+### `configs`
+
+```text
+"<contribution id>" => <ConfigProperties type> => <config path expression>
+```
+
+Each entry calls `PluginContributions::config::<T>`. The type must implement `ConfigProperties`; the path expression is passed to the collector's `Into<String>` parameter.
+
+## Output
+
+The macro expands to a block expression. It coerces the target once to `&mut PluginContributions`, then emits calls in section and entry order. Each left-hand literal is converted internally with `namespaced_id!(ContributionId, ...)`, so every emitted record carries stable provenance for the owning plugin and that contribution.
+
+```rust
+use upwell_app::{Plugin, PluginContributions, PluginId, contribute, namespaced_id};
+
+struct SchedulerPlugin;
+
+impl Plugin for SchedulerPlugin {
+    const ID: PluginId = namespaced_id!(PluginId, "acme/scheduler");
+
+    fn contribute(self, contributions: &mut PluginContributions) {
+        contribute! {
+            to contributions,
+            components: [
+                "acme/scheduler-component" => type Scheduler,
+            ],
+            providers: [
+                "acme/scheduler-provider" => scheduler_provider(),
+            ],
+            configs: [
+                "acme/scheduler-config" => SchedulerConfig => "scheduler",
+            ],
+        }
+    }
+}
+```
+
+## IDs, diagnostics, and constraints
+
+Every left-hand value is a string literal, not an expression. It must satisfy the `ContributionId` namespaced-ID grammar: at least two non-empty slash-separated segments; each begins with a lowercase ASCII letter or digit; remaining bytes may include lowercase ASCII letters, digits, `.`, `_`, and `-`. A malformed literal produces the compile-time `namespaced_id!` diagnostic.
+
+The ID identifies the plugin emission, not its component, provider, or configuration payload. Do not infer it from a descriptor ID, and do not reuse it for multiple entries in one plugin. At plan finalization, duplicate contributor-local IDs produce `PluginPlanError::DuplicateContribution`.
+
+Third-party plugins must not use the framework-reserved `upwell/` namespace for contribution IDs. Plan finalization rejects those IDs with `PluginPlanError::ReservedContributionNamespace`. Framework-owned plugins may use it.
+
+The macro only records contributions. Descriptor trait bounds, configuration trait bounds, registry resolution, and conflicts involving the supplied payloads are validated by the regular plugin and application preparation flow.
+
+## Extension authors
+
+Call the macro inside `Plugin::contribute` when an extension contributes portable components, providers, or configuration bindings. Allocate a stable, package-owned `ContributionId` for every independent emission, such as `"acme/audit-config"`; preserve those literals because tooling and diagnostics report their provenance.
+
+Use direct `PluginContributions` methods when control flow or dynamic selection makes a macro declaration less clear. Do not use the macro for owner-scoped tooling metadata: with the `tooling` feature, obtain that separate collector through `contributions.tooling()`.

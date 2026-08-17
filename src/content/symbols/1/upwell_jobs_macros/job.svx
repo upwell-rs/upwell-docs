@@ -1,0 +1,93 @@
+---
+title: "#[job]"
+description: Declare the schedule and execution policy for one async component job method.
+topics: ['jobs']
+---
+
+<script lang="ts">
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `#[job]`
+
+`#[job(...)]` marks one async `&self` method for scheduling. It is consumed by `#[jobs]`, which generates the descriptor and wrapper; it is not a standalone function attribute. Import it from `upwell::jobs`.
+
+<SymbolMeta />
+<SymbolSignature />
+
+```rust
+use upwell::jobs::{job, jobs};
+use upwell::prelude::*;
+
+#[component]
+struct Reconciler;
+
+#[jobs]
+impl Reconciler {
+    #[job(every = "30s")]
+    async fn reconcile(&self) {}
+}
+```
+
+## Syntax
+
+Every job has exactly one schedule declaration: `every` for an interval or `cron` for a cron expression. Follow it with zero or more execution options.
+
+```rust
+#[job(every = "30s")]
+#[job(cron = "@hourly", run_on_startup)]
+#[job(
+    cron = "0 0 * * * *",
+    run_on_startup = true,
+    timeout = "30s",
+    jitter = "2s",
+    max_runtime = "20m",
+    overlap = CancelPrevious,
+    timezone = Local,
+)]
+```
+
+| Option | Accepted form | Default |
+| --- | --- | --- |
+| Schedule | Exactly one `every = "duration"` or `cron = "expression"`. | Required. |
+| Startup run | `run_on_startup` or `run_on_startup = true`. | `false`. |
+| Timeout | `timeout = "duration"`. | No timeout. |
+| Start jitter | `jitter = "duration"`. | No jitter. |
+| Maximum runtime | `max_runtime = "duration"`. | No maximum runtime. |
+| Overlap policy | `overlap = Variant`. | `Skip`. |
+| Time zone | `tz = Variant` or `timezone = Variant`. | No explicit time zone. |
+
+The macro checks the attribute's syntax and type constraints at compile time. It retains duration and cron strings, along with configured options, in the generated descriptor; the scheduler parses and validates schedules when it starts. `overlap`, `tz`, and `timezone` take current jobs API enum-variant identifiers, such as `CancelPrevious` and `Local`.
+
+## Containment and method rules
+
+Place the marker only on a method in an inherent `#[jobs] impl` for a component. The method must be `async` and take `&self`; a consuming receiver or `&mut self` is rejected because scheduled jobs run on the shared component instance.
+
+The `#[jobs]` expansion resolves ordinary parameters from the root DI container for each invocation. Use their resolvable types directly rather than an RPC-style `Inject<T>` wrapper. `JobRunContext` is supplied by the scheduler and is the special per-run parameter.
+
+```rust
+use std::sync::Arc;
+use upwell::jobs::{JobProgress, JobRunContext, job, jobs};
+
+#[jobs]
+impl Reconciler {
+    #[job(every = "1m")]
+    async fn reconcile(&self, store: Arc<Store>, cx: JobRunContext) -> Result<(), ReconcileError> {
+        cx.progress(JobProgress::phase("reconciling")).await;
+        store.reconcile().await
+    }
+}
+```
+
+## Return and generated behavior
+
+A non-`Result` return, including `()`, is discarded and completes successfully when the future resolves. A `Result<T, E>` maps `Ok(_)` to a successful run and maps `Err(E)` to scheduler failure; `E` must be suitable for boxing as a thread-safe standard error.
+
+`#[jobs]` uses this marker to generate a descriptor named `{Component}::{method}` and a per-run call wrapper. The wrapper resolves the component and dependencies afresh for each run, supplies the run context, calls the method, and normalizes its result to `JobOutcome`.
+
+## Errors and runtime requirement
+
+Unknown options, duplicate or missing schedule declarations, both `every` and `cron`, and invalid enum variants are compile errors. The scheduler parses and validates duration and cron schedules when it starts. The compiler also rejects use outside `#[jobs]`, non-async methods, invalid receivers, and unresolved ordinary parameters.
+
+The macro only declares static jobs. Enable the facade jobs feature and install the scheduler/plugin to execute them; runtime schedule management, manual triggering, logging, and dynamic schedules are provided by the jobs runtime rather than this attribute.

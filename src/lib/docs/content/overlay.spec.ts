@@ -1,119 +1,103 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseVersion } from '../version/semver.ts';
-import { groupBySlug, overlaysIn, resolveVariant, splitOverlay, type Variant } from './overlay.ts';
+import { groupByPath, normalizeVersionPath, rejectRedundantSince, resolveCandidate } from './overlay.ts';
 
-function v(value: string) {
-	return parseVersion(value, 'test');
-}
+const v = (value: string) => parseVersion(value, 'test');
 
-/** Shorthand for a variant carrying a label, so assertions read as "which file won". */
-function variant(overlay: string | null, value: string): Variant<string> {
-	return { overlay: overlay === null ? null : v(overlay), value };
-}
-
-describe('splitOverlay', () => {
-	it('reads a trunk path as having no overlay', () => {
-		expect(splitOverlay('concepts/di')).toEqual({ overlay: null, slug: 'concepts/di' });
+describe('path-derived version candidates', () => {
+	it('removes selectors at leading, middle, and trailing depth', () => {
+		expect(normalizeVersionPath('1/guide', 'test')).toMatchObject({ path: 'guide', selector: { raw: '1', precision: 1 } });
+		expect(normalizeVersionPath('protocols/1.4/http', 'test')).toMatchObject({ path: 'protocols/http', selector: { raw: '1.4', precision: 2 } });
+		expect(normalizeVersionPath('symbols/widget/1.0.0', 'test')).toMatchObject({ path: 'symbols/widget', selector: { raw: '1.0.0', precision: 3 } });
 	});
 
-	it('reads an overlay directory as a version', () => {
-		expect(splitOverlay('@0.21.0/concepts/di')).toEqual({ overlay: '0.21.0', slug: 'concepts/di' });
+	it('matches major selectors only for their stable major range', () => {
+		const candidates = groupByPath([
+			{ relativePath: 'guide', value: 'baseline' },
+			{ relativePath: '1/guide', value: 'major' }
+		], 'Guide').get('guide')!;
+
+		expect(resolveCandidate(candidates, v('1.0.0-rc.1'))).toBe('baseline');
+		expect(resolveCandidate(candidates, v('1.0.0'))).toBe('major');
+		expect(resolveCandidate(candidates, v('1.99.99'))).toBe('major');
+		expect(resolveCandidate(candidates, v('2.0.0'))).toBe('baseline');
 	});
 
-	it('leaves a lone @ segment alone, since it contributes no slug', () => {
-		expect(splitOverlay('@0.21.0')).toEqual({ overlay: null, slug: '@0.21.0' });
+	it('matches minor selectors only for their stable minor range', () => {
+		const candidates = groupByPath([
+			{ relativePath: 'guide', value: 'baseline' },
+			{ relativePath: '1.4/guide', value: 'minor' }
+		], 'Guide').get('guide')!;
+
+		expect(resolveCandidate(candidates, v('1.4.0-rc.1'))).toBe('baseline');
+		expect(resolveCandidate(candidates, v('1.4.0'))).toBe('minor');
+		expect(resolveCandidate(candidates, v('1.4.9'))).toBe('minor');
+		expect(resolveCandidate(candidates, v('1.5.0'))).toBe('baseline');
 	});
 
-	it('only treats the first segment as an overlay', () => {
-		expect(splitOverlay('concepts/@0.21.0/di')).toEqual({ overlay: null, slug: 'concepts/@0.21.0/di' });
-	});
-});
+	it('selects full selectors at their lower boundary and carries them forward', () => {
+		const candidates = groupByPath([
+			{ relativePath: 'guide', value: 'baseline' },
+			{ relativePath: 'guide/1.0.0', value: 'new' }
+		], 'Guide').get('guide')!;
 
-describe('resolveVariant', () => {
-	it('uses the trunk when there is no overlay', () => {
-		expect(resolveVariant([variant(null, 'trunk')], v('0.20.0'))).toBe('trunk');
-	});
-
-	it('prefers an overlay at the version over the trunk', () => {
-		expect(resolveVariant([variant(null, 'trunk'), variant('0.21.0', 'v21')], v('0.21.0'))).toBe('v21');
+		expect(resolveCandidate(candidates, v('0.20.0'))).toBe('baseline');
+		expect(resolveCandidate(candidates, v('1.0.0'))).toBe('new');
+		expect(resolveCandidate(candidates, v('1.1.0'))).toBe('new');
 	});
 
-	it('carries an overlay forward to later versions', () => {
-		// The point of overlays: writing one at 0.21 must not oblige anyone to copy it into 0.22.
-		expect(resolveVariant([variant(null, 'trunk'), variant('0.21.0', 'v21')], v('0.30.0'))).toBe('v21');
+	it('selects full prerelease selectors at and after their lower boundary', () => {
+		const candidates = groupByPath([
+			{ relativePath: 'guide', value: 'baseline' },
+			{ relativePath: '1.4.0-rc.1/guide', value: 'release-candidate' }
+		], 'Guide').get('guide')!;
+
+		expect(resolveCandidate(candidates, v('1.4.0-beta.1'))).toBe('baseline');
+		expect(resolveCandidate(candidates, v('1.4.0-rc.1'))).toBe('release-candidate');
+		expect(resolveCandidate(candidates, v('1.4.0'))).toBe('release-candidate');
 	});
 
-	it('ignores an overlay from a later version', () => {
-		expect(resolveVariant([variant(null, 'trunk'), variant('0.21.0', 'v21')], v('0.20.0'))).toBe('trunk');
+	it('prefers the highest eligible lower bound, then the most precise selector', () => {
+		const candidates = groupByPath([
+			{ relativePath: 'guide', value: 'baseline' },
+			{ relativePath: '1/guide', value: 'major' },
+			{ relativePath: '1.4/guide', value: 'minor' },
+			{ relativePath: '1.4.0/guide', value: 'full' }
+		], 'Guide').get('guide')!;
+
+		expect(resolveCandidate(candidates, v('1.3.9'))).toBe('major');
+		expect(resolveCandidate(candidates, v('1.4.0'))).toBe('full');
+		expect(resolveCandidate(candidates, v('1.4.9'))).toBe('full');
+		expect(resolveCandidate(candidates, v('1.5.0'))).toBe('full');
 	});
 
-	it('picks the highest applicable overlay', () => {
-		const variants = [variant(null, 'trunk'), variant('0.21.0', 'v21'), variant('0.25.0', 'v25')];
-
-		expect(resolveVariant(variants, v('0.21.0'))).toBe('v21');
-		expect(resolveVariant(variants, v('0.25.0'))).toBe('v25');
+	it('rejects the legacy @SemVer convention', () => {
+		expect(() => normalizeVersionPath('@1.0.0/guide', 'Guide')).toThrow(/legacy version directory/);
 	});
 
-	it('resolves nothing when a page exists only in a later overlay', () => {
-		// This is how a page introduced at 0.21 stays absent from 0.20 without declaring anything.
-		expect(resolveVariant([variant('0.21.0', 'v21')], v('0.20.0'))).toBeUndefined();
+	it('rejects partial prereleases, build metadata, and multiple selectors', () => {
+		expect(() => normalizeVersionPath('1-rc.1/guide', 'Guide')).toThrow(/invalid version selector/);
+		expect(() => normalizeVersionPath('1.0.0+build.1/guide', 'Guide')).toThrow(/invalid version selector/);
+		expect(() => normalizeVersionPath('1/guide/1.1', 'Guide')).toThrow(/more than one version selector/);
 	});
 
-	it('compares overlays numerically, not lexically', () => {
-		// '0.9.0' sorts after '0.20.0' as a string, which would pick the wrong overlay.
-		const variants = [variant('0.9.0', 'v9'), variant('0.20.0', 'v20')];
+	it('rejects duplicate selectors while allowing overlapping selectors', () => {
+		expect(() => groupByPath([
+			{ relativePath: '1/guide', value: 'first' },
+			{ relativePath: '1/guide', value: 'second' }
+		], 'Guide')).toThrow(/multiple candidates.*selector 1/);
 
-		expect(resolveVariant(variants, v('0.30.0'))).toBe('v20');
-	});
-});
-
-describe('groupBySlug', () => {
-	it('collects the trunk and its overlays under one slug', () => {
-		const grouped = groupBySlug(
-			[
-				{ relativePath: 'concepts/di', value: 'trunk' },
-				{ relativePath: '@0.21.0/concepts/di', value: 'v21' }
-			],
-			'Content'
-		);
-
-		expect(grouped.get('concepts/di')).toMatchObject([
-			{ overlay: null, value: 'trunk' },
-			{ overlay: { major: 0, minor: 21, patch: 0 }, value: 'v21' }
-		]);
+		expect(() => groupByPath([
+			{ relativePath: '1/guide', value: 'major' },
+			{ relativePath: '1.0/guide', value: 'minor' }
+		], 'Guide')).not.toThrow();
 	});
 
-	it('keeps unrelated slugs apart', () => {
-		const grouped = groupBySlug(
-			[
-				{ relativePath: 'a', value: 'a' },
-				{ relativePath: '@0.21.0/b', value: 'b' }
-			],
-			'Content'
-		);
+	it('rejects redundant frontmatter since on a path-gated candidate', () => {
+		const { selector } = normalizeVersionPath('1.0.0/guide', 'Guide');
 
-		expect([...grouped.keys()].sort()).toEqual(['a', 'b']);
-	});
-
-	it('rejects an overlay directory that is not a version', () => {
-		// Reported once, when content loads, rather than quietly failing to match on every lookup.
-		expect(() => groupBySlug([{ relativePath: '@next/a', value: 'a' }], 'Content')).toThrowError(
-			/is not a version/
-		);
-	});
-
-	it('accepts an overlay for a version that has not been released yet', () => {
-		expect(() => groupBySlug([{ relativePath: '@99.0.0/a', value: 'a' }], 'Content')).not.toThrow();
-	});
-});
-
-describe('overlaysIn', () => {
-	it('lists every version named by an overlay directory, oldest first', () => {
-		expect(overlaysIn(['a', '@0.21.0/a', '@0.9.0/b', '@0.21.0/c'])).toEqual(['0.9.0', '0.21.0']);
-	});
-
-	it('returns nothing when there are no overlays', () => {
-		expect(overlaysIn(['a', 'b/c'])).toEqual([]);
+		expect(() => rejectRedundantSince(selector, '1.0.0', 'Guide /src/content/docs/1.0.0/guide.svx')).toThrow(/must not also declare frontmatter "since"/);
+		expect(() => rejectRedundantSince(selector, undefined, 'Guide /src/content/docs/1.0.0/guide.svx')).not.toThrow();
 	});
 });

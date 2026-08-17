@@ -58,9 +58,9 @@ export interface LoadedArtifact {
 	readonly root: string;
 }
 
-/** Absolute directory an artifact for a given framework version is cached in. */
-export function artifactDir(projectRoot: string, cacheDir: string, frameworkVersion: string): string {
-	return path.resolve(projectRoot, cacheDir, frameworkVersion);
+/** Absolute directory an artifact for a public documentation release is cached in. */
+export function artifactDir(projectRoot: string, cacheDir: string, releaseVersion: string): string {
+	return path.resolve(projectRoot, cacheDir, releaseVersion);
 }
 
 /**
@@ -72,9 +72,9 @@ export function artifactDir(projectRoot: string, cacheDir: string, frameworkVers
 export async function loadArtifact(root: string, expectedVersion: string): Promise<LoadedArtifact> {
 	const manifest = parseManifest(await readJson(path.join(root, 'manifest.json'), expectedVersion));
 
-	if (manifest.framework.version !== expectedVersion) {
+	if (manifest.documentation.releaseVersion !== expectedVersion) {
 		throw new ArtifactError(
-			`Artifact version mismatch.\n\n  Requested: ${expectedVersion}\n  Artifact:  ${manifest.framework.version}\n  Location:  ${root}\n\nRegenerate the artifact, or correct the version in src/lib/docs/config.ts.`
+			`Artifact release mismatch.\n\n  Requested: ${expectedVersion}\n  Artifact:  ${manifest.documentation.releaseVersion}\n  Location:  ${root}\n\nRegenerate the artifact, or correct the version in src/lib/docs/config.ts.`
 		);
 	}
 

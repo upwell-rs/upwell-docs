@@ -10,8 +10,7 @@
  * have pages by listing a directory, with no frontmatter to read and nothing to keep in sync, and
  * it makes the URL and the file mirror each other.
  *
- * Overlays work here as they do for guides: `@0.2.0/framework/prelude/component.svx` replaces the
- * trunk page from framework version 0.21.0 onward.
+ * A page beneath a version selector directory replaces or bounds the shared path for matching releases.
  *
  * The rustdoc-derived facts about the symbol are handed to the page at render time, so a page can
  * show the real signature or feature requirement without copying it into prose where it would rot.
@@ -26,7 +25,7 @@ import { manifest } from 'virtual:docs-manifest';
 
 import { appliesTo, type CompiledRange, compileRange } from './applies.ts';
 import type { SemVer } from '../version/semver.ts';
-import { groupBySlug, resolveVariant, splitOverlay, type Variant } from './overlay.ts';
+import { groupByPath, normalizeVersionPath, rejectRedundantSince, resolveCandidate, type PathCandidate } from './overlay.ts';
 import { assertKnownTopics } from './topics.ts';
 import type { SymbolFrontmatter, SymbolPageSummary } from './types.ts';
 
@@ -60,38 +59,38 @@ function toVariant(file: string, segments: string, frontmatter: Partial<SymbolFr
 	};
 }
 
-const variantsBySegments: Map<string, Variant<SymbolPageVariant>[]> = buildVariants();
+const variantsBySegments: Map<string, PathCandidate<SymbolPageVariant>[]> = buildVariants();
 
-function buildVariants(): Map<string, Variant<SymbolPageVariant>[]> {
-	return groupBySlug(
-		manifest.symbols.map((entry) => {
-			const { slug } = splitOverlay(entry.relativePath);
+function buildVariants(): Map<string, PathCandidate<SymbolPageVariant>[]> {
+	return groupByPath(manifest.symbols.map((entry) => {
+		const normalized = normalizeVersionPath(entry.relativePath, 'Symbol page');
+		const frontmatter = entry.frontmatter as Partial<SymbolFrontmatter>;
 
-			return {
-				relativePath: entry.relativePath,
-				value: toVariant(entry.file, slug, entry.frontmatter as Partial<SymbolFrontmatter>)
-			};
-		}),
-		'Symbol page'
-	);
+		rejectRedundantSince(normalized.selector, frontmatter.since, `Symbol page ${entry.file}`);
+
+		return {
+			relativePath: entry.relativePath,
+			value: toVariant(entry.file, normalized.path, frontmatter)
+		};
+	}), 'Symbol page');
 }
 
-function variantFor(segments: string, frameworkVersion: SemVer): SymbolPageVariant | undefined {
+function variantFor(segments: string, releaseVersion: SemVer): SymbolPageVariant | undefined {
 	const variants = variantsBySegments.get(segments);
-	const resolved = variants ? resolveVariant(variants, frameworkVersion) : undefined;
+	const resolved = variants ? resolveCandidate(variants, releaseVersion) : undefined;
 
-	return resolved && appliesTo(resolved.range, frameworkVersion) ? resolved : undefined;
+	return resolved && appliesTo(resolved.range, releaseVersion) ? resolved : undefined;
 }
 
 /** Every symbol page path the site has, across all versions. */
 export const symbolPageSegments: readonly string[] = [...variantsBySegments.keys()].sort();
 
 /** Symbol pages that apply to one framework version. */
-export function symbolPagesFor(frameworkVersion: SemVer): readonly SymbolPageSummary[] {
+export function symbolPagesFor(releaseVersion: SemVer): readonly SymbolPageSummary[] {
 	const resolved: SymbolPageSummary[] = [];
 
 	for (const segments of variantsBySegments.keys()) {
-		const variant = variantFor(segments, frameworkVersion);
+		const variant = variantFor(segments, releaseVersion);
 
 		if (variant) {
 			resolved.push(variant.summary);
@@ -102,8 +101,13 @@ export function symbolPagesFor(frameworkVersion: SemVer): readonly SymbolPageSum
 }
 
 /** The symbol page addressed by URL segments, if it applies to the version. */
-export function findSymbolPage(segments: string, frameworkVersion: SemVer): SymbolPageSummary | undefined {
-	return variantFor(segments, frameworkVersion)?.summary;
+export function findSymbolPage(segments: string, releaseVersion: SemVer): SymbolPageSummary | undefined {
+	return variantFor(segments, releaseVersion)?.summary;
+}
+
+/** Exact source file selected for a symbol page and release, used by search and validation. */
+export function symbolPageSource(segments: string, releaseVersion: SemVer): string | undefined {
+	return variantFor(segments, releaseVersion)?.file;
 }
 
 /**
@@ -111,8 +115,8 @@ export function findSymbolPage(segments: string, frameworkVersion: SemVer): Symb
  *
  * Asynchronous because the component is a separate chunk — see `pages.ts` for why that matters.
  */
-export async function loadSymbolPage(segments: string, frameworkVersion: SemVer): Promise<Component | undefined> {
-	const variant = variantFor(segments, frameworkVersion);
+export async function loadSymbolPage(segments: string, releaseVersion: SemVer): Promise<Component | undefined> {
+	const variant = variantFor(segments, releaseVersion);
 	const load = variant ? symbolModules[variant.file] : undefined;
 
 	return load ? (await load()).default : undefined;

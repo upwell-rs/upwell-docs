@@ -1,0 +1,58 @@
+---
+title: config
+description: Complete reference for the configuration-type declaration attribute.
+topics: ['framework']
+---
+
+<script>
+	import { Callout, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[config]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`#[config]` marks a configuration type for Upwell's managed configuration system. It keeps the annotated item, records configuration properties on native targets, and optionally registers a discoverable binding.
+
+```rust
+use upwell::prelude::*;
+
+#[config(path = "http.limits")]
+struct Limits {
+    #[default = "1048576"]
+    max_body_bytes: usize,
+}
+```
+
+## Grammar
+
+```text
+#[config(
+    name = "Display name",
+    path = "property.path",
+    upwell = ::facade_path,
+    crate = ::plugin_crate_path,
+)]
+struct | enum Type { ... }
+```
+
+Only `name`, `path`, `upwell`, and `crate` are accepted. Values are comma-separated and unknown arguments are compile errors. `name` defaults to the Rust type name. `path` is a string literal property path.
+
+## Binding Behavior
+
+With `path`, the macro implements the configuration descriptor and contributes the type to the distributed `CONFIG_BINDINGS` registration. `ConfigManager::auto_discover` can then make that binding available automatically, and `Cfg<Type>` resolves it by path.
+
+Without `path`, the macro still implements `ConfigProperties`, including defaults, but it emits no binding descriptor or auto-discovery entry. Bind that type explicitly through an application or manager API when the same type must appear at more than one property path.
+
+## Field Defaults
+
+On struct fields, `#[default = "..."]` provides a configuration default. The macro collects and removes these helper attributes before sibling derives such as `Deserialize` see them. The value is configuration metadata, not Rust `Default::default()` and not the `#[default]` field instruction used by `#[component]`.
+
+<Callout type="warning" title="Target and item constraints">
+
+`#[config]` parses a Rust derive input, so it belongs on a struct, enum, or union item rather than an impl, function, or field. The managed `ConfigProperties` implementation and distributed registration are native-only. On WebAssembly the original type remains available as plain shared data, but no server-side configuration wiring is emitted.
+
+</Callout>
+
+`upwell = ::path` redirects generated facade paths and `crate = ::path` redirects plugin-owned generated paths. These are wrapper-crate escape hatches; normal user code should import the facade and omit both.

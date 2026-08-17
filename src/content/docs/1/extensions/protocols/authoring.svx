@@ -1,0 +1,317 @@
+---
+title: Author a custom application protocol
+description: Define a protocol's composition, validation, scoped dispatch runtime, and endpoint serving lifecycle.
+order: 100
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Author a custom application protocol
+
+A custom application protocol connects one transport or dispatch model to an Upwell application. It declares protocol-owned registrations and scope boundaries, validates those declarations with the app, builds a dispatch runtime over the ready DI runtime, and optionally serves that runtime over one or more endpoint types.
+
+Keep each phase narrow. The definition is mutable assembly state; the prepared value is validated, immutable protocol state; the runtime is the operational dispatch layer; and [`Serve`](/docs/latest/symbols/upwell/Serve) is the endpoint loop. The framework owns application lifecycle and shutdown orchestration, while the protocol owns the work that happens at its boundary.
+
+## Start with a protocol definition
+
+Implement [`ProtocolDefinition`](/docs/latest/symbols/upwell/ProtocolDefinition) on the selected protocol type. Start with a stable protocol ID and an empty topology when every dependency is application-scoped.
+
+<Example title="Declare a protocol with no custom scopes">
+
+```rust
+use upwell::prelude::*;
+
+struct CatalogProtocol {
+    routes: Vec<CatalogRoute>,
+}
+
+struct PreparedCatalogProtocol {
+    routes: Vec<CatalogRoute>,
+}
+
+struct CatalogRuntime {
+    routes: Vec<CatalogRoute>,
+}
+```
+
+The definition retains only authoring-time state. Its associated prepared type represents state that has passed application validation.
+
+```rust
+impl ProtocolDefinition for CatalogProtocol {
+    const ID: ProtocolId = namespaced_id!(ProtocolId, "acme/catalog");
+    const SCOPE_TOPOLOGY: ScopeTopology = ScopeTopology::empty();
+
+    type Error = CatalogError;
+    type Prepared = PreparedCatalogProtocol;
+
+    fn register(&self, registry: &mut AppRegistry) {
+        // Add protocol-owned descriptors that participate in app validation.
+        let _ = registry;
+    }
+
+    fn prepare(self, context: &ValidationContext<'_>) -> Result<Self::Prepared, Self::Error> {
+        let _ = context;
+
+        Ok(PreparedCatalogProtocol { routes: self.routes })
+    }
+}
+```
+
+</Example>
+
+Use the `upwell` facade, including `upwell::prelude::*`, rather than importing `upwell_app` implementation crates. The exact trait members and bounds belong to the [ProtocolDefinition reference](/docs/latest/symbols/upwell/ProtocolDefinition); the example establishes where each concern belongs.
+
+## Place work in the correct lifecycle phase
+
+The builder calls the definition lifecycle in order. The phases look adjacent in code, but their inputs have different authority:
+
+| Phase | Use it for | Do not use it for |
+| --- | --- | --- |
+| `register` | Protocol descriptors required before app validation | Opening resources or resolving components |
+| `register_plugins` | Declaring protocol-required and protocol-default plugins | Applying a plugin's contributions |
+| `pre_build` | Protocol-owned components and config bindings that must join app validation | Runtime construction |
+| `prepare` | Consuming finalized protocol state into a validated representation | Constructing listeners, tasks, or per-request state |
+| `PreparedProtocol::build` | Constructing dispatch resources after the root DI runtime exists | Re-validating descriptor topology |
+
+<Example title="Add plugins and pre-build contributions">
+
+```rust context
+use upwell::prelude::*;
+
+struct CatalogProtocol;
+struct PreparedCatalogProtocol;
+```
+
+Declare protocol plugin defaults before composition resolves. A default is available to the application; a required plugin is part of the protocol contract.
+
+```rust
+impl ProtocolDefinition for CatalogProtocol {
+    const ID: ProtocolId = namespaced_id!(ProtocolId, "acme/catalog");
+    const SCOPE_TOPOLOGY: ScopeTopology = ScopeTopology::empty();
+
+    type Error = CatalogError;
+    type Prepared = PreparedCatalogProtocol;
+
+    fn register_plugins(plugins: &mut ProtocolPluginRegistrar) {
+        // Declare the protocol's required/default plugin slots here.
+        let _ = plugins;
+    }
+
+    fn pre_build(&mut self, context: &mut PreBuildContext<'_>) -> Result<(), Self::Error> {
+        // Contribute descriptors and config bindings before validation freezes the app.
+        let _ = context;
+
+        Ok(())
+    }
+
+    fn register(&self, registry: &mut AppRegistry) {
+        let _ = registry;
+    }
+
+    fn prepare(self, context: &ValidationContext<'_>) -> Result<Self::Prepared, Self::Error> {
+        let _ = context;
+
+        Ok(PreparedCatalogProtocol)
+    }
+}
+```
+
+</Example>
+
+Do not use `register_plugins` as a second registration hook. It declares how the protocol participates in plugin composition. `register` and `pre_build` instead feed descriptors into the application that will be validated as one graph.
+
+## Declare custom scope topology before using it
+
+A protocol owns the boundaries it opens. Describe each boundary in [`ScopeTopology`](/docs/latest/symbols/upwell/ScopeTopology) with a [`ScopeBoundary`](/docs/latest/symbols/upwell/ScopeBoundary) and exactly one [`ScopeParent`](/docs/latest/symbols/upwell/ScopeParent). The application root is implicit; a child boundary must name either it or another boundary in the same topology.
+
+<Example title="Model connection and request scopes">
+
+```rust
+use upwell::prelude::*;
+
+struct Connection;
+
+impl StaticScope for Connection {
+    const ID: ScopeId = namespaced_id!(ScopeId, "acme/catalog-connection");
+    const RANK: u8 = 100;
+    const NAME: &'static str = "Catalog connection";
+}
+
+struct Request;
+
+impl StaticScope for Request {
+    const ID: ScopeId = namespaced_id!(ScopeId, "acme/catalog-request");
+    const RANK: u8 = 110;
+    const NAME: &'static str = "Catalog request";
+}
+```
+
+Declare the parent chain statically on the protocol. A request cannot outlive its connection because its parent has the lower, longer-lived rank.
+
+```rust
+const CATALOG_SCOPES: ScopeTopology = ScopeTopology::new(&[
+    ScopeBoundary::new(&Connection, ScopeParent::Root),
+    ScopeBoundary::new(&Request, ScopeParent::of::<Connection>()),
+]);
+
+impl ProtocolDefinition for CatalogProtocol {
+    const ID: ProtocolId = namespaced_id!(ProtocolId, "acme/catalog");
+    const SCOPE_TOPOLOGY: ScopeTopology = CATALOG_SCOPES;
+
+    // Associated types and lifecycle hooks omitted.
+}
+```
+
+</Example>
+
+The app prepares this declaration before it validates component scopes. It rejects duplicate or reserved IDs, missing parents, self-parenting, cycles, and parent ranks that are not longer-lived than their children. A descriptor using a protocol scope that is absent from this topology cannot be built.
+
+Open only declared boundaries at the corresponding transport event. For example, accept a connection under the root, open `Connection` once, then open `Request` beneath that exact connection for each request. Never synthesize a different parent chain at runtime: the prepared topology is the authority for scope reachability and ownership.
+
+## Build the dispatch runtime after validation
+
+[`PreparedProtocol`](/docs/latest/symbols/upwell/PreparedProtocol) receives the root [`AppRuntime`](/docs/latest/symbols/upwell/AppRuntime) only after validation and root-container construction. Turn prepared route metadata into a [`ProtocolRuntime`](/docs/latest/symbols/upwell/ProtocolRuntime) here. Keep the runtime focused on dispatch, codecs, router state, and transport-facing handles.
+
+<Example title="Build a dispatch runtime from prepared state">
+
+```rust context
+use upwell::prelude::*;
+
+struct PreparedCatalogProtocol {
+    routes: Vec<CatalogRoute>,
+}
+
+struct CatalogRuntime {
+    routes: Vec<CatalogRoute>,
+}
+```
+
+The root runtime is available during `build`; that is the first point at which it is safe to create a dispatch layer that resolves application components.
+
+```rust
+impl PreparedProtocol for PreparedCatalogProtocol {
+    type Error = CatalogError;
+    type Runtime = CatalogRuntime;
+
+    fn build(self, runtime: &AppRuntime) -> Result<Self::Runtime, Self::Error> {
+        let _ = runtime;
+
+        Ok(CatalogRuntime { routes: self.routes })
+    }
+}
+
+impl ProtocolRuntime for CatalogRuntime {
+    type Error = CatalogError;
+}
+```
+
+</Example>
+
+If the protocol exposes stable generated facts to Cargo Upwell tooling, describe those facts from `PreparedProtocol::tooling`. Do not make tooling inspect a live listener, task, or connection: prepared state is the deterministic boundary for metadata.
+
+## Serve an endpoint without owning the application lifecycle
+
+Implement [`Serve`](/docs/latest/symbols/upwell/Serve) for every concrete endpoint type the runtime can serve. Its `serve` method receives ownership of the built protocol runtime, an application runtime handle, a shutdown signal, and that endpoint. It should stop accepting work on shutdown, drain or cancel protocol-owned work as its contract requires, and return when serving has ended.
+
+<Example title="Serve a listener and observe application shutdown">
+
+```rust context
+use upwell::prelude::*;
+
+struct CatalogRuntime {
+    routes: Vec<CatalogRoute>,
+}
+
+struct CatalogListener;
+```
+
+The serve loop owns listener and connection work. It does not start application hooks, trigger reload, or execute application shutdown cleanup.
+
+```rust
+impl Serve<CatalogListener> for CatalogRuntime {
+    fn serve(
+        self,
+        runtime: AppRuntime,
+        shutdown: ShutdownSignal,
+        listener: CatalogListener,
+    ) -> impl Future + Send {
+        async move {
+            let _ = (self, runtime, shutdown, listener);
+
+            Ok::<(), CatalogError>(())
+        }
+    }
+}
+```
+
+</Example>
+
+`App::serve` owns the lifecycle envelope around this loop: startup, reload coordination, shutdown initiation, and cleanup. A protocol owns only its endpoint resources and spawned work. This separation also permits one runtime to implement `Serve` for several endpoint types without duplicating application lifecycle behavior.
+
+## Wrap a base protocol deliberately
+
+Use a wrapper when the new protocol changes composition, dispatch, or endpoint behavior around an existing protocol. Delegate the base lifecycle where its semantics remain authoritative, then add wrapper state only in the phase that owns it. Do not copy the base protocol's registration or scope topology into a parallel implementation: that creates two owners for the same contract.
+
+<Example title="Delegate a protocol wrapper">
+
+```rust
+use upwell::prelude::*;
+
+struct Observed<P> {
+    base: P,
+}
+```
+
+Forward registration and preparation to the base definition, then wrap the prepared state. The wrapper's stable ID, plugin defaults, and additional scope boundaries remain its own explicit decisions.
+
+```rust
+impl<P> ProtocolDefinition for Observed<P>
+where
+    P: ProtocolDefinition,
+{
+    const ID: ProtocolId = namespaced_id!(ProtocolId, "acme/observed");
+    const SCOPE_TOPOLOGY: ScopeTopology = P::SCOPE_TOPOLOGY;
+
+    type Error = P::Error;
+    type Prepared = P::Prepared;
+
+    fn register_plugins(plugins: &mut ProtocolPluginRegistrar) {
+        P::register_plugins(plugins);
+    }
+
+    fn auto_discover(&mut self) {
+        self.base.auto_discover();
+    }
+
+    fn register(&self, registry: &mut AppRegistry) {
+        self.base.register(registry);
+    }
+
+    fn pre_build(&mut self, context: &mut PreBuildContext<'_>) -> Result<(), Self::Error> {
+        self.base.pre_build(context)
+    }
+
+    fn prepare(self, context: &ValidationContext<'_>) -> Result<Self::Prepared, Self::Error> {
+        self.base.prepare(context)
+    }
+}
+```
+
+</Example>
+
+The concise delegation above is appropriate only for a transparent wrapper. A wrapper that adds a scope must define a new topology containing every required base boundary plus its own valid parent chain. A wrapper that adds prepared or runtime state needs its own prepared and runtime wrapper types, and should delegate `build` and `Serve` while preserving a single owner for endpoint shutdown.
+
+## Reference pages
+
+The contracts, associated types, and generated member signatures live on the canonical reference pages:
+
+- [`ProtocolDefinition`](/docs/latest/symbols/upwell/ProtocolDefinition)
+- [`PreparedProtocol`](/docs/latest/symbols/upwell/PreparedProtocol)
+- [`ProtocolRuntime`](/docs/latest/symbols/upwell/ProtocolRuntime)
+- [`Serve`](/docs/latest/symbols/upwell/Serve)
+- [`ScopeTopology`](/docs/latest/symbols/upwell/ScopeTopology)
+- [`ScopeBoundary`](/docs/latest/symbols/upwell/ScopeBoundary)
+- [`ScopeParent`](/docs/latest/symbols/upwell/ScopeParent)

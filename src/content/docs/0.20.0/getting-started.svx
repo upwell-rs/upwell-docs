@@ -1,0 +1,65 @@
+---
+title: Getting started with Upwell 0.20
+description: Create an Upwell 0.20 application with the published pre-1.0 package names and builder-form host macro.
+order: 10
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Getting started with Upwell 0.20
+
+Upwell `0.20.0` is a published pre-1.0 release. Use the `upwell` package and `upwell` imports shown here; this release continues under the Upwell name rather than an older package spelling.
+
+## Add the facade crate
+
+Create a Rust binary and depend on the released facade crate:
+
+<Example title="Start an Upwell 0.20 application">
+
+```toml
+[dependencies]
+upwell = "0.20.0"
+```
+
+Declare a component that the application can construct:
+
+```rust plain
+use upwell::prelude::*;
+
+#[component]
+struct Greeting;
+
+impl Greeting {
+    fn message(&self) -> &'static str {
+        "Hello from Upwell 0.20"
+    }
+}
+```
+
+</Example>
+
+## Declare the host
+
+In 0.20, `app!` takes the application builder form. The builder is where a binary supplies its name and registrations; the macro supplies the generated application host.
+
+<Example title="Use the 0.20 builder-form app macro">
+
+```rust plain
+use upwell::prelude::*;
+
+app! {
+    App::builder("hello")
+        .with_component(Greeting)
+}
+```
+
+</Example>
+
+Run the generated binary with Cargo. The exact generated command-line surface is part of the 0.20 host, so consult `--help` in the application being built rather than carrying assumptions from later releases.
+
+## Read the 1.0 guides separately
+
+The current guides describe the 1.0 application model and should not be used as syntax references for a 0.20 program. When planning an upgrade, start with [migrating to 1.0](/docs/0.20.0/migration-to-1-0) and then use the [1.0 getting-started guide](/docs/1.0.0/getting-started).

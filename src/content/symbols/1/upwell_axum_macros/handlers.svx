@@ -1,0 +1,57 @@
+---
+title: '#[handlers]'
+description: Collects controller route, message, lifecycle, and hook methods from an inherent implementation.
+topics: ['web']
+---
+
+<script>
+	import { SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[handlers]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+Applies to an inherent `impl` for a type declared with `#[controller]`. It consumes the method marker attributes, emits erased dispatch wrappers and route/message registrations, and leaves ordinary methods available normally.
+
+```rust
+use upwell::axum::prelude::*;
+
+#[handlers]
+impl UsersController {
+    #[get("/{id}")]
+    async fn get(&self, Path(id): Path<u64>) -> Json<User> { todo!() }
+}
+```
+
+## Syntax
+
+```rust
+#[handlers]
+#[handlers(routes_slice = ControllerRoutes)]
+#[handlers(ws = Protocol)]
+impl Controller { /* marked methods */ }
+```
+
+`routes_slice = Name` targets the named HTTP registry selected by `#[controller(routes_slice = Name)]`. `ws = Protocol` selects WebSocket message handling and is required when the block contains `#[message]`; it must match `#[controller(ws = Protocol)]`. The block may also use the shared `#[init]` and `#[hook(...)]` method facilities. Those lifecycle methods are not routes or messages unless they also carry the appropriate marker.
+
+Multiple `#[handlers]` blocks may target the same controller. HTTP blocks must not create the same method/path combination. WebSocket blocks must not create the same destination for their protocol.
+
+## Marker containment
+
+HTTP marker attributes are valid only on methods inside an inherent `#[handlers] impl` for an HTTP controller:
+
+- `#[get]`, `#[post]`, `#[put]`, `#[delete]`, `#[patch]`, `#[head]`, `#[options]`, and `#[route(...)]`
+
+`#[message(...)]` is valid only in a `#[handlers(ws = Protocol)]` block for a matching WebSocket controller. The `#[topic(...)]` and `#[content]` helpers belong only inside a `#[topics]` enum and are not consumed here.
+
+Using a route or message marker on a free function, in an unmarked impl, or on the wrong controller flavor leaves the marker with no valid consumer and produces a compile error. The markers are removed by `#[handlers]`; they are not independently executable attributes.
+
+## Handler contract
+
+HTTP handlers use Axum extractors. Route analysis recognizes path, query, header, JSON, form, bytes, raw form, multipart, injected values, request streams, and request context. Wire positions such as JSON/form payloads, decoded responses, and path/query values must satisfy `upwell::axum::Dto`; use `#[dto]` for application types. `Inject<T>` is server-side dependency resolution rather than wire data.
+
+A route receiver, when present, is the shared controller receiver `&self`; controllers are singleton components. A request stream parameter is annotated `#[stream]` and a route can have at most one. Route response metadata and generated clients follow the grammar documented by `#[route]`.
+
+Message methods may be sync or async, may be associated functions or take `&self`, have at most one non-`Inject<T>` decoded body parameter, and reject `self` and `&mut self`.

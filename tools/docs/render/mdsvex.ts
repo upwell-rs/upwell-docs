@@ -49,11 +49,12 @@ export function getContext(): Promise<RenderContext> {
 async function buildContext(): Promise<RenderContext> {
 	const version = latestVersion(docsConfig);
 	const projectRoot = process.cwd();
-	const root = artifactDir(projectRoot, docsConfig.cacheDir, version.frameworkVersion.raw);
+	const artifactVersion = version.releaseVersion.raw;
+	const root = artifactDir(projectRoot, docsConfig.cacheDir, artifactVersion);
 
-	const artifact = await loadArtifact(root, version.frameworkVersion.raw).catch((cause: unknown) => {
+	const artifact = await loadArtifact(root, artifactVersion).catch((cause: unknown) => {
 		process.stderr.write(
-			`\n[docs] No artifact for ${version.frameworkVersion.raw}; code blocks will be highlighted but not annotated.\n` +
+			`\n[docs] No artifact for ${artifactVersion}; code blocks will be highlighted but not annotated.\n` +
 				`[docs] Run: bun run docs:prepare --local ../framework\n\n${cause instanceof Error ? cause.message : String(cause)}\n\n`
 		);
 
@@ -67,7 +68,12 @@ async function buildContext(): Promise<RenderContext> {
 	// Keyed by canonical path rather than by the alias someone happened to write, so a page written
 	// at `framework/prelude/component` is found by a snippet that reached the same symbol through a
 	// different re-export.
-	const symbolPages = await resolveSymbolPages(artifact, path.join(projectRoot, SYMBOLS_DIR), projectRoot);
+	const symbolPages = await resolveSymbolPages(
+		artifact,
+		path.join(projectRoot, SYMBOLS_DIR),
+		projectRoot,
+		version.releaseVersion
+	);
 
 	return {
 		index: toResolverIndex(artifact),

@@ -1,0 +1,79 @@
+---
+title: component
+description: Complete reference for the component declaration attribute.
+topics: ['framework']
+---
+
+<script>
+	import { Callout, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[component]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`#[component]` applies to a struct item and declares it as a DI component. The normal generated factory resolves ordinary fields from the construction scope; component handles are `Arc<T>` unless `by_value` is selected.
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[component]
+struct Repository {
+    pool: Arc<Pool>,
+    #[default]
+    queries: QueryCache,
+}
+```
+
+## Attribute Grammar
+
+```text
+#[component(
+    id = "stable-id",
+    name = "Display name",
+    scope = singleton | connection | request | transient | ScopePath,
+    provide = dyn Trait | [dyn Trait, ...],
+    qualifier = "key",
+    primary,
+    priority = expression,
+    before = Type [as dyn Trait | as [dyn Trait, ...]],
+    after = Type [as dyn Trait | as [dyn Trait, ...]],
+    by_value,
+    factory = path::to::function,
+    default_factory = false,
+    factory_slice = RegistrationSlice,
+    upwell = ::facade_path,
+    crate = ::plugin_crate_path,
+)]
+struct Type { ... }
+```
+
+`id` defaults to the lowercased type name, `name` defaults to the Rust type name, and `scope` defaults to `Singleton`. The lowercase scope names are aliases for marker types. An explicit scope path resolves in the caller's scope.
+
+## Provider And Factory Settings
+
+`provide` exposes the concrete component through one or more `Arc<dyn Trait>` provider views. The trait must first be marked `#[injectable]`; a duplicate provided trait is rejected. `qualifier` defaults to the component ID. `primary` selects this provider for an otherwise ambiguous unqualified single-trait request. `priority`, `before`, and `after` order collection injection; those three settings require at least one `provide` declaration. `before` and `after` name concrete provider types and can be narrowed with `as dyn Trait` or `as [dyn Trait, ...]`.
+
+`by_value` stores and injects `Self` rather than `Arc<Self>` and requires `Clone`. It cannot be combined with `provide`, because trait providers share the component through `Arc`.
+
+`factory` names an explicit async-capable factory. `default_factory = false` removes field-injection construction for an externally seeded value. An `#[init]` constructor in a matching `#[methods]` impl is another explicit factory; do not create competing explicit factories. `factory_slice` overrides the generated registration-slice identifier and must be the same for every `#[component]`, `#[methods]`, and extension method macro block for that type.
+
+`upwell = ::path` and `crate = ::path` only redirect generated paths for facade or plugin wrappers. Application code imports from `upwell` and normally omits them.
+
+## Field Instructions
+
+The default factory interprets each ordinary field as a `FromContainer` dependency. `Arc<T>`, optional and collection handles, qualifiers, config bindings, and deferred handles use their normal DI rules. Apply `#[default]` to a field that must use `Default::default()` instead; it is not a configuration default and its type must implement `Default`.
+
+`#[qualifier = "key"]` on a trait field selects one named provider. `#[config("path")]` on `Cfg<T>` selects a particular configuration binding. These helper attributes belong on fields, not on the component attribute.
+
+<Callout type="warning" title="Valid context">
+
+`#[component]` parses an `ItemStruct`. Applying it to an enum, trait, impl, function, or field is invalid. A component with `default_factory = false` still has a descriptor but no automatic construction recipe; application setup must seed it.
+
+</Callout>
+
+## Generated Behavior
+
+On native targets the macro emits component metadata, factory registration, and provider descriptors. With a path-bound `#[config]` dependency or other discovered declaration, application assembly can find the registration without a manual list. Scope and dependency edges are then validated before construction, including lifetime reachability. The original struct remains the component's data model; the macro does not implement a provided trait or initialize `#[default]` fields in a manually supplied value.

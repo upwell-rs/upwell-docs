@@ -39,6 +39,16 @@ export interface SemVer {
 	readonly raw: string;
 }
 
+/** A version selector authored as a content-directory name. */
+export interface VersionDirectorySelector {
+	/** The selector's inclusive lower bound. */
+	readonly lower: SemVer;
+	/** Number of release components supplied by the author. */
+	readonly precision: 1 | 2 | 3;
+	/** The text this was parsed from, for messages and display. */
+	readonly raw: string;
+}
+
 /** A version or requirement that could not be parsed. */
 export class VersionSyntaxError extends Error {
 	constructor(message: string) {
@@ -54,10 +64,38 @@ export class VersionSyntaxError extends Error {
  * Missing minor and patch are permitted and mean zero, so a page may say `since: '0.21'`.
  */
 const VERSION = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
+const EXACT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
+const DIRECTORY_SELECTOR = /^(0|[1-9]\d*)(?:\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?)?)?$/;
 
 /** Parses a version, or returns undefined if it is not one. */
 export function tryParseVersion(value: string): SemVer | undefined {
-	const match = VERSION.exec(value.trim());
+	return parseMatchedVersion(VERSION.exec(value.trim()), value.trim());
+}
+
+/** Parses a complete SemVer release, suitable for a version-directory segment. */
+export function tryParseExactVersion(value: string): SemVer | undefined {
+	return parseMatchedVersion(EXACT_VERSION.exec(value), value);
+}
+
+/**
+ * Parses a content-directory selector, preserving whether its author wrote a major, minor, or full
+ * SemVer selector. Prereleases require all three release components and build metadata is forbidden.
+ */
+export function tryParseVersionDirectorySelector(value: string): VersionDirectorySelector | undefined {
+	const match = DIRECTORY_SELECTOR.exec(value);
+
+	if (!match) {
+		return undefined;
+	}
+
+	const [, , minor, patch] = match;
+	const precision = patch === undefined ? (minor === undefined ? 1 : 2) : 3;
+	const lower = parseMatchedVersion(match, value)!;
+
+	return { lower, precision, raw: value };
+}
+
+function parseMatchedVersion(match: RegExpExecArray | null, raw: string): SemVer | undefined {
 
 	if (!match) {
 		return undefined;
@@ -71,7 +109,7 @@ export function tryParseVersion(value: string): SemVer | undefined {
 		patch: patch === undefined ? 0 : Number(patch),
 		prerelease: prerelease === undefined ? [] : prerelease.split('.').map(identifier),
 		build: build ?? null,
-		raw: value.trim()
+		raw
 	};
 }
 
@@ -88,6 +126,17 @@ export function parseVersion(value: string, describe: string): SemVer {
 		throw new VersionSyntaxError(
 			`${describe} is not a version: "${value}".\n\nExpected something like "0.21.0", "0.21", or "1.0.0-rc.1".`
 		);
+	}
+
+	return parsed;
+}
+
+/** Parses complete SemVer, rejecting abbreviated range-style forms such as `1.0`. */
+export function parseExactVersion(value: string, describe: string): SemVer {
+	const parsed = tryParseExactVersion(value);
+
+	if (!parsed) {
+		throw new VersionSyntaxError(`${describe} is not exact SemVer: "${value}". Expected a complete release such as "0.20.0" or "1.0.0-rc.1".`);
 	}
 
 	return parsed;

@@ -13,7 +13,7 @@
 	const version = $derived(page.params.version ?? latestVersion(docsConfig).id);
 
 	function href(symbol: string): string {
-		return `/docs/${version}/api/${symbol.replaceAll('::', '/')}`;
+		return `/docs/${version}/symbols/${symbol.replaceAll('::', '/')}`;
 	}
 </script>
 

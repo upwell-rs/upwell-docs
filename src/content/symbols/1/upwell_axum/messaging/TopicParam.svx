@@ -1,0 +1,22 @@
+---
+title: TopicParam
+description: Renders one typed value into a WebSocket topic destination segment.
+topics: ['web']
+---
+
+<script>
+	import { SymbolImpls, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `TopicParam`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`TopicParam` converts a value used in a typed topic destination into its wire-safe path segment. Implement it for a domain identifier only when that identifier has one stable textual representation suitable for routing. Keep encoding and validation with the identifier type so publishers and subscribers cannot disagree about a destination.
+
+## Implementors
+
+The generated protocol codecs can use every type listed below as a topic parameter. Prefer an existing implementor for scalar identifiers; introduce a wrapper type when an identifier needs escaping, normalization, or validation before it becomes part of a destination.
+
+<SymbolImpls />

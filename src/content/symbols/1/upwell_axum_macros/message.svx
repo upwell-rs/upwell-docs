@@ -1,0 +1,39 @@
+---
+title: '#[message]'
+description: Declares a typed inbound WebSocket send or request-reply destination.
+topics: ['web']
+---
+
+<script>
+	import { SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `#[message]`
+
+<SymbolMeta />
+<SymbolSignature />
+
+Marks a method as a destination on a WebSocket controller. It is consumed only by `#[handlers(ws = Protocol)]` for a `#[controller(ws = Protocol)]` that selects the same protocol.
+
+```rust
+use upwell::axum::prelude::*;
+
+#[message("chat/history", request)]
+async fn history(&self, request: HistoryRequest) -> Json<History> { todo!() }
+```
+
+## Syntax
+
+```rust
+#[message("destination")]
+#[message("destination", send)]
+#[message("destination", request)]
+```
+
+The destination is a string literal. Without a mode, unit returns infer `send`; non-unit returns infer `request`. `send` is for a fire-and-forget destination, including methods whose non-unit result is a protocol-side publish outcome and must not be decoded by the caller. `request` routes the successful return to the requester. For requests, inference peels literal `Result<T, E>` and `Json<T>` wrappers; aliases are not expanded by that inference.
+
+## Method rules and artifacts
+
+A message has at most one non-`Inject<T>` parameter. That value is decoded from the selected protocol's frame codec; injected values resolve from the message scope. A method may be synchronous or asynchronous, may be an associated function or take `&self`, and rejects consuming or mutable receivers.
+
+The expansion emits WebSocket destination descriptors and erased dispatch wrappers. With the macro crate's `client` feature it also emits the matching typed send or request method on the generated controller client. The selected WebSocket protocol must be enabled, registered on the Axum application, and match both containment attributes.

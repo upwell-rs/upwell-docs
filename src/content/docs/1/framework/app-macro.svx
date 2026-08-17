@@ -1,0 +1,87 @@
+---
+title: The app! macro
+description: Declare a named Upwell application host that owns startup, lifecycle, and tooling integration.
+order: 30
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# The `app!` macro
+
+Use `app!` in an application binary when Upwell should own the process host. The macro declares a named item, not an `AppBuilder` expression: it generates the entry point, lifecycle orchestration, CLI integration, and the tooling entry used by `cargo-upwell`.
+
+## Declare a host
+
+Start with the facade prelude and the protocol your binary serves.
+
+<Example title="A named HTTP application">
+
+```rust
+use upwell::axum::Axum;
+use upwell::prelude::*;
+```
+
+Declare one named host with an application name and exactly one protocol:
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+    }
+}
+```
+
+</Example>
+
+`CatalogApplication` is the generated host type. Its `name` establishes the application identity and default platform directories; `protocol` selects the transport implementation. Add ordinary plugins for reusable behavior rather than a second protocol.
+
+## Add application setup
+
+Keep application-specific registration and lifecycle work beside the host. The macro passes the configured builder to your callbacks and runs the host lifecycle around serving.
+
+<Example title="Configure before building">
+
+```rust
+use upwell::axum::Axum;
+use upwell::prelude::*;
+
+fn configure(builder: AppBuilder<Axum>) -> AppBuilder<Axum> {
+    builder
+        .auto_discover()
+        .plugin(MetricsPlugin::default())
+}
+```
+
+Attach that setup when declaring the host:
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        configure: configure,
+    }
+}
+```
+
+</Example>
+
+Use lifecycle callbacks when work belongs to process startup, the completed application, or serving. Use protocol-specific builder methods inside configuration for routes, middleware, and transport settings.
+
+The [canonical `app!` reference](/docs/latest/symbols/upwell_macros/app) lists every macro key, callback shape, and protocol-specific option. It is the source for `services`, components, configuration bindings, managers, CLI commands, and macro path overrides.
+
+## When to use the builder
+
+Choose direct `App::<Protocol>::builder` assembly for tests, embedding, or a process that owns its own entry point. Unlike `app!`, it returns an application value and is followed by `.build().await`; it does not generate a named host, CLI wiring, lifecycle callbacks, or the Cargo Upwell tooling probe.
+
+```rust
+let app = App::<Axum>::builder("catalog-api")
+    .auto_discover()
+    .plugin(MetricsPlugin::default())
+    .build()
+    .await?;
+```

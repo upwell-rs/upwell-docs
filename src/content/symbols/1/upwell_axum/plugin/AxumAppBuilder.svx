@@ -1,0 +1,34 @@
+---
+title: AxumAppBuilder
+description: Adds Axum controller, middleware, and WebSocket endpoint registration to the application builder.
+topics: ['web']
+---
+
+<script>
+	import { SymbolImpls, SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `AxumAppBuilder`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`AxumAppBuilder` is the extension trait that adds Axum-specific methods to `AppBuilder<Axum>`. It is available from the facade prelude. Its WebSocket methods are the endpoint boundary: controllers declare which protocol they speak, while this trait selects the upgrade path and options that activate it.
+
+```rust
+use upwell::prelude::*;
+use upwell::axum::prelude::*;
+
+let app = App::builder("chat")
+    .register_ws::<JsonWs>("/ws")
+    .register_ws_with::<Stomp>("/stomp", StompConfig::default())
+    .build()
+    .await?;
+```
+
+`register_ws` uses `P::Options::default()`. `register_ws_with` accepts explicit options for one mount. Both register `P`, collect only `#[controller(ws = P)]` descriptors, call `P::build` during application construction, and mount the generic upgrade handler at the given absolute path. A protocol may have multiple mounts at distinct paths; duplicate WebSocket paths are rejected during preparation.
+
+Use `controller::<T>()` for explicit HTTP controller registration and `middleware` or `layer` for application middleware. Those methods do not replace WebSocket registration: an HTTP controller path is not a WebSocket upgrade endpoint.
+
+<SymbolMembers />
+<SymbolImpls />

@@ -1,0 +1,98 @@
+---
+title: namespaced_id_type!
+description: Defines a category-safe stable identifier type backed by a validated namespaced literal.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `namespaced_id_type!`
+
+<SymbolMeta />
+
+`namespaced_id_type!` defines a lightweight, copyable ID type for one category of stable namespaced identity. Upwell uses it for scopes and composition IDs; extension crates can use it when their public contract needs a distinct identifier category with the same literal grammar.
+
+<SymbolSignature />
+
+## Grammar
+
+```text
+namespaced_id_type!(
+    <outer attributes>*
+    <visibility> struct <type name>,
+    <category literal>
+)
+```
+
+`<outer attributes>` accepts normal Rust outer attributes, including documentation attributes and conditional-compilation attributes. `<visibility>` uses Rust's `vis` grammar, so `pub`, restricted visibility such as `pub(crate)`, or private visibility are accepted. `<type name>` is one Rust identifier. `<category literal>` is a Rust string literal used in validation errors; it is not a namespace restriction and does not need to follow the identifier syntax.
+
+```rust
+use upwell_core::namespaced_id_type;
+
+namespaced_id_type!(
+    /// Stable identity for a tenant extension's policy rule.
+    #[derive(Default)]
+    pub struct PolicyRuleId,
+    "policy rule"
+);
+```
+
+The macro itself adds `Clone`, `Copy`, `Debug`, `Eq`, `Hash`, `Ord`, `PartialEq`, and `PartialOrd`. Add only derives that do not conflict with those generated implementations.
+
+## Generated API
+
+For `PolicyRuleId`, the expansion creates a struct with private representation and these public inherent methods:
+
+| Method | Result |
+| --- | --- |
+| `const fn new(&'static str) -> Result<Self, InvalidNamespacedId>` | validates and constructs the value |
+| `const fn as_str(&self) -> &'static str` | complete canonical text |
+| `const fn namespace(&self) -> &'static str` | text before the first slash |
+| `const fn name(&self) -> &'static str` | alias for `local_path` |
+| `const fn local_path(&self) -> &'static str` | non-empty text after the first slash |
+| `const fn parts(&self) -> (&'static str, &'static str)` | namespace and local path |
+
+It also implements `Display`, `AsRef<str>`, and `NamespacedIdType`. The trait provides runtime `is_in_namespace` and `shares_namespace_with` checks across different generated ID categories. Prefer the inherent const accessors when a value must be inspected in const code.
+
+```rust
+let id = PolicyRuleId::new("acme/retention").expect("static ID is valid");
+
+assert_eq!(id.namespace(), "acme");
+assert_eq!(id.local_path(), "retention");
+assert_eq!(id.to_string(), "acme/retention");
+```
+
+## Literal validation and errors
+
+`new` accepts only `&'static str`, because the generated value borrows its canonical text. The value must have at least two non-empty slash-separated segments. Every segment starts with a lowercase ASCII letter or digit; following bytes may additionally be `.`, `_`, or `-`. Nested local paths are valid.
+
+Failures return `InvalidNamespacedId`, which records the category literal, rejected value, and an `IdErrorKind`:
+
+| Error kind | Meaning |
+| --- | --- |
+| `MissingNamespace` | no slash, a leading/trailing slash, or an empty segment |
+| `InvalidSegmentStart` | a segment starts with uppercase ASCII, punctuation, whitespace, or another unsupported byte |
+| `InvalidCharacter` | a later byte is outside lowercase ASCII letters, digits, `.`, `_`, and `-` |
+
+`InvalidNamespacedId` exposes `category`, `value`, `kind`, and `reason`; `reason` is an alias for `kind`. Its display text includes the category, literal, and readable validation reason.
+
+## Pairing with `namespaced_id!`
+
+Use `new` when a validation error should be handled or reported. Use [`namespaced_id!`](./namespaced_id) for a fixed literal that is part of source code and should fail compilation if malformed.
+
+```rust
+use upwell_core::{namespaced_id, namespaced_id_type};
+
+namespaced_id_type!(pub struct MetricId, "metric");
+
+const REQUESTS: MetricId = namespaced_id!(MetricId, "acme/requests");
+```
+
+## Extension authors
+
+Define a new type only when identifiers must not be interchangeable with existing Upwell categories. Prefer existing public IDs such as `PluginId`, `ProtocolId`, `PluginSlotId`, `ContributionId`, and `ScopeId` when the value participates in those contracts.
+
+Choose a category string that explains the value in diagnostics, preserve the type's literal IDs as compatibility surface, and keep the representation private. Do not serialize or reconstruct the generated fields directly; retain the canonical string and validate it through `new` at an input boundary.

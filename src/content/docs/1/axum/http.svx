@@ -1,0 +1,179 @@
+---
+title: HTTP controllers
+description: Build an HTTP controller with typed DTOs, routes, extraction, and streaming when needed.
+order: 110
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# HTTP controllers
+
+Use a controller to group related Axum routes under one base path. Define the values that cross the wire, declare the controller, then add route methods in an inherent handler implementation.
+
+## Define a controller and its first route
+
+<Example title="Fetch a user by ID">
+
+```rust
+use axum::extract::Path;
+use upwell::axum::prelude::*;
+
+#[dto]
+struct User {
+    id: u64,
+    name: String,
+}
+```
+
+Declare the singleton controller and the base path shared by its routes.
+
+```rust
+#[controller(path = "/users")]
+struct UsersController;
+```
+
+Add the route. Axum extractors such as `Path<T>` provide request data, while `Json<T>` writes a typed response.
+
+```rust
+use upwell::axum::prelude::{get, Path};
+
+#[handlers]
+impl UsersController {
+    #[get("/{id}")]
+    async fn get(&self, Path(id): Path<u64>) -> Json<User> {
+        Json(User {
+            id,
+            name: String::from("Ada"),
+        })
+    }
+}
+```
+
+</Example>
+
+Register or auto-discover the controller in the Axum application configuration. `#[dto]` marks types used in request and response wire positions; it supplies serialization support unless the type already provides it.
+
+## Add input and dependencies to a route
+
+Use `Query<T>` for URL parameters, `Json<T>` for a JSON body, and `Inject<T>` for an application dependency. <Symbol path="upwell::axum::HttpRequest" /> is the request scope marker: components declared in that scope are created for one HTTP request and can depend on request-scoped state without leaking it across requests.
+
+<Example title="Keep request state in the HTTP request scope">
+
+```rust
+use upwell::axum::prelude::*;
+
+#[component(scope = HttpRequest)]
+struct RequestAudit;
+```
+
+The request scope begins when the router dispatches a request and ends after its handler returns. A request-scoped component can depend on singleton services, but singleton components must not retain request-scoped values.
+
+</Example>
+
+<Example title="Search with query, body, and injected index">
+
+```rust context
+#[controller(path = "/users")]
+struct UsersController;
+```
+
+```rust
+use upwell::axum::prelude::*;
+
+#[dto]
+struct Page {
+    limit: usize,
+}
+
+#[dto]
+struct SearchRequest {
+    query: String,
+}
+
+#[dto]
+struct SearchResponse {
+    results: Vec<String>,
+}
+
+#[component]
+struct SearchIndex;
+
+impl SearchIndex {
+    async fn search(&self, page: Page, request: SearchRequest) -> SearchResponse {
+        SearchResponse {
+            results: vec![format!("{}:{}", request.query, page.limit)],
+        }
+    }
+}
+```
+
+Extend the existing controller handler implementation with the new route.
+
+```rust
+#[handlers]
+impl UsersController {
+    #[post("/search")]
+    async fn search(
+        &self,
+        Query(page): Query<Page>,
+        Json(request): Json<SearchRequest>,
+        Inject(index): Inject<SearchIndex>,
+    ) -> Json<SearchResponse> {
+        Json(index.search(page, request).await)
+    }
+}
+```
+
+</Example>
+
+Use a direct typed response whenever possible. When a custom `IntoResponse` obscures the success body or alternatives, document that contract with route response metadata in the [`#[route]` reference](/docs/latest/symbols/upwell_axum_macros/route).
+
+## Accept a request stream only for streamed input
+
+Add one `#[stream]` parameter when the client sends a sequence rather than one JSON body.
+
+<Example title="Ingest a stream of events">
+
+```rust context
+#[controller(path = "/users")]
+struct UsersController;
+```
+
+```rust
+use futures_core::Stream;
+use upwell::axum::prelude::*;
+
+#[dto]
+struct Event {
+    value: String,
+}
+```
+
+Add the stream route to the controller.
+
+```rust
+#[handlers]
+impl UsersController {
+    #[post("/events")]
+    async fn ingest(&self, #[stream] events: impl Stream<Item = Event>) -> StatusCode {
+        let _ = events;
+        StatusCode::ACCEPTED
+    }
+}
+```
+
+</Example>
+
+A route has at most one request stream. Use a recognized streaming response, or `streamed` when a custom return type hides that shape, only when the client must consume results incrementally.
+
+## Reference pages
+
+The canonical references list route syntax, options, generated clients, and constraints:
+
+- [`#[controller]`](/docs/latest/symbols/upwell_axum_macros/controller)
+- [`#[handlers]`](/docs/latest/symbols/upwell_axum_macros/handlers)
+- [`#[route]`](/docs/latest/symbols/upwell_axum_macros/route)
+- [`#[dto]`](/docs/latest/symbols/upwell_axum_macros/dto)

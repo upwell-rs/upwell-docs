@@ -1,0 +1,104 @@
+---
+title: app!
+description: Complete reference for Upwell's named application-host item macro.
+topics: ['framework']
+---
+
+<script>
+	import { Callout, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `app!`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`app!` declares a named application host. It is an **item macro**: invoke it where an item is valid, not in an expression, a function body, or a builder chain. It does not return `AppBuilder`; `app! { ... }` emits the host type and the generated process interface for one application.
+
+```rust
+use upwell::axum::Axum;
+use upwell::prelude::*;
+
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+    }
+}
+```
+
+All user code imports facade paths such as `upwell::prelude::*` and `upwell::axum::Axum`. The canonical symbol remains `upwell_macros::app`.
+
+## Grammar
+
+The complete outer shape is:
+
+```text
+app! {
+    [visibility] app HostName {
+        name: expression,
+        protocol: ProtocolType,
+        services: [ServiceType, ...],
+        components: [component_expression, ...],
+        configs: [ConfigType => "property.path", ...],
+        managers: {
+            directories: directories_expression | { root: expression } | { app: expression },
+            config: config_expression | {
+                source: expression | profiles: expression,
+                sighup: expression,
+                watch: expression,
+                debounce: expression,
+            },
+        },
+        plugins: [plugin_expression, ...],
+        middleware: [middleware_expression, ...],
+        guards: [guard_expression, ...],
+        error_handler: expression,
+        args: [argument_expression, ...],
+        commands: [command_expression, ...],
+        setup = callback_path,
+        configure = callback_path,
+        before_build = callback_path,
+        after_build = callback_path,
+        serve = callback_path,
+        upwell = Path,
+    }
+}
+```
+
+The `app` keyword, host identifier, braces, `name`, and `protocol` are required. Entries are comma-separated; a trailing comma is accepted. Each key is accepted at most once. Unknown keys, duplicate keys, and misplaced nested settings are compile errors.
+
+<Callout type="warning" title="Item-only form">
+
+Do not write `let app = app! { ... };`, call `.build().await` on it, or use it to embed an application in another process. Use `App::<Protocol>::builder(...)` for direct builder composition. That API does not generate this macro's host, runner, CLI tree, static parser-visible plugin boundary, or tooling entry.
+
+</Callout>
+
+## Identity And Assembly
+
+| Key | Accepted syntax | Generated behavior and constraints |
+| --- | --- | --- |
+| `name` | `name: expression` | Application identity used by diagnostics and default platform directories. The expression must satisfy the generated host's name requirement. |
+| `protocol` | `protocol: ProtocolType` | The single protocol plugin type, for example `Axum`. It fixes `App<P>`, scopes, build errors, serving behavior, and which protocol callback keys are meaningful. Ordinary plugins do not replace it. |
+| `services` | `services: [Type, ...]` | Emits compile-time `Wired` assertions when the `di-check` feature is enabled. It does not register services; normal assembly discovers declarations. |
+| `components` | `components: [expression, ...]` | Seeds already-built component values. Use for values that must be constructed from process-local state rather than their registered factory. |
+| `configs` | `configs: [Type => "path", ...]` | Adds explicit configuration bindings. Use this when one config type is bound at more than one path; a type with `#[config(path = "...")]` can be discovered automatically. |
+| `plugins` | `plugins: [expression, ...]` | Registers ordinary `Plugin` values before dependency-graph validation. |
+
+`managers` may contain `directories` and `config`. Each accepts either a ready manager expression or its settings form. `directories: { root: expression }` uses `DirectoriesManager::from_path`; `directories: { app: expression }` derives locations from the application. A config settings block accepts one of `source` or `profiles`, plus `sighup`, `watch`, and `debounce`; without `source`, it also needs `directories` in the same manager block so a default source can be located.
+
+## Protocol Callbacks
+
+`middleware`, `guards`, and `error_handler` are forwarded to the selected protocol integration. `middleware` keeps declaration order, with the first layer outermost. `guards` and `error_handler` are valid only where the protocol exposes matching builder support, such as RPC. Values must meet the selected protocol's trait bounds; import its public extension traits when required. A protocol capability with no `app!` key must be configured through that protocol's direct builder API.
+
+## Process Interface
+
+`args` adds host arguments and `commands` adds command registrations. Their exact types are checked by generated code. Keep those values next to the binary that declares the host.
+
+The lifecycle callback keys are `setup`, `configure`, `before_build`, `after_build`, and `serve`; unlike host settings, they use `=`. They run respectively during initial host setup, host/builder configuration, final pre-build preparation, after the `App<P>` exists, and serving. Each callback is checked against its phase context. The macro supplies orchestration, not listeners, routes, or application policy; callbacks and protocol configuration supply those.
+
+## Tooling And Path Overrides
+
+The named form emits the private tooling entry used by `cargo-upwell`. With the application's tooling feature enabled, the probe can prepare its document without starting the server. A manually assembled `App` has no equivalent generated probe.
+
+`upwell = Path` changes the facade/core root in generated code. It is for facade or wrapper crates only; ordinary applications should omit it. It uses `=` rather than the colon syntax used by host settings.

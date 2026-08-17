@@ -1,0 +1,29 @@
+---
+title: PluginContributions
+description: Provenance-aware collector for app-neutral plugin component, provider, and configuration emissions.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import SymbolMembers from '#lib/docs/components/SymbolMembers.svelte';
+	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
+	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+</script>
+
+# `PluginContributions`
+
+<SymbolMeta />
+
+`PluginContributions` is supplied to one effective plugin during `Plugin::contribute`. It attaches that plugin's identity to every component, provider, and configuration binding it collects.
+
+<SymbolSignature />
+
+## Contract
+
+Use `component` for a type with a static `ComponentDescriptor`, `component_descriptor` for a raw descriptor, `provider` for a trait-provider descriptor, and `config` for a `ConfigProperties` binding. Every call needs a distinct, stable `ContributionId` owned by the plugin's namespace. The collector records provenance before later registry validation, so a valid ID does not bypass descriptor or dependency validation.
+
+The collector rejects duplicate contributor-local IDs and third-party IDs in the reserved `upwell/` namespace when it is finalized. With the `tooling` feature, `tooling` exposes a separate owner-scoped metadata collector; do not use app-neutral contribution IDs as a substitute for tooling resource identities.
+
+Use [`contribute!`](/docs/latest/symbols/upwell_app/contribute) for literal declarative emissions, and use the [plugin workflow](/docs/latest/extensions/plugins#preserve-provenance-while-contributing) when control flow requires the direct methods.
+
+<SymbolMembers />

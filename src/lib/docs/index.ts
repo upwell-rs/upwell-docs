@@ -18,7 +18,7 @@ export { default as SymbolSignature } from './components/SymbolSignature.svelte'
 export { default as Tabs } from './components/Tabs.svelte';
 
 export { docsConfig, latestVersion, resolveVersion, type DocsVersion } from './config.ts';
-export type { DocFrontmatter, DocHeading, DocSection, DocSummary, SymbolFrontmatter } from './content/types.ts';
+export type { DocFrontmatter, DocHeading, DocSummary, NavigationGroup, NavigationNode, SymbolFrontmatter } from './content/types.ts';
 export { notify } from './notify.svelte.ts';
 export { getSymbolInfo, type SymbolInfo, type SymbolLink, type SymbolMember } from './symbol.svelte.ts';
 export { getDocsVersion } from './version.svelte.ts';

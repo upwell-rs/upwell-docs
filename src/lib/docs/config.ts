@@ -9,34 +9,14 @@
 
 import { parseVersion, type SemVer, type VersionId, versionId } from './version/semver.ts';
 
-/** A documented framework release, as exposed in the URL space and the version switcher. */
+/** A public documentation release, as exposed in the URL space and version switcher. */
 export interface DocsVersion {
-	/**
-	 * URL segment, e.g. `latest` or `0.20`.
-	 *
-	 * A label, never a computed value. `latest` is deliberately a **moving** id: it documents
-	 * whatever version the framework checkout currently declares, and that version changes under it
-	 * whenever a release is cut. A pinned archive id is a separate entry.
-	 */
+	/** Stable URL segment, e.g. `1.0.0`. Aliases are configured separately. */
 	readonly id: VersionId;
-	/**
-	 * Framework version this entry documents, from the checkout's Cargo.toml.
-	 *
-	 * The value here is a default for tooling that has no artifact yet; the artifact's manifest is
-	 * authoritative once one exists. It only changes when a release is actually cut, which is why
-	 * documentation written ahead of a release names the *next* version rather than this one.
-	 */
-	readonly frameworkVersion: SemVer;
+	/** Public content SemVer. Drives overlays, ranges, routes, and displayed release identity. */
+	readonly releaseVersion: SemVer;
 	/** Human label for the version switcher. */
 	readonly label: string;
-	/**
-	 * True when the id moves as releases are cut, rather than pinning one.
-	 *
-	 * A moving id cannot be linked to durably, so the page shows the exact version it is currently
-	 * documenting alongside the label — otherwise "latest" would be the only thing a reader could
-	 * tell anyone, and it means something different every month.
-	 */
-	readonly moving?: boolean;
 }
 
 /** Coordinates of the Rust framework this site documents. */
@@ -92,6 +72,10 @@ export interface DocsConfig {
 	readonly latest: VersionId;
 	/** Where prepared artifacts are unpacked, relative to the project root. */
 	readonly cacheDir: string;
+	/** Public releases whose cached artifacts are preserved historical records. */
+	readonly readOnlyArtifactVersions: readonly VersionId[];
+	/** Releases whose artifacts are eligible to provide current framework symbol facts and links. */
+	readonly symbolEnrichmentVersions: readonly VersionId[];
 	/** Slug of the page `/docs/<version>` redirects to. */
 	readonly landingSlug: string;
 	/** Declared sidebar filters and their crate classifications. */
@@ -102,27 +86,65 @@ export interface DocsConfig {
 
 export const docsConfig: DocsConfig = {
 	framework: {
-		crate: 'framework',
-		name: 'Framework',
-		repository: 'https://github.com/your-org/your-framework',
+		crate: 'upwell',
+		name: 'Upwell',
+		repository: 'https://github.com/upwell-rs/upwell',
 		releaseTag: (version) => `v${version}`
 	},
 
-	// Newest first. Pinned archive entries are added below `latest` as releases are frozen.
+	// Newest first. Only explicit public releases belong in the picker.
 	versions: [
 		{
-			id: versionId('latest'),
-			frameworkVersion: parseVersion('0.1.0', 'docsConfig latest'),
-			label: 'Latest',
-			moving: true
+			id: versionId('1.0.0'),
+			releaseVersion: parseVersion('1.0.0', 'docsConfig release 1.0.0'),
+			label: '1.0.0'
+		},
+		{
+			id: versionId('0.20.0'),
+			releaseVersion: parseVersion('0.20.0', 'docsConfig release 0.20.0'),
+			label: '0.20.0'
 		}
 	],
 
-	latest: versionId('latest'),
-	cacheDir: '.cache/framework-docs',
+	latest: versionId('1.0.0'),
+	cacheDir: '.cache/upwell-docs',
+	readOnlyArtifactVersions: [versionId('0.20.0')],
+	// The preserved 0.20 cache records the predecessor's `overseerd` API, not Upwell's public API.
+	// Keep its authored Upwell guides routable, but never use that provenance to annotate symbols.
+	symbolEnrichmentVersions: [versionId('1.0.0')],
 	landingSlug: 'getting-started',
-	// Add topics and assign your framework crates here. An empty list hides topic filtering.
-	topics: [],
+	topics: [
+		{
+			id: 'framework',
+			label: 'Framework',
+			description: 'Application setup, components, dependency injection, and core framework APIs.',
+			crates: ['upwell', 'upwell-app', 'upwell-macros', 'upwell-core']
+		},
+		{
+			id: 'web',
+			label: 'Web',
+			description: 'HTTP and WebSocket controllers, routes, messages, and topic APIs.',
+			crates: ['upwell-axum', 'upwell-axum-macros']
+		},
+		{
+			id: 'rpc',
+			label: 'RPC',
+			description: 'RPC services, handlers, and generated clients.',
+			crates: ['upwell-rpc-macros']
+		},
+		{
+			id: 'jobs',
+			label: 'Jobs',
+			description: 'Scheduled jobs and their execution policies.',
+			crates: ['upwell-jobs-macros']
+		},
+		{
+			id: 'tooling',
+			label: 'Cargo Upwell',
+			description: 'Project inspection, automation, extensions, and command-line tooling.',
+			crates: []
+		}
+	],
 	// These are the first-tier external crates worth enriching when rust-docs-json is installed.
 	rustdoc: {
 		directDependencyCrates: 'workspace',
@@ -134,8 +156,7 @@ export const docsConfig: DocsConfig = {
  * Resolves a URL version segment to a documented release.
  *
  * `latest` resolves through `config.latest`, so an entry may be reached either by its own id or by
- * the alias. Nothing downstream ever treats the string `latest` as a version: what it carries is a
- * `DocsVersion`, whose `frameworkVersion` is the fact.
+ * the alias. The alias is never a picker entry and always resolves to an explicit release id.
  */
 export function resolveVersion(config: DocsConfig, id: string): DocsVersion | undefined {
 	const wanted = id === 'latest' ? config.latest : id;
@@ -143,9 +164,19 @@ export function resolveVersion(config: DocsConfig, id: string): DocsVersion | un
 	return config.versions.find((version) => version.id === wanted);
 }
 
-/** The framework version an entry documents, which is what content is filtered against. */
+/** The public release SemVer an entry documents, which is what content is filtered against. */
 export function documentedVersion(version: DocsVersion): SemVer {
-	return version.frameworkVersion;
+	return version.releaseVersion;
+}
+
+/** Whether a release's existing cache artifact is an immutable historical record. */
+export function isArtifactReadOnly(config: DocsConfig, releaseVersion: string): boolean {
+	return config.readOnlyArtifactVersions.some((version) => version === releaseVersion);
+}
+
+/** Whether an artifact may enrich this release with Upwell symbol facts and symbol links. */
+export function isSymbolEnrichmentEligible(config: DocsConfig, version: DocsVersion): boolean {
+	return config.symbolEnrichmentVersions.some((eligible) => eligible === version.id);
 }
 
 /** The release the site treats as current. Throws at import time if the config is inconsistent. */

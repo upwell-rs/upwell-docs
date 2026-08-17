@@ -1,0 +1,24 @@
+---
+title: ProtocolRuntime
+description: Marks the built protocol dispatch layer that operates over an application's DI runtime.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `ProtocolRuntime`
+
+<SymbolMeta />
+<SymbolSignature />
+
+`ProtocolRuntime` marks the built dispatch layer created by [`PreparedProtocol`](./PreparedProtocol). A runtime holds operational protocol state: dispatch tables, codecs, transport adapters, and any handles required to translate an endpoint event into component resolution under the declared scope topology.
+
+It intentionally does not prescribe an endpoint type or endpoint loop. Implement [`Serve`](./Serve) separately for each endpoint type the runtime supports. This lets one dispatch runtime serve, for example, several RPC transports without duplicating its validation or DI integration.
+
+The runtime's error type covers protocol dispatch and serving construction errors as defined by the implementation. Application startup, reload coordination, and final cleanup remain application lifecycle concerns.
+
+See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for serving and shutdown ownership.
+
+<SymbolMembers title="Associated items" />

@@ -1,0 +1,11 @@
+---
+title: Release compatibility
+description: Choose the documentation release that matches the Upwell application you are maintaining.
+order: 5
+---
+
+# Release compatibility
+
+Choose the documentation release that matches the Upwell application you are maintaining. The release picker changes both the available guides and their routes.
+
+Upwell 0.20 guides preserve the published pre-1.0 application forms. Upwell 1.0 guides describe the current application model. Read the migration guide before applying 1.0 examples to a 0.20 application.

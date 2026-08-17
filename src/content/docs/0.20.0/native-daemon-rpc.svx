@@ -1,0 +1,53 @@
+---
+title: Native daemon and RPC
+description: Define a native Upwell 0.20 daemon RPC service with typed payloads and handlers.
+order: 120
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Native daemon and RPC
+
+The native daemon API in Upwell 0.20 exposes typed RPC services from `upwell::daemon`. A service owns related operations; each `#[rpc]` method receives its request through `Payload<T>`.
+
+<Example title="Define one daemon RPC operation">
+
+```rust plain
+use serde::{Deserialize, Serialize};
+use upwell::daemon::{handlers, rpc, service, Payload};
+
+#[derive(Deserialize)]
+struct AddRequest {
+    left: i64,
+    right: i64,
+}
+
+#[derive(Serialize)]
+struct AddResponse {
+    total: i64,
+}
+```
+
+Declare the service and its operation:
+
+```rust plain
+#[service]
+struct Calculator;
+
+#[handlers]
+impl Calculator {
+    #[rpc]
+    async fn add(&self, Payload(request): Payload<AddRequest>) -> AddResponse {
+        AddResponse {
+            total: request.left + request.right,
+        }
+    }
+}
+```
+
+</Example>
+
+Register the service through the daemon application builder used by the binary. This page intentionally limits itself to the released service, handler, and payload form; streaming, generated clients, and other daemon features can differ between historical and 1.0 releases. For an upgraded application, use the [1.0 RPC services guide](/docs/1.0.0/rpc/services).

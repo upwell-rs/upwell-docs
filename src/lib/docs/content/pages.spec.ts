@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { docsConfig, latestVersion } from '../config.ts';
-import { findPage, pagesFor, sections, siblings, slugs } from './pages.ts';
+import { parseVersion } from '../version/semver.ts';
+import { buildGuideTree, navigationLeaves } from './navigation-tree.ts';
+import { findPage, guideLeafOrder, pagesFor, siblings, slugs } from './pages.ts';
 
 /**
  * These import the real content directory rather than fixtures, which is the point: the module
@@ -14,15 +16,14 @@ import { findPage, pagesFor, sections, siblings, slugs } from './pages.ts';
  * while `dev` returned 500.
  */
 describe('content index', () => {
-	const version = latestVersion(docsConfig).frameworkVersion;
+	const version = latestVersion(docsConfig).releaseVersion;
 	it('loads every authored page', () => {
 		expect(slugs.length).toBeGreaterThan(0);
 	});
 
-	it('gives every page a title and a section', () => {
+	it('gives every page a title without requiring a configured group', () => {
 		for (const page of pagesFor(version)) {
 			expect(page.title, page.slug).not.toBe('');
-			expect(page.section, page.slug).not.toBe('');
 		}
 	});
 
@@ -30,17 +31,26 @@ describe('content index', () => {
 		expect(findPage('getting-started', version)).toBeDefined();
 	});
 
-	it('orders sections by the lowest order any of their pages declares', () => {
-		const grouped = sections(version);
-		const ranks = grouped.map((group) => Math.min(...group.pages.map((page) => page.order)));
+	it('selects path-gated content and uses the selected candidate range without fallback', () => {
+		const legacy = parseVersion('0.20.0', 'test');
+		const current = parseVersion('1.0.0', 'test');
 
-		expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+		expect(findPage('components', legacy)?.title).toBe('Components and dependency injection');
+		expect(findPage('di/components', current)?.title).toBe('Components and injection');
+		expect(findPage('migration-to-1-0', legacy)).toBeDefined();
+		expect(findPage('migration-to-1-0', current)).toBeUndefined();
+		expect(findPage('introduction/new-runtime', parseVersion('0.20.0', 'test'))).toBeUndefined();
+		expect(findPage('framework/new-runtime', parseVersion('1.0.0', 'test'))).toBeDefined();
+		expect(findPage('release-compatibility', legacy)?.title).toBe('Release compatibility');
+		expect(findPage('release-compatibility', current)?.title).toBe('Release compatibility');
 	});
 
-	it('walks siblings in sidebar order', () => {
-		const visible = pagesFor(version);
+	it('walks siblings in depth-first guide leaf order', () => {
+		const visible = guideLeafOrder(version);
+		const sidebarOrder = navigationLeaves(buildGuideTree(pagesFor(version).filter((page) => !page.draft), '')).map((page) => page.id);
 		const first = visible[0];
 
+		expect(visible.map((page) => page.slug)).toEqual(sidebarOrder);
 		expect(siblings(first.slug, version).previous).toBeUndefined();
 		expect(siblings(first.slug, version).next?.slug).toBe(visible[1]?.slug);
 	});

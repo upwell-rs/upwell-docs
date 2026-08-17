@@ -1,0 +1,25 @@
+---
+title: AppRuntime
+description: Validated application runtime used by prepared protocols and endpoint serving.
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
+</script>
+
+# `AppRuntime`
+
+<SymbolMeta />
+
+`AppRuntime` is the ready application runtime produced after application validation and root-container construction. Protocols receive it when they build prepared state or serve endpoints; it owns access to validated application services without reopening the authoring or validation phases.
+
+<SymbolSignature />
+
+## Runtime boundary
+
+Use `AppRuntime` only after the application has been prepared. Protocol implementations can retain or clone the runtime handle for dispatch work, but registrations, component topology, and plugin composition are already fixed at this point.
+
+See [Author a custom application protocol](/docs/latest/extensions/protocols/authoring) for the protocol lifecycle and [`PreparedProtocol`](./PreparedProtocol) for the build contract that receives this runtime.
+
+<SymbolMembers />
