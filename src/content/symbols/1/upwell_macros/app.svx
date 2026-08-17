@@ -4,8 +4,8 @@ description: Complete reference for Upwell's named application-host item macro.
 topics: ['framework']
 ---
 
-<script>
-	import { Callout, SymbolMeta, SymbolSignature } from '#lib/docs';
+<script lang="ts">
+	import { Callout, Example, SymbolMeta, SymbolSignature, Tabs } from '#lib/docs';
 </script>
 
 # `app!`
@@ -13,12 +13,52 @@ topics: ['framework']
 <SymbolMeta />
 <SymbolSignature />
 
-`app!` declares a named application host. It is an **item macro**: invoke it where an item is valid, not in an expression, a function body, or a builder chain. It does not return `AppBuilder`; `app! { ... }` emits the host type and the generated process interface for one application.
+Use `app!` in a conventional application binary when Upwell should own the process host. It is an item macro, not an `AppBuilder` expression: one declaration generates a named, typestate host together with its lifecycle transitions, optional CLI, and the private probe used by `cargo-upwell`.
+
+`name` and `protocol` are the only required settings. The selected protocol is the one `ProtocolDefinition` for the host; add ordinary plugins for reusable behavior instead of adding a second protocol.
+
+## Declaration rules
+
+The outer declaration accepts any Rust visibility, including no visibility, `pub`, and `pub(crate)`. It accepts only outer documentation attributes between `app! {` and the host declaration. Put `#[cfg(...)]` and every non-document attribute around a containing module or around the invocation.
+
+```rust
+app! {
+    /// Documentation for the generated host.
+    pub(crate) app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+    }
+}
+```
+
+Each body key is accepted once, and trailing commas are valid. `protocol` must implement `ProtocolDefinition` and must be `Send` when generated lifecycle or command paths are used. `name` is evaluated each time `Host::builder()` runs. With either `cli` or `tooling` enabled, it must be a string literal because it defines stable parser and tooling identity. Without both features, it may be another item-scope expression, but it still cannot capture a local from `main`.
+
+| Setting | Accepted form | Effect |
+| --- | --- | --- |
+| `name`, `protocol` | expression; protocol type | Required host identity and selected `ProtocolDefinition`. |
+| `services` | `[Type, ...]` | Under `di-check`, asserts `Wired`; never performs runtime registration. |
+| `components`, `configs` | `[expression, ...]`; `[Type => "path", ...]` | Seeds singleton values and explicit configuration bindings. |
+| `managers` | manager expressions or blocks | Owns configuration and directory manager construction. |
+| `middleware`, `guards`, `error_handler` | protocol values | Calls the selected protocol's builder extensions. |
+| `plugins` | types, `replace SLOT => Type`, `suppress SLOT` | Resolves static plugins and protocol-default slots before bootstrap. |
+| `cli`, `args`, `commands` | parser slots, typed groups, namespaces | Customizes generated Clap parsing and dispatch. |
+| `setup` through `serve` | `= callback_path` or inline body | Supplies lifecycle transitions. |
+| `upwell` | path | Overrides generated framework paths for facade or wrapper crates. |
+
+## Declare a host
+
+Start with the facade prelude and the protocol that serves this binary. `app!` can appear anywhere an item is valid, normally at module scope beside `main`.
+
+<Example title="A named HTTP application">
 
 ```rust
 use upwell::axum::Axum;
 use upwell::prelude::*;
+```
 
+Declare the host with an application identity and exactly one protocol:
+
+```rust
 app! {
     pub app CatalogApplication {
         name: "catalog-api",
@@ -27,78 +67,579 @@ app! {
 }
 ```
 
-All user code imports facade paths such as `upwell::prelude::*` and `upwell::axum::Axum`. The canonical symbol remains `upwell_macros::app`.
+</Example>
 
-## Grammar
+`CatalogApplication` is a type, not an application value. Its generated `builder()` begins with `App::<Axum>::builder("catalog-api").auto_discover()`, while its lifecycle methods drive setup, preparation, construction, and, when declared, serving.
 
-The complete outer shape is:
+<Callout type="warning" title="An item, not an expression">
 
-```text
-app! {
-    [visibility] app HostName {
-        name: expression,
-        protocol: ProtocolType,
-        services: [ServiceType, ...],
-        components: [component_expression, ...],
-        configs: [ConfigType => "property.path", ...],
-        managers: {
-            directories: directories_expression | { root: expression } | { app: expression },
-            config: config_expression | {
-                source: expression | profiles: expression,
-                sighup: expression,
-                watch: expression,
-                debounce: expression,
-            },
-        },
-        plugins: [plugin_expression, ...],
-        middleware: [middleware_expression, ...],
-        guards: [guard_expression, ...],
-        error_handler: expression,
-        args: [argument_expression, ...],
-        commands: [command_expression, ...],
-        setup = callback_path,
-        configure = callback_path,
-        before_build = callback_path,
-        after_build = callback_path,
-        serve = callback_path,
-        upwell = Path,
+Do not write `let app = app! { ... };`, call `.build().await` on the macro invocation, or invoke it inside `main`. Use `App::<Protocol>::builder(...)` when a process needs an application value or its assembly must capture local state.
+
+</Callout>
+
+## Assemble the application
+
+Most applications need no registration list: `auto_discover()` finds linked declarations such as `#[component]`, `#[controller]`, and path-bearing `#[config]` types. Use `components` for an already-built singleton, `configs` for an explicit configuration binding, and `plugins` for reusable application behavior.
+
+<Example title="Add explicit application inputs">
+
+```rust
+use upwell::axum::Axum;
+use upwell::prelude::*;
+
+#[component]
+struct Clock;
+
+#[config(path = "catalog")]
+struct CatalogConfig {
+    page_size: usize,
+}
+
+struct MetricsPlugin;
+
+impl Default for MetricsPlugin {
+    fn default() -> Self {
+        Self
     }
 }
 ```
 
-The `app` keyword, host identifier, braces, `name`, and `protocol` are required. Entries are comma-separated; a trailing comma is accepted. Each key is accepted at most once. Unknown keys, duplicate keys, and misplaced nested settings are compile errors.
+Seed a value that cannot use its generated factory, bind a config type at a second path, and install a static plugin:
 
-<Callout type="warning" title="Item-only form">
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        components: [Clock],
+        configs: [CatalogConfig => "catalog.public"],
+        plugins: [MetricsPlugin],
+    }
+}
+```
 
-Do not write `let app = app! { ... };`, call `.build().await` on it, or use it to embed an application in another process. Use `App::<Protocol>::builder(...)` for direct builder composition. That API does not generate this macro's host, runner, CLI tree, static parser-visible plugin boundary, or tooling entry.
+</Example>
+
+`components` calls `with_component` in declaration order. `configs` calls `config::<Type>(path)`, so the same type can be bound at multiple paths. `services` is different: with the `di-check` feature it only asserts that listed types implement `Wired`; it does not register runtime services.
+
+Plugins named in `plugins` must implement `Plugin + Default`. They are resolved before the CLI is composed, allowing their CLI contributions to be part of the generated parser. Plugins added later in a builder callback still participate in runtime preparation, but cannot add parser-visible commands or arguments.
+
+## Configure the builder
+
+Use `configure` for normal builder composition and protocol-specific settings. It receives the bootstrap context and takes ownership of the builder, returning it inside a `Result`. A callback can be a function path or an inline body; choose the form that keeps the binary easy to scan.
+
+{#snippet functionCallback()}
+
+<Example title="Named configuration callback">
+
+```rust
+use upwell::axum::{AppBuilder, Axum};
+use upwell::prelude::*;
+
+fn configure(
+    _context: &mut BootstrapContext,
+    builder: AppBuilder<Axum>,
+) -> impl Future<Output = Result<AppBuilder<Axum>, std::convert::Infallible>> {
+    async move {
+        Ok(builder.plugin(MetricsPlugin::default()))
+    }
+}
+```
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        configure = configure,
+    }
+}
+```
+
+</Example>
+
+{/snippet}
+
+{#snippet inlineCallback()}
+
+<Example title="Inline configuration callback">
+
+```rust
+use upwell::axum::Axum;
+use upwell::prelude::*;
+```
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        configure(_context, builder) {
+            Ok::<_, std::convert::Infallible>(
+                builder.plugin(MetricsPlugin::default()),
+            )
+        },
+    }
+}
+```
+
+</Example>
+
+{/snippet}
+
+<Tabs labels={['Function', 'Inline']} panels={[functionCallback, inlineCallback]} />
+
+`middleware`, `guards`, and `error_handler` are shorthand for extension methods on the selected protocol builder. Keep the relevant extension trait in scope. Configure protocol capabilities without a top-level macro key inside `configure`.
+
+## Manage configuration and directories
+
+Omit `managers` to let normal bootstrap choose platform directories and configuration. Declare managers when this binary must use a known root, custom config source, profiles, or reload behavior.
+
+<Example title="Load configuration from a fixed directory">
+
+```rust
+use std::time::Duration;
+use upwell::axum::Axum;
+use upwell::prelude::*;
+```
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        managers: {
+            directories: { root: "./var/catalog" },
+            config: {
+                profiles: &["production"],
+                watch: true,
+                debounce: Duration::from_millis(500),
+            },
+        },
+    }
+}
+```
+
+</Example>
+
+`directories` accepts either a ready manager or exactly one construction setting: `root` creates it from a path, while `app` derives locations from an application name. A `config` block may use a ready `source`; otherwise it loads from the explicitly declared directories manager. `profiles` is only valid for that directory-backed form. `sighup` and `watch` default to `false`, and an omitted `debounce` keeps the 250 ms manager default.
+
+<Callout type="tip" title="Keep bootstrap ownership clear">
+
+An explicit `config` or `directories` manager belongs to the declaration, so generated CLI bootstrap does not replace it. Use this when reproducible paths matter; omit managers when command-line configuration should choose the source.
 
 </Callout>
 
-## Identity And Assembly
+## Define lifecycle and serving
 
-| Key | Accepted syntax | Generated behavior and constraints |
+The host moves through concrete states. `setup` prepares `BootstrapContext`; `configure` and `before_build` transform the builder; `after_build` receives the fully assembled `App<P>`; `serve` owns transport startup. Omitted callbacks are identity transitions.
+
+<Example title="Serve with a resolved configuration value">
+
+```rust
+use upwell::prelude::*;
+use upwell::rpc::{Rpc, TcpTransport};
+
+#[config(path = "server")]
+struct ServerConfig {
+    bind: String,
+    port: u16,
+}
+```
+
+`serve` is the one inline phase that may declare extra DI parameters. Upwell resolves them from the built root container before the body begins:
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Rpc,
+        before_build(_context, builder) {
+            Ok::<_, std::convert::Infallible>(builder)
+        },
+        serve(_context, app, server: Cfg<ServerConfig>) {
+            let server = server.snapshot();
+            let transport = TcpTransport::bind((server.bind.as_str(), server.port)).await?;
+
+            app.serve(transport).await
+        },
+    }
+}
+```
+
+</Example>
+
+Function callbacks are async and use these contracts:
+
+| Phase | Parameters | Output |
 | --- | --- | --- |
-| `name` | `name: expression` | Application identity used by diagnostics and default platform directories. The expression must satisfy the generated host's name requirement. |
-| `protocol` | `protocol: ProtocolType` | The single protocol plugin type, for example `Axum`. It fixes `App<P>`, scopes, build errors, serving behavior, and which protocol callback keys are meaningful. Ordinary plugins do not replace it. |
-| `services` | `services: [Type, ...]` | Emits compile-time `Wired` assertions when the `di-check` feature is enabled. It does not register services; normal assembly discovers declarations. |
-| `components` | `components: [expression, ...]` | Seeds already-built component values. Use for values that must be constructed from process-local state rather than their registered factory. |
-| `configs` | `configs: [Type => "path", ...]` | Adds explicit configuration bindings. Use this when one config type is bound at more than one path; a type with `#[config(path = "...")]` can be discovered automatically. |
-| `plugins` | `plugins: [expression, ...]` | Registers ordinary `Plugin` values before dependency-graph validation. |
+| `setup` | `BootstrapContext` | `Result<BootstrapContext, E>` |
+| `configure`, `before_build` | `&mut BootstrapContext`, `AppBuilder<P>` | `Result<AppBuilder<P>, E>` |
+| `after_build` | `&mut BootstrapContext`, `App<P>` | `Result<App<P>, E>` |
+| `serve` | `BootstrapContext`, `App<P>` | `Result<(), E>` |
 
-`managers` may contain `directories` and `config`. Each accepts either a ready manager expression or its settings form. `directories: { root: expression }` uses `DirectoriesManager::from_path`; `directories: { app: expression }` derives locations from the application. A config settings block accepts one of `source` or `profiles`, plus `sighup`, `watch`, and `debounce`; without `source`, it also needs `directories` in the same manager block so a default source can be located.
+The generated host exposes fast-forward methods for the remaining transitions. `CatalogApplication::new(ExecutionMode::Run).build().await` performs setup, preparation, and construction; a declared `serve()` performs those stages and then serves. `context()`, `app()`, `resolve::<T>()`, and `into_parts()` are available only after their corresponding state has been reached.
 
-## Protocol Callbacks
+## Inspect or drive host states
 
-`middleware`, `guards`, and `error_handler` are forwarded to the selected protocol integration. `middleware` keeps declaration order, with the first layer outermost. `guards` and `error_handler` are valid only where the protocol exposes matching builder support, such as RPC. Values must meet the selected protocol's trait bounds; import its public extension traits when required. A protocol capability with no `app!` key must be configured through that protocol's direct builder API.
+The generated host is generic over a sealed state marker. A value starts as `CatalogApplication<Initial>`; each async transition consumes that value and returns the same host at its next state. Rust therefore prevents code from retaining an earlier state and using it as if preparation or construction had happened.
 
-## Process Interface
+<Example title="Drive every lifecycle boundary explicitly">
 
-`args` adds host arguments and `commands` adds command registrations. Their exact types are checked by generated code. Keep those values next to the binary that declares the host.
+Start with only an execution mode. At this point no CLI values, directories, configuration, builder, or application runtime exist:
 
-The lifecycle callback keys are `setup`, `configure`, `before_build`, `after_build`, and `serve`; unlike host settings, they use `=`. They run respectively during initial host setup, host/builder configuration, final pre-build preparation, after the `App<P>` exists, and serving. Each callback is checked against its phase context. The macro supplies orchestration, not listeners, routes, or application policy; callbacks and protocol configuration supply those.
+```rust
+let initial = CatalogApplication::new(ExecutionMode::Run);
+// initial: CatalogApplication<Initial>
+```
 
-## Tooling And Path Overrides
+`setup()` creates `BootstrapContext`, invokes the declared `setup` callback, and finalizes generated tracing bootstrap. It does not create an `AppBuilder`:
 
-The named form emits the private tooling entry used by `cargo-upwell`. With the application's tooling feature enabled, the probe can prepare its document without starting the server. A manually assembled `App` has no equivalent generated probe.
+```rust
+let setup = initial.setup().await?;
+// setup: CatalogApplication<Setup>
 
-`upwell = Path` changes the facade/core root in generated code. It is for facade or wrapper crates only; ordinary applications should omit it. It uses `=` rather than the colon syntax used by host settings.
+let context: &BootstrapContext = setup.context();
+assert!(context.mode().is_run());
+```
+
+`prepare()` assembles the builder, resolves static plugins and managers, invokes `configure` and `before_build`, discovers registrations, validates the graph, and computes construction order. The result is a `PreparedApp`, not a running application:
+
+```rust
+let pre_build = setup.prepare().await?;
+// pre_build: CatalogApplication<PreBuild>
+
+let prepared: &PreparedApp<Axum> = pre_build.app();
+inspect_plan(prepared);
+```
+
+`build()` constructs singleton components and root DI, attaches hooks, creates `AppRuntime`, builds the protocol runtime, and invokes `after_build`:
+
+```rust
+let built = pre_build.build().await?;
+// built: CatalogApplication<Built>
+
+let app: &App<Axum> = built.app();
+let catalog: Arc<Catalog> = built.resolve().await?;
+```
+
+Serving remains a separate operation. If the declaration has a `serve` callback, calling `built.serve().await` runs that callback with the built application. Startup hooks and listeners begin only when the serving implementation starts them.
+
+</Example>
+
+The state markers describe real ownership boundaries rather than labels on one mutable object:
+
+| State | Owned value | Work completed |
+| --- | --- | --- |
+| `Initial` | `ExecutionMode` | Nothing: no bootstrap, configuration, builder, discovery, validation, or runtime. |
+| `Setup` | `BootstrapContext` | `setup` and generated tracing finalization. |
+| `PreBuild` | `BootstrapContext` and `PreparedApp<P>` | Assembly, early plugins, builder callbacks, discovery, manager resolution, and descriptor, provider, scope, config, and protocol validation. |
+| `Built` | `BootstrapContext` and `App<P>` | Root DI construction, hooks, `AppRuntime`, protocol runtime, and `after_build`. Serving has not started. |
+
+| State | Generated methods |
+| --- | --- |
+| Every state | `from_state(...)`, `into_state()` |
+| `Initial` | `new(mode)`, fallible `builder()`, `setup()`, `prepare()`, `build()`, declared `serve()`, plus `run()` and `run_with(args)` with `cli`. |
+| `Setup` | `context()`, `prepare()`, `build()`, declared `serve()`. |
+| `PreBuild` | `context()`, `app()` as `&PreparedApp<P>`, `into_parts()`, `build()`, declared `serve()`. |
+| `Built` | `context()`, `app()` as `&App<P>`, async `resolve::<T>()`, `into_parts()`, declared `serve()`. |
+
+<Example title="Fast-forward or take ownership">
+
+You do not have to spell every transition. Methods on an earlier state run every missing stage in order:
+
+```rust
+let built = CatalogApplication::new(ExecutionMode::Run)
+    .build()
+    .await?;
+```
+
+That call is exactly `setup`, then `prepare`, then `build`; it does not serve. A declared `serve()` fast-forwards from whichever state owns the host:
+
+```rust
+CatalogApplication::new(ExecutionMode::Run)
+    .serve()
+    .await?;
+```
+
+Custom runtimes can stop at a boundary and take its concrete parts without triggering more work:
+
+```rust
+let pre_build = CatalogApplication::new(ExecutionMode::Run)
+    .prepare()
+    .await?;
+
+let (context, prepared) = pre_build.into_parts();
+run_prepared_in_custom_runtime(context, prepared).await?;
+```
+
+</Example>
+
+`from_state`, `into_state`, and `into_parts` are deliberate escape hatches and perform no hidden transitions. The `Initial` host also implements `AppHost`, so generic `setup_host`, `prepare_host`, and `build_host` helpers execute the same callbacks and ordering.
+
+## Run through the generated CLI
+
+With the default `cli` feature, `app!` builds one typed Clap tree from framework bootstrap options, application argument groups, application commands, and static-plugin contributions. Parsing happens before the host enters `Setup`, and every parsed global argument group is inserted into `BootstrapContext` by concrete type.
+
+<Example title="Declare a complete CLI tree">
+
+```toml
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+```
+
+```rust
+use clap::Args;
+use upwell::prelude::*;
+
+#[derive(Args)]
+pub struct CacheArgs {
+    #[arg(long, global = true)]
+    cache_dir: Option<std::path::PathBuf>,
+}
+
+#[derive(Args)]
+pub struct PrintConfig;
+
+impl CliCommand<CatalogApplication> for PrintConfig {
+    type Phase = Setup;
+    type Error = CommandContextError;
+
+    async fn run(
+        &self,
+        context: CommandContext<CatalogApplication, Self::Phase>,
+    ) -> Result<(), Self::Error> {
+        let cache = context.require::<CacheArgs>()?;
+        println!("cache: {:?}", cache.cache_dir);
+        Ok(())
+    }
+}
+
+#[derive(Args)]
+pub struct RebuildIndex {
+    #[arg(long)]
+    full: bool,
+}
+
+impl CliCommand<CatalogApplication> for RebuildIndex {
+    type Phase = Built;
+    type Error = BoxError;
+
+    async fn run(
+        &self,
+        context: CommandContext<CatalogApplication, Self::Phase>,
+    ) -> Result<(), Self::Error> {
+        let indexer: Arc<Indexer> = context.resolve().await?;
+        indexer.rebuild(self.full).await?;
+        Ok(())
+    }
+}
+```
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        args: {
+            cache: CacheArgs,
+        },
+        commands: {
+            print_config: PrintConfig,
+            admin: {
+                rebuild_index: RebuildIndex,
+            },
+        },
+        serve(_context, app) {
+            app.run().await
+        },
+    }
+}
+```
+
+</Example>
+
+The declaration above produces this user-facing parser tree:
+
+```text
+catalog-api [BOOTSTRAP OPTIONS] [--cache-dir PATH] [COMMAND]
+├── serve
+├── print-config
+└── admin
+    └── rebuild-index [--full]
+```
+
+The generated Rust type tree mirrors it. Derive details are omitted here, but the names and containment are significant:
+
+```text
+CatalogApplicationCli
+├── bootstrap: CatalogApplicationBootstrapArgs
+├── cache: CacheArgs
+└── command: Option<CatalogApplicationCommand>
+    ├── Serve
+    ├── PrintConfig(PrintConfig)
+    └── Admin
+        └── command: CatalogApplicationAdminCommand
+            └── RebuildIndex(RebuildIndex)
+```
+
+`CatalogApplicationCli` and `CatalogApplicationBootstrapArgs` exist for every named host while `cli` is enabled. `CatalogApplicationCommand` exists because this host has commands, and the nested `CatalogApplicationAdminCommand` exists because `admin` is a namespace. All generated types have the host's visibility, which is why the public host's `CacheArgs`, `PrintConfig`, and `RebuildIndex` types are public too.
+
+<Example title="How invocations dispatch through lifecycle phases">
+
+The global cache option may appear before or after a command because its field uses `global = true`:
+
+```shell
+catalog-api --cache-dir ./var/cache print-config
+catalog-api admin rebuild-index --full --cache-dir ./var/cache
+catalog-api serve
+```
+
+`print-config` declares `Phase = Setup`, so dispatch stops after bootstrap and setup. Its context can read typed global arguments, but has no `prepared()`, `app()`, or `resolve()` method:
+
+```rust
+let cache: &CacheArgs = context.require::<CacheArgs>()?;
+let bootstrap: &BootstrapContext = context.bootstrap();
+```
+
+`admin rebuild-index` declares `Phase = Built`, so dispatch runs setup, preparation, and construction before invoking it. Its context can use every earlier accessor plus the built application and DI resolution:
+
+```rust
+let app: &App<Axum> = context.app();
+let indexer: Arc<Indexer> = context.resolve().await?;
+```
+
+The generated `serve` branch also advances through `Built`, then calls the declared serve phase. Because serve is the default framework command, invoking `catalog-api` with no subcommand selects it unless `cli.serve.default_command` is changed.
+
+</Example>
+
+Generated code derives and names `::clap` types, so the application crate needs a direct `clap` dependency; a transitive dependency through Upwell is insufficient.
+
+## Customize generated CLI
+
+The default `cli` feature generates `{Host}BootstrapArgs` and `{Host}Cli` for every named host, even without application commands. It generates `{Host}Command` only when a framework `serve` command or an application command exists. Generated types use the host visibility, so types named by a public host must also be publicly usable.
+
+| Slot | Default parser surface |
+| --- | --- |
+| `config` | Global `--config`, `-c`, `Option<PathBuf>`, value `PATH`. |
+| `profile` | Global repeatable `--profile`, `-p`, `Vec<String>`, value `PROFILE`. |
+| `log` | Global `--log`, `Option<String>`, value `FILTER`. |
+| `log_format` | Global value-enum `--log-format`, `Option<LogFormat>`, value `FORMAT`. |
+| `color` | Global value-enum `--color`, `Option<ColorChoice>`, value `WHEN`. |
+| `serve` | `serve` command, enabled only with a declared `serve` phase, and default when no command is selected. |
+
+Use `cli` to preserve, disable, or customize the framework-owned slots. Names omit leading dashes; `short: false` removes the default short flag, while `short: true` is invalid. `false` disables only that parser source and `true` explicitly keeps the standard defaults. Disabling the `serve` parser command does not remove the host's typestate `serve()` method.
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        cli: {
+            config: {
+                name: "settings",
+                short: 's',
+                value_name: "FILE",
+            },
+            log_format: {
+                default_value: "compact",
+            },
+            color: false,
+        },
+    }
+}
+```
+
+Scalar slots (`config`, `log`, `log_format`, and `color`) accept exactly one of `default_value` or `default_value_t`; repeated `profile` accepts exactly one of `default_values` or `default_values_t`. Typed values remain Clap defaults and must round-trip through the parser. Prefer literal defaults for `PathBuf` and `ColorChoice`; their current types do not implement the required `Display` contract. Literal formats are `full`, `compact`, `pretty`, or `json`; colors are `auto`, `always`, or `never`.
+
+| Setting | Precedence, highest first |
+| --- | --- |
+| Config location | CLI, `UPWELL_CONFIG`, parser default, platform config directory. |
+| Profiles | CLI, `UPWELL_PROFILES`, parser defaults, empty list. |
+| Log filter | CLI, `RUST_LOG`, `logging.level`, parser default, logging default. |
+| Log format | CLI, `UPWELL_LOG_FORMAT`, `logging.format`, parser default, `full`. |
+| Color | CLI, `NO_COLOR`, nonzero `CLICOLOR_FORCE`, `logging.ansi`, parser default, terminal-detected `auto`. |
+
+`run()` handles the private tooling probe first when enabled, then parses process arguments. Clap help, version, and usage may exit through Clap; other failures return `CliError`. `run_with(args)` constructs the same parser but never prints or exits, returning parser errors as `CliError::Clap`.
+
+## Define command surfaces
+
+`args` groups are flattened once at the root and stored by concrete type in `BootstrapContext`. Their fields accept documentation attributes only. Aliases `bootstrap` and `command`, duplicate aliases, and duplicate group types are rejected. Add `#[arg(global = true)]` to a field that must remain available after a subcommand.
+
+`commands` may contain leaves and nested namespaces. A leaf implements `clap::Args + CliCommand<Host>` and selects one sealed phase: `Setup`, `PreBuild`, or `Built`. Every command context exposes `bootstrap()`, `bootstrap_mut()`, and `require::<T>()`; pre-build adds `prepared()`, and built adds `app()` plus async `resolve::<T>()`. Command errors retain their full normalized path in `CliError::Command`.
+
+```rust
+commands: {
+    print_config: PrintConfig,
+    admin: {
+        rebuild_index: RebuildIndex,
+    },
+}
+```
+
+Identifiers become kebab-case command names and PascalCase Rust variants, so the example exposes `print-config` and `admin rebuild-index`. Empty namespaces, reserved names/options, `__upwell` names, and normalized or variant-name collisions are errors. Command entries accept doc attributes and a bounded set of non-structural `#[command(...)]` display, help, alias, styling, usage, and local parser settings. They cannot use settings that replace generated dispatch, including `name`, `flatten`, `subcommand`, `external_subcommand`, `skip`, `rename_all`, or `subcommand_required`.
+
+## Use static plugins
+
+`plugins: [PluginType]` constructs `PluginType::default()` before bootstrap. That retained instance can contribute parser facets and is later consumed during preparation, so static plugins must implement `Plugin + Default` and cannot require asynchronous construction.
+
+```rust
+app! {
+    pub app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        plugins: [MetricsPlugin],
+    }
+}
+```
+
+For a protocol that defines default slots, write `replace AuditSlot => StructuredAuditPlugin` to replace a replaceable slot or `suppress OptionalTelemetrySlot` to remove an optional one. Unknown, mandatory, wrong-policy, duplicate, and conflicting slots are rejected. Axum and RPC currently expose no built-in default slots, so their applications may install plugins but have no built-in slots to replace or suppress.
+
+Plugins registered later with builder APIs or in `configure` / `before_build` participate in runtime preparation only. They cannot alter the already composed parser or replace and suppress slots. Parser contributions from framework, application, and plugins are checked together for provider-ID and parser collisions.
+
+## Generate tooling documents
+
+With the `tooling` feature, every named host exposes a target-local hidden `tooling_probe(target)` seam. With `cli + tooling`, `run()` recognizes the private single-argument probe invocation; it is never an end-user command. Tooling requires a literal `name`, even when CLI generation is disabled.
+
+The probe resolves static plugins, composes the final parser when CLI is enabled, applies generated bootstrap defaults in `ExecutionMode::Tooling`, then runs `setup`, `configure`, `before_build`, and `AppBuilder::prepare`. It writes a deterministic, versioned document from that prepared plan. CLI metadata reflects the final parser after plugin augmentation, including names, aliases, defaults, cardinality, globals, nesting, canonical framework IDs, and ownership.
+
+<Callout type="warning" title="Tooling executes application callbacks">
+
+The probe does not build components, construct root DI or protocol runtime, run `after_build` or `serve`, open listeners, run startup hooks, start watchers, or wait for shutdown. It does execute setup and builder callbacks. Guard side effects in those callbacks with `context.mode().is_run()`.
+
+</Callout>
+
+Tooling never discovers an application through a process-global registry or source parsing. Cargo Upwell selects and invokes one package and target; the generated host exposes the prepared metadata for that selected target.
+
+## Feature behavior and errors
+
+| Feature | Enabled | Disabled |
+| --- | --- | --- |
+| `cli` | Generates Clap types, bootstrap, dispatch, `run`, and `run_with`; needs direct Clap. | Leaves typestate lifecycle and builder APIs only. |
+| `tooling` | Generates the probe and prepared-plan projection. | No generated tooling entry or document. |
+| `di-check` | `services` emits `Wired` assertions and component bounds. | Runtime preparation still validates the effective graph. |
+| `watch` | Requested config watchers can start. | `watch: true` logs that watching is unavailable; manual reload remains available. |
+| `tracing-subscriber` | Bootstrap can install setup-contributed subscriber layers. | Logging and color policy resolve, but no generated subscriber installation. |
+| `hybrid-registry` | Forces `inventory` metadata registration. | Uses `linkme`, except Apple/Mach-O automatically uses `inventory`. |
+
+Syntax diagnostics are source-local `compile_error!` messages for duplicate or unknown keys, invalid manager and lifecycle grammar, CLI conflicts, invalid defaults, unsupported command attributes, empty namespaces, and malformed plugin directives. Rust then diagnoses type-level contracts at generated uses: inaccessible public types, wrong protocol extensions, bad callback results, non-`Injectable` inline serve dependencies, and `Wired` failures.
+
+At runtime, `builder()` returns manager/config loading errors, direct lifecycle methods return phase-tagged `PhaseError`, and `run_with` distinguishes plugin catalog, parser definition, Clap, bootstrap, lifecycle, and command failures through `CliError`. Preparation reports configuration, plugin composition, descriptor/provider, dependency, scope, and protocol validation before constructing ordinary components. Tooling rejects any transition that would build the runtime.
+
+## Choose the right boundary
+
+| Choose `app!` | Choose `App::<P>::builder` |
+| --- | --- |
+| A normal binary should expose generated startup, lifecycle, CLI, and Cargo Upwell tooling. | A test, embedding process, or custom runtime owns its own entry point. |
+| Assembly comes from item-scope declarations and callbacks. | Assembly needs function-local data, custom plugin instances/options, or imperative control. |
+| A named typestate host is useful. | You need an `App<P>` value followed by `.build().await`. |
+
+```rust
+let app = App::<Axum>::builder("catalog-api")
+    .auto_discover()
+    .with_component(Catalog)
+    .build()
+    .await?;
+```
+
+The builder API intentionally does not generate the named host, callback orchestration, CLI tree, static parser-visible plugin boundary, or private tooling probe. See the [canonical `app!` reference](/docs/latest/symbols/upwell_macros/app) for the complete grammar, feature behavior, parser settings, plugin-slot replacement, and diagnostics.

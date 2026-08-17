@@ -91,10 +91,20 @@
 	</nav>
 {/if}
 
-<style>
-	.toc {
-		font-size: 0.8125rem;
-	}
+	<style>
+		:global(html) {
+			scroll-behavior: smooth;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			:global(html) {
+				scroll-behavior: auto;
+			}
+		}
+
+		.toc {
+			font-size: 0.8125rem;
+		}
 
 	.toc__title {
 		margin: 0 0 0.5rem;
