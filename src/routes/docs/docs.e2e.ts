@@ -117,13 +117,14 @@ test('clicking a documented code symbol navigates to its canonical authored refe
 	await expect(page).toHaveURL(`/docs/${VERSION}/symbols/upwell_macros/component`);
 });
 
-test('a symbol with no defined reference is annotated but not a link', async ({ page }) => {
+test('a symbol without an authored reference links to its generated declaration page', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/framework/application-model`);
 
 	const annotated = page.locator('[data-symbol="upwell::axum::App"]').first();
 
 	await expect(annotated).toBeVisible();
-	await expect(annotated).toHaveJSProperty('tagName', 'SPAN');
+	await expect(annotated).toHaveJSProperty('tagName', 'A');
+	await expect(annotated).toHaveAttribute('href', `/docs/${VERSION}/symbols/upwell_axum/App`);
 });
 
 test('hovering a symbol shows its card', async ({ page }) => {
@@ -247,17 +248,14 @@ test('topic filtering retains matching ancestors and the current page branch', a
 	await expect(sidebar.locator('details[data-group-id="guides:axum"]')).toHaveCount(1);
 });
 
-test('API navigation derives and opens crate and module ancestors', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/symbols/upwell_axum/config/AxumConfig`);
+test('API navigation uses one index leaf instead of listing every symbol', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/api`);
 
 	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
-	const ancestors = ['api', 'api:upwell_axum', 'api:upwell_axum/config'];
 
-	for (const id of ancestors) {
-		await expect(sidebar.locator(`details[data-group-id="${id}"]`)).toHaveAttribute('open', '');
-	}
-
-	await expect(sidebar.getByRole('link', { name: 'AxumConfig' })).toHaveAttribute('aria-current', 'page');
+	await expect(sidebar.locator('details[data-group-id="api"]')).toHaveAttribute('open', '');
+	await expect(sidebar.getByRole('link', { name: 'API index' })).toHaveAttribute('aria-current', 'page');
+	await expect(sidebar.getByRole('link', { name: 'AxumConfig' })).toHaveCount(0);
 });
 
 test('a symbol page shows hand-written prose alongside generated facts', async ({ page }) => {

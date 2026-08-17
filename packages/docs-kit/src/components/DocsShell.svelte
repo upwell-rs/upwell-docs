@@ -48,7 +48,7 @@
 			return;
 		}
 
-		const available = slug.startsWith('symbols/')
+			const available = slug === 'api' ? true : slug.startsWith('symbols/')
 			? Boolean(content.findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
 			: Boolean(content.findPage(slug, target.releaseVersion));
 

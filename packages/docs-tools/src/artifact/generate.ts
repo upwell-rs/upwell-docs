@@ -176,6 +176,7 @@ export async function generateArtifact(
     "crates",
     "search",
     "externals",
+    "docs",
   ];
 
   const manifest: ArtifactManifest = {

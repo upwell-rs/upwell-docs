@@ -129,6 +129,15 @@ export async function resolveSymbolPages(
     const existing = byCanonical.get(canonical);
 
     if (existing) {
+      if (existing.symbol === canonical) {
+        continue;
+      }
+
+      if (ref.symbol === canonical) {
+        byCanonical.set(canonical, ref);
+        continue;
+      }
+
       problems.push(
         "Two symbol pages document the same symbol.\n\n" +
           `  Pages:\n    ${existing.file}\n    ${ref.file}\n\n` +

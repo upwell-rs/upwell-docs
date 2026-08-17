@@ -11,11 +11,20 @@
 	import Badge from './Badge.svelte';
 
 	const symbol = getSymbolInfo();
+	const kindLabel = $derived(
+		symbol.procMacro?.kind === 'bang'
+			? 'Function-like macro'
+			: symbol.procMacro?.kind === 'attribute'
+				? 'Attribute macro'
+				: symbol.procMacro?.kind === 'derive'
+					? 'Derive macro'
+					: symbol.kind.replace('_', ' ')
+	);
 </script>
 
 <div class="meta">
 	<p class="meta__path">
-		<span class="meta__kind">{symbol.kind.replace('_', ' ')}</span>
+		<span class="meta__kind">{kindLabel}</span>
 		<code>{symbol.path}</code>
 	</p>
 
@@ -31,6 +40,12 @@
 
 	{#if symbol.deprecation?.note}
 		<p class="meta__deprecated">{symbol.deprecation.note}</p>
+	{/if}
+
+	{#if symbol.procMacro?.kind === 'derive' && symbol.procMacro.helpers.length > 0}
+		<p class="meta__helpers">
+			Helper attributes: {symbol.procMacro.helpers.map((helper) => `#[${helper}]`).join(', ')}
+		</p>
 	{/if}
 
 	{#if symbol.canonicalPath !== symbol.path}
@@ -82,6 +97,7 @@
 		color: var(--tone-warning);
 	}
 
+	.meta__helpers,
 	.meta__defined,
 	.meta__source {
 		color: var(--text-muted);

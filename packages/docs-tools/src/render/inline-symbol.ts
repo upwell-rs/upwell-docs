@@ -98,8 +98,8 @@ async function render(
   }
 
   const text = displayText(path, attributes);
-  // Symbol pages are keyed by canonical identity, so the same authored reference is found whether
-  // prose spells a symbol through the facade or through its defining crate.
+  // Destinations are keyed by canonical identity, so authored overrides and generated declaration
+  // pages behave the same whether prose uses a facade path or the defining crate.
   const documented = context.docsHref?.(canonical);
   const properties: Record<string, string> = {
     class: "symbol",

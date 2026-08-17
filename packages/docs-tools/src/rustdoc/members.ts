@@ -357,9 +357,11 @@ function collectBody(
       path,
       name: item.name,
       kind: memberKind(item, kind),
+      procMacro: null,
       crate,
       signature: renderSignature(item, kind, { inTrait, crateModule }),
       doc: summarise(item.docs),
+      docs: item.docs,
       source: item.span
         ? { file: item.span.filename, line: item.span.begin[0] }
         : null,

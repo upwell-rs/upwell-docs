@@ -10,14 +10,15 @@ import { docsContent } from './runtime.ts';
 
 export const docsArtifacts = createArtifactService({
 	config: docsContent.config,
-	findSymbolPage: docsContent.findSymbolPage,
-	symbolHref: docsContent.symbolHref
+	symbolPagesFor: docsContent.symbolPagesFor,
+	symbolHref: docsContent.symbolHref,
+	building
 });
 
 const search = createSearchIndexService({
 	content: docsContent,
 	documents: indexedDocuments,
-	getArtifact: docsArtifacts.getArtifact
+	getCatalog: docsArtifacts.getCatalog
 });
 
 export const docsServerRoutes = createDocsServerRouteHelpers({

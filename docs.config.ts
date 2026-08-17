@@ -25,10 +25,7 @@ export const docsConfig: DocsConfig = {
 
   latest: versionId("1.0.0"),
   cacheDir: ".cache/upwell-docs",
-  readOnlyArtifactVersions: [versionId("0.20.0")],
-  // The preserved 0.20 cache records the predecessor's `overseerd` API, not Upwell's public API.
-  // Keep its authored Upwell guides routable, but never use that provenance to annotate symbols.
-  symbolEnrichmentVersions: [versionId("1.0.0")],
+  symbolEnrichmentVersions: [versionId("1.0.0"), versionId("0.20.0")],
   landingSlug: "getting-started",
   topics: [
     {
@@ -69,5 +66,6 @@ export const docsConfig: DocsConfig = {
   rustdoc: {
     directDependencyCrates: "workspace",
     standardLibraryCrates: ["std", "core", "alloc"],
+    symbolPages: 'production'
   },
 };

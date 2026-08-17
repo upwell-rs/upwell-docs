@@ -56,14 +56,17 @@ export interface SymbolSource {
 
 export type SymbolDeprecation = RustdocDeprecation;
 
+export interface ProcMacro {
+  readonly kind: "bang" | "attribute" | "derive";
+  readonly helpers: readonly string[];
+}
+
 /**
- * One symbol, reduced to what an inline hover card shows.
+ * One public Rust symbol used by inline enrichment and optional generated reference pages.
  *
  * Deliberately not a general-purpose API model. The site does not generate API reference pages, so
- * anything a hover card would not display — full documentation bodies, intra-doc link graphs,
- * generic bounds beyond the signature line — is dropped at generation time rather than carried and
- * ignored. That keeps the artifact small enough to be cheap and the contract narrow enough to be
- * stable.
+ * The plain `doc` summary remains intentionally small for browser payloads. `docs` retains Rustdoc's
+ * original Markdown for server-side rendering of one requested generated page.
  */
 export interface Symbol {
   /** Defining path, and the symbol's identity, e.g. `framework_core::scope::Singleton`. */
@@ -71,6 +74,8 @@ export interface Symbol {
   /** Last path segment. */
   readonly name: string;
   readonly kind: SymbolKind;
+  /** Explicit procedural-macro metadata from rustdoc. Null for every other item and old artifacts. */
+  readonly procMacro: ProcMacro | null;
   /** Owning crate, using the Cargo name (`framework-core`), not the module name. */
   readonly crate: string;
   readonly signature: string | null;
@@ -81,6 +86,8 @@ export interface Symbol {
    * The full body would only be useful on a generated reference page, which this site does not have.
    */
   readonly doc: string | null;
+  /** Full Rustdoc Markdown, byte-for-byte as emitted by rustdoc. */
+  readonly docs: string | null;
   readonly source: SymbolSource | null;
   readonly deprecation: SymbolDeprecation | null;
   /** Cargo feature of the facade crate that must be enabled to reach this symbol. */
@@ -138,8 +145,7 @@ const MAX_SUMMARY = 320;
 /**
  * First paragraph of a doc comment, as plain text.
  *
- * Reduced here, at generation time, rather than when rendering: the full body is never displayed,
- * so carrying it would multiply the artifact's size for nothing.
+ * Kept separately from the full Markdown body so metadata and browser annotations remain compact.
  */
 export function summarise(docs: string | null): string | null {
   if (!docs) {

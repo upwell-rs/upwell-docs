@@ -75,6 +75,46 @@ describe("buildSymbolIndex", () => {
     });
   });
 
+  it("keeps a plain summary and the exact full Rustdoc Markdown", () => {
+    const docs = "A **small** summary.\n\n## Details\n\nExact `markdown`.";
+    const core = crateDoc({
+      root: "100",
+      items: {
+        "1": { name: "Documented", docs, inner: { struct: { generics: { params: [], where_predicates: [] } } } },
+        "100": { name: "upwell_core", inner: { module: { items: [1] } } },
+      },
+      paths: { "1": ["upwell_core", "Documented"] },
+    });
+
+    const [symbol] = buildSymbolIndex([input("upwell-core", core)], NO_FEATURES).symbols;
+
+    expect(symbol.doc).toBe("A small summary.");
+    expect(symbol.docs).toBe(docs);
+  });
+
+  it.each([
+    ["bang", "app!", { kind: "bang", helpers: [] }],
+    ["attr", "#[route]", { kind: "attribute", helpers: [] }],
+    ["derive", "#[derive(Component)]", { kind: "derive", helpers: ["component", "inject"] }],
+  ] as const)("extracts the %s procedural-macro subtype from Rustdoc", (kind, signature, procMacro) => {
+    const name = kind === "bang" ? "app" : kind === "attr" ? "route" : "Component";
+    const macros = crateDoc({
+      root: "100",
+      items: {
+        "1": {
+          name,
+          inner: { proc_macro: { kind, helpers: procMacro.helpers } },
+        },
+        "100": { name: "upwell_macros", inner: { module: { items: [1] } } },
+      },
+      paths: { "1": ["upwell_macros", name] },
+    });
+
+    const [symbol] = buildSymbolIndex([input("upwell-macros", macros)], NO_FEATURES).symbols;
+
+    expect(symbol).toMatchObject({ kind: "proc_macro", procMacro, signature });
+  });
+
   it("resolves a facade re-export to the defining path", () => {
     const core = crateDoc({
       root: "100",

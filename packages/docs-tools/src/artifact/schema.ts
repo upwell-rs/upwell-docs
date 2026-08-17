@@ -33,7 +33,7 @@ export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [3];
  * Tiers are declared rather than inferred, so the site can degrade per capability instead of
  * probing for files.
  */
-export type ArtifactCapability = "symbols" | "crates" | "search" | "externals";
+export type ArtifactCapability = "symbols" | "crates" | "search" | "externals" | "docs";
 
 export const REQUIRED_CAPABILITIES: readonly ArtifactCapability[] = ["symbols"];
 
@@ -264,6 +264,7 @@ const CAPABILITIES: readonly ArtifactCapability[] = [
   "crates",
   "search",
   "externals",
+  "docs",
 ];
 
 /**
@@ -445,7 +446,32 @@ export function parseSymbolShard(
     requireString(first.kind, `symbols/${file}[0].kind`);
   }
 
-  return symbols as Symbol[];
+  return symbols.map((value, index) => {
+    const path = `symbols/${file}[${index}]`;
+    const record = requireObject(value, path);
+
+    if (record.procMacro !== undefined && record.procMacro !== null) {
+      const procMacro = requireObject(record.procMacro, `${path}.procMacro`);
+      const kind = requireString(procMacro.kind, `${path}.procMacro.kind`);
+
+      if (kind !== "bang" && kind !== "attribute" && kind !== "derive") {
+        throw new ArtifactSchemaError(
+          `${path}.procMacro.kind`,
+          "expected bang, attribute, or derive",
+        );
+      }
+
+      requireStringArray(procMacro.helpers, `${path}.procMacro.helpers`);
+    }
+
+    const symbol = record as unknown as Symbol;
+
+    return {
+      ...symbol,
+      docs: symbol.docs ?? null,
+      procMacro: symbol.procMacro ?? null,
+    };
+  });
 }
 
 /** Validates a parsed `crates.json`. */

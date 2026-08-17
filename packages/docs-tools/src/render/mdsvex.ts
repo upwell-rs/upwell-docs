@@ -12,7 +12,7 @@
 import path from "node:path";
 import process from "node:process";
 
-import { latestVersion, type DocsConfig } from "@upwell/docs-core/config";
+import { latestVersion, resolveSymbolPagesConfig, type DocsConfig } from "@upwell/docs-core/config";
 import {
   artifactDir,
   type LoadedArtifact,
@@ -36,6 +36,7 @@ export interface DocsRenderOptions {
   readonly projectRoot: string;
   readonly guidesDir?: string;
   readonly symbolsDir?: string;
+  readonly building?: boolean;
 }
 
 export interface DocsRenderer {
@@ -93,6 +94,14 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
       options.projectRoot,
       version.releaseVersion,
     );
+    const policy = resolveSymbolPagesConfig(
+      options.config.rustdoc,
+      artifact.manifest.framework.crates,
+      options.building ?? false,
+    );
+    const symbols = new Map(
+      artifact.index.symbols.map((symbol) => [symbol.path, symbol]),
+    );
 
     return {
       index: toResolverIndex(artifact),
@@ -100,14 +109,21 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
         const canonical = artifact.index.paths[symbolPath] ?? symbolPath;
         const page = symbolPages.get(canonical);
 
-        if (!page) {
-          return undefined;
+        if (page) {
+          return {
+            href: `/docs/${VERSION_SENTINEL}/symbols/${page.segments}`,
+            title: page.symbol.split("::").pop() ?? page.symbol,
+          };
         }
 
-        return {
-          href: `/docs/${VERSION_SENTINEL}/symbols/${page.segments}`,
-          title: page.symbol.split("::").pop() ?? page.symbol,
-        };
+        const symbol = symbols.get(canonical);
+
+        return symbol && policy.enabled && (policy.crates === null || policy.crates.has(symbol.crate))
+          ? {
+              href: `/docs/${VERSION_SENTINEL}/symbols/${canonical.replaceAll("::", "/")}`,
+              title: symbol.name,
+            }
+          : undefined;
       },
       sourceHref: (symbol: Symbol) =>
         symbol.source

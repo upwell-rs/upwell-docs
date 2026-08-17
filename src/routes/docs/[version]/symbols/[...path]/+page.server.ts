@@ -15,12 +15,7 @@ import type { EntryGenerator, PageServerLoad } from "./$types";
 // rejecting the dynamic route itself when the optional Rustdoc workflow has not been configured yet.
 export const prerender = "auto";
 
-/**
- * Only symbols that have a hand-written page are prerendered.
- *
- * This is the whole difference from a generated API reference: the site has as many symbol pages as
- * someone chose to write, not one per symbol.
- */
+/** Authored pages and active generated canonical declaration paths are prerendered. */
 export const entries: EntryGenerator = () => docsServerRoutes.symbolEntries();
 
 export const load: PageServerLoad = ({ params }) => docsServerRoutes.loadSymbol(params);

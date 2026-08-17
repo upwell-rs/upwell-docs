@@ -1,4 +1,5 @@
 import type { PreprocessorGroup } from "svelte/compiler";
+import remarkGfm from "remark-gfm";
 
 import type { DocsConfig } from "@upwell/docs-core/config";
 
@@ -13,11 +14,13 @@ export interface DocsPreprocessorOptions {
   readonly projectRoot: string;
   readonly symbolsDir?: string;
   readonly versionModule: string;
+  readonly building?: boolean;
 }
 
 export interface DocsPreprocessors {
   readonly beforeMdsvex: PreprocessorGroup;
   readonly highlighter: ReturnType<typeof docsRenderer>["docsHighlighter"];
+  readonly remarkPlugins: readonly (typeof remarkGfm)[];
   readonly rehypePlugins: readonly (typeof rehypeHeadingAnchors)[];
   readonly afterMdsvex: readonly PreprocessorGroup[];
 }
@@ -31,6 +34,7 @@ export function docsPreprocessors(
   return {
     beforeMdsvex: exampleContextPreprocessor(),
     highlighter: renderer.docsHighlighter,
+    remarkPlugins: [remarkGfm],
     rehypePlugins: [rehypeHeadingAnchors],
     afterMdsvex: [
       inlineSymbolPreprocessor(renderer.getContext),

@@ -226,9 +226,11 @@ function collectCanonical(
       path,
       name: item.name,
       kind: kind as SymbolKind,
+      procMacro: procMacroOf(item, kind),
       crate: input.crate,
       signature: renderSignature(item, kind, { crateModule }),
       doc: summarise(item.docs),
+      docs: item.docs,
       source: toSource(item),
       deprecation: item.deprecation,
       aliases: [],
@@ -246,6 +248,27 @@ function collectCanonical(
           : null,
     });
   }
+}
+
+function procMacroOf(item: RustdocItem, kind: string): Symbol["procMacro"] {
+  if (kind !== "proc_macro") {
+    return null;
+  }
+
+  const procMacro = item.inner.proc_macro as
+    | { kind?: unknown; helpers?: unknown }
+    | undefined;
+  const macroKind = procMacro?.kind === "attr" ? "attribute" : procMacro?.kind;
+
+  if (
+    (macroKind !== "bang" && macroKind !== "attribute" && macroKind !== "derive") ||
+    !Array.isArray(procMacro?.helpers) ||
+    !procMacro.helpers.every((helper): helper is string => typeof helper === "string")
+  ) {
+    return null;
+  }
+
+  return { kind: macroKind, helpers: procMacro.helpers };
 }
 
 /**

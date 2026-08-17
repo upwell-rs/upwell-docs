@@ -8,10 +8,12 @@
 		"./artifact/load": "./src/artifact/load.ts",
 		"./rustdoc/symbols": "./src/rustdoc/symbols.ts",
 		"./render/document-index": "./src/render/document-index.ts",
+		"./render/highlight": "./src/render/highlight.ts",
 		"./render/preprocessors": "./src/render/preprocessors.ts"
 	},
 	"dependencies": {
-		"@upwell/docs-core": "workspace:*"
+		"@upwell/docs-core": "workspace:*",
+		"remark-gfm": "^4.0.1"
 	},
 	"peerDependencies": {
 		"mdsvex": "^0.12.0",

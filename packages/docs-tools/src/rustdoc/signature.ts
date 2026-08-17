@@ -409,7 +409,21 @@ function renderItem(
   }
 
   if (kind === "proc_macro") {
-    return `#[${name}]`;
+    const procMacro = inner as { kind?: unknown };
+
+    if (procMacro.kind === "bang") {
+      return `${name}!`;
+    }
+
+    if (procMacro.kind === "derive") {
+      return `#[derive(${name})]`;
+    }
+
+    if (procMacro.kind === "attr") {
+      return `#[${name}]`;
+    }
+
+    return null;
   }
 
   if (kind === "variant") {

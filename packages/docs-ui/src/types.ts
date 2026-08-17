@@ -57,6 +57,7 @@ export interface SymbolInfo {
 	readonly canonicalPath: string;
 	readonly name: string;
 	readonly kind: string;
+	readonly procMacro: { readonly kind: 'bang' | 'attribute' | 'derive'; readonly helpers: readonly string[] } | null;
 	readonly crate: string;
 	readonly signature: string | null;
 	readonly doc: string | null;

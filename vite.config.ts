@@ -7,13 +7,15 @@ import { docsConfig, docsManifest } from "@upwell/docs-vite";
 import { docsPreprocessors } from "@upwell/docs-tools/render/preprocessors";
 import { docsConfig as siteDocsConfig } from "./docs.config.ts";
 
-const preprocessors = docsPreprocessors({
-  config: siteDocsConfig,
-  projectRoot: import.meta.dirname,
-  versionModule: "@upwell/docs-kit/authoring",
-});
+export default defineConfig(({ command }) => {
+  const preprocessors = docsPreprocessors({
+    config: siteDocsConfig,
+    projectRoot: import.meta.dirname,
+    versionModule: "@upwell/docs-kit/authoring",
+    building: command === "build",
+  });
 
-export default defineConfig({
+  return {
   plugins: [
     docsConfig(),
 
@@ -58,6 +60,7 @@ export default defineConfig({
             highlighter: preprocessors.highlighter,
             optimise: false,
           },
+          remarkPlugins: [...preprocessors.remarkPlugins],
           rehypePlugins: [...preprocessors.rehypePlugins],
         }),
 
@@ -109,4 +112,5 @@ export default defineConfig({
       },
     ],
   },
+  };
 });

@@ -10,7 +10,7 @@ import {
 	type SymbolFrontmatter,
 	type SymbolPageSummary
 } from '@upwell/docs-core/content';
-import { buildApiTree, buildGuideTree, navigationLeaves } from '@upwell/docs-core/navigation';
+import { buildGuideTree, navigationLeaves } from '@upwell/docs-core/navigation';
 import {
 	groupByPath,
 	normalizeVersionPath,
@@ -191,9 +191,11 @@ export function createDocsContent(options: DocsContentOptions): DocsContent {
 				pagesFor(version.releaseVersion).filter((page) => !page.draft),
 				(slug) => pageHref(version.id, slug)
 			);
-			const api = buildApiTree(symbolPagesFor(version.releaseVersion), (segments) => symbolHref(version.id, segments));
-
-			return api.children.length > 0 ? [...guides, api] : guides;
+				return [...guides, {
+					type: 'group', id: 'api', label: 'API reference', order: 1000, defaultOpen: false, kind: 'reference', children: [{
+						type: 'page', id: 'api', title: 'API index', href: pageHref(version.id, 'api'), order: 0, topics: [], reference: true
+					}]
+				}];
 		},
 		pageHref,
 		symbolHref

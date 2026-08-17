@@ -38,7 +38,7 @@ struct UsersController;
 Add the route. Axum extractors such as `Path<T>` provide request data, while `Json<T>` writes a typed response.
 
 ```rust
-use upwell::axum::prelude::{get, Path};
+use upwell::axum::prelude::{get, handlers, Path};
 
 #[handlers]
 impl UsersController {

@@ -3,9 +3,8 @@ import process from 'node:process';
 
 import type { DocsVersion } from '@upwell/docs-core/config';
 import type { SearchIndexResponse, SearchRecord } from '@upwell/docs-core/search';
-import type { LoadedArtifact } from '@upwell/docs-tools/artifact/load';
-
 import type { DocsContent } from '../content.ts';
+import type { SymbolCatalog } from './artifact.ts';
 
 export interface IndexedDocument {
 	readonly file: string;
@@ -16,7 +15,7 @@ export interface IndexedDocument {
 export interface SearchIndexServiceOptions {
 	readonly content: DocsContent;
 	readonly documents: () => readonly IndexedDocument[];
-	readonly getArtifact: (version: DocsVersion) => Promise<LoadedArtifact | null>;
+	readonly getCatalog: (version: DocsVersion) => Promise<SymbolCatalog | null>;
 	readonly projectRoot?: string;
 }
 
@@ -39,7 +38,7 @@ export function effectiveDocument<T extends { readonly file: string }>(
 }
 
 export function createSearchIndexService(options: SearchIndexServiceOptions): { build(version: DocsVersion): Promise<SearchIndexResponse> } {
-	const { content, documents, getArtifact, projectRoot = process.cwd() } = options;
+	const { content, documents, getCatalog, projectRoot = process.cwd() } = options;
 
 	return {
 		async build(version) {
@@ -56,10 +55,10 @@ export function createSearchIndexService(options: SearchIndexServiceOptions): { 
 				records.push({ href: content.pageHref(version.id, page.slug), title: page.title, kind: 'guide', detail: page.description, text: document?.text, headings: document?.headings });
 			}
 
-			const artifact = await getArtifact(version);
+			const catalog = await getCatalog(version);
 			const pages = content.symbolPagesFor(version.releaseVersion).filter((page) => !page.draft);
 
-			if (!artifact) {
+			if (!catalog) {
 				for (const page of pages) {
 					records.push(fromPage(content, version, page, documentForSymbol(page.segments)));
 				}
@@ -67,24 +66,22 @@ export function createSearchIndexService(options: SearchIndexServiceOptions): { 
 				return { version: version.id, records, degraded: true };
 			}
 
-			const pageByCanonical = new Map<string, (typeof pages)[number]>();
-
-			for (const page of pages) {
-				pageByCanonical.set(artifact.index.paths[page.symbol] ?? page.symbol, page);
-			}
-
-			for (const symbol of artifact.index.symbols) {
-				const preferred = preferredPath(artifact.index.paths, symbol.path);
-				const page = pageByCanonical.get(symbol.path);
-
-				if (page) {
-					records.push({ ...fromPage(content, version, page, documentForSymbol(page.segments)), symbolKind: symbol.kind, detail: preferred });
+			for (const record of catalog.records) {
+				if (record.destination.kind === 'authored') {
+					const page = record.destination.page;
+					records.push({ ...fromPage(content, version, page, documentForSymbol(page.segments)), symbolKind: record.kind, detail: record.path });
 					continue;
 				}
 
-				const source = symbol.source ? artifact.manifest.sourceLinkTemplate.replaceAll('{path}', symbol.source.file).replaceAll('{line}', String(symbol.source.line)) : undefined;
+				if (record.destination.kind === 'source') {
+					if (record.destination.href) {
+						records.push({ href: record.destination.href, title: record.name, kind: 'symbol', symbolKind: record.kind, detail: record.path, signature: record.signature ?? undefined, external: true });
+					}
 
-				records.push({ href: source ?? content.symbolHref(version.id, preferred.replaceAll('::', '/')), title: symbol.name, kind: 'symbol', symbolKind: symbol.kind, detail: preferred, signature: symbol.signature ?? undefined, external: source !== undefined });
+					continue;
+				}
+
+				records.push({ href: record.destination.href, title: record.name, kind: 'symbol', symbolKind: record.kind, detail: record.path, signature: record.signature ?? undefined, text: record.summary ?? undefined });
 			}
 
 			return { version: version.id, records, degraded: false };
@@ -98,22 +95,4 @@ export function createSearchIndexService(options: SearchIndexServiceOptions): { 
 
 function fromPage(content: DocsContent, version: DocsVersion, page: { readonly segments: string; readonly title: string; readonly symbol: string }, document: IndexedDocument | undefined): SearchRecord {
 	return { href: content.symbolHref(version.id, page.segments), title: page.title, kind: 'symbol-page', detail: page.symbol, text: document?.text, headings: document?.headings };
-}
-
-function preferredPath(paths: Readonly<Record<string, string>>, canonical: string): string {
-	let best = canonical;
-
-	for (const [reachable, target] of Object.entries(paths)) {
-		if (target !== canonical) {
-			continue;
-		}
-
-		const bySegments = reachable.split('::').length - best.split('::').length;
-
-		if (bySegments < 0 || (bySegments === 0 && reachable.length < best.length)) {
-			best = reachable;
-		}
-	}
-
-	return best;
 }

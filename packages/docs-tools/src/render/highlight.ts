@@ -80,8 +80,8 @@ export interface RenderContext {
   /**
    * Where a symbol is documented on this site, if anywhere.
    *
-   * Returning undefined is the normal case and means the symbol is annotated but not linked. The
-   * site has no generated page per symbol, so a link exists only where someone wrote the page.
+	 * Returning undefined means the symbol is annotated but has neither an authored nor an active
+	 * generated destination.
    */
   readonly docsHref?: (
     path: string,
@@ -817,9 +817,11 @@ function declaredSymbol(declaration: Declaration): Symbol {
       : declaration.name,
     name: declaration.name,
     kind: declaration.kind,
+    procMacro: null,
     crate: "",
     signature: declaration.signature,
     doc: declaration.doc,
+    docs: null,
     source: null,
     deprecation: null,
     feature: null,
