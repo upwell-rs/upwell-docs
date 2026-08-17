@@ -1,17 +1,8 @@
 import { matchField, type MatchRanges, terms } from './match.ts';
 import { admits, parseQuery, type Query } from './query.ts';
+import type { SearchRecord } from '../search.ts';
 
-export interface SearchRecord {
-	readonly href: string;
-	readonly title: string;
-	readonly kind: 'guide' | 'symbol-page' | 'symbol';
-	readonly symbolKind?: string;
-	readonly detail?: string;
-	readonly text?: string;
-	readonly headings?: readonly { id: string; text: string }[];
-	readonly signature?: string;
-	readonly external?: boolean;
-}
+export type { SearchRecord } from '../search.ts';
 
 export interface SearchResult {
 	readonly record: SearchRecord;

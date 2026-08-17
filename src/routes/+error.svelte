@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 	import { page } from '$app/state';
-	import { latestVersion } from '#lib/docs/config';
+	import { latestVersion } from '@upwell/docs-core/config';
 	import { docsConfig } from 'virtual:docs-config';
 
 	const suggestions = $derived(page.error?.suggestions ?? []);

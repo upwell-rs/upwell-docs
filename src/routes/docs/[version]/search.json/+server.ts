@@ -10,25 +10,11 @@
  */
 
 import { json } from '@sveltejs/kit';
-import { error } from '@sveltejs/kit';
-
-import { resolveVersion } from '#lib/docs/config';
-import { docsConfig } from 'virtual:docs-config';
-import { buildSearchIndex } from '#lib/server/search-index';
+import { docsServerRoutes } from '#lib/docs/runtime.server';
 import type { EntryGenerator, RequestHandler } from './$types';
 
 export const prerender = true;
 
-export const entries: EntryGenerator = () => docsConfig.versions.map((version) => ({ version: version.id }));
+export const entries: EntryGenerator = () => [...docsServerRoutes.searchEntries()];
 
-export const GET: RequestHandler = async ({ params }) => {
-	const version = resolveVersion(docsConfig, params.version);
-
-	if (!version) {
-		error(404, { message: `There is no documentation for version "${params.version}".` });
-	}
-
-	const index = await buildSearchIndex(version);
-
-	return json(index);
-};
+export const GET: RequestHandler = async ({ params }) => json(await docsServerRoutes.loadSearch(params.version));

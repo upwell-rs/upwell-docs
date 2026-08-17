@@ -10,7 +10,7 @@
 
 import { redirect } from '@sveltejs/kit';
 
-import { latestVersion } from '#lib/docs/config';
+import { latestVersion } from '@upwell/docs-core/config';
 import { docsConfig } from 'virtual:docs-config';
 import type { PageLoad } from './$types';
 

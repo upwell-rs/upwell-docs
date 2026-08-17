@@ -19,6 +19,7 @@
 	}
 
 	let { element = $bindable(), children }: Props = $props();
+	const notifier = getDocsNotifier();
 
 	let active = $state<{ data: SymbolCardData; anchor: HTMLElement } | undefined>();
 	let card = $state<HTMLElement>();
@@ -225,10 +226,10 @@
 		try {
 			await navigator.clipboard.writeText(text);
 			button.textContent = 'Copied';
-			getDocsNotifier()?.copied(caption(button, text));
+			notifier?.copied(caption(button, text));
 		} catch {
 			button.textContent = 'Copy failed';
-			getDocsNotifier()?.copyFailed();
+			notifier?.copyFailed();
 		}
 
 		setTimeout(() => {

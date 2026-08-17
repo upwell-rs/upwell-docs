@@ -8,12 +8,9 @@
 
 import { redirect } from '@sveltejs/kit';
 
-import { latestVersion } from '#lib/docs/config';
-import { docsConfig } from 'virtual:docs-config';
+import { docsRoutes } from '#lib/docs/runtime';
 import type { PageLoad } from './$types';
 
 export const prerender = true;
 
-export const load: PageLoad = () => {
-	redirect(307, `/docs/${latestVersion(docsConfig).id}/${docsConfig.landingSlug}`);
-};
+export const load: PageLoad = () => redirect(307, docsRoutes.latestTarget(''));

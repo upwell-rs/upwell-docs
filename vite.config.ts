@@ -10,7 +10,7 @@ import { docsConfig as siteDocsConfig } from "./docs.config.ts";
 const preprocessors = docsPreprocessors({
   config: siteDocsConfig,
   projectRoot: import.meta.dirname,
-  versionModule: "#lib/docs/version.svelte",
+  versionModule: "@upwell/docs-kit/authoring",
 });
 
 export default defineConfig({

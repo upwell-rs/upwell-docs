@@ -12,6 +12,8 @@
     "paths": {
       "@upwell/docs-core": ["./packages/docs-core/src/index.ts"],
       "@upwell/docs-core/*": ["./packages/docs-core/src/*"],
+		"@upwell/docs-kit": ["./packages/docs-kit/src/index.ts"],
+		"@upwell/docs-kit/*": ["./packages/docs-kit/src/*"],
       "@upwell/docs-vite": ["./packages/docs-vite/src/index.ts"],
       "@upwell/docs-vite/*": ["./packages/docs-vite/src/*"],
       "@upwell/docs-tools": ["./packages/docs-tools/src/index.ts"],
@@ -22,6 +24,7 @@
   },
   "include": [
     "src",
+		"packages/docs-kit/src",
     "packages/docs-vite/src",
     "packages/docs-tools/src",
     "*.config.ts"

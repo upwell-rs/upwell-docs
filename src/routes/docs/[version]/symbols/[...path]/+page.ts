@@ -7,12 +7,10 @@
  * needs — a component awaited during render would prerender as empty.
  */
 
-import { loadSymbolPage } from '#lib/docs/content/symbol-pages';
+import { docsContent } from '#lib/docs/runtime';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async ({ data }) => {
-	// `data` is what the server load beside this returned; `parent()` would give the layout's, which
-	// knows the release but not which symbol page was resolved. It is spread through because a
-	// universal load's return *is* the page's data — it does not merge with the server's by itself.
-	return { ...data, component: await loadSymbolPage(data.page.segments, data.version.releaseVersion) };
-};
+export const load: PageLoad = async ({ data }) => ({
+	...data,
+	component: await docsContent.loadSymbolPage(data.page.segments, data.version.releaseVersion)
+});

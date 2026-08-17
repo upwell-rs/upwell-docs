@@ -16,6 +16,7 @@
 	}
 
 	let { text, label = 'Copy', describes }: Props = $props();
+	const notifier = getDocsNotifier();
 
 	type State = 'idle' | 'copied' | 'failed';
 
@@ -28,10 +29,10 @@
 		try {
 			await navigator.clipboard.writeText(text);
 			state = 'copied';
-			getDocsNotifier()?.copied(describes ?? text);
+			notifier?.copied(describes ?? text);
 		} catch {
 			state = 'failed';
-			getDocsNotifier()?.copyFailed();
+			notifier?.copyFailed();
 		}
 
 		timer = setTimeout(() => {

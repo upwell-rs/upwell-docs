@@ -12,7 +12,7 @@ declare module 'virtual:docs-manifest' {
 }
 
 declare module 'virtual:docs-config' {
-	import type { DocsConfig } from '#lib/docs/config';
+	import type { DocsConfig } from '@upwell/docs-core/config';
 
 	export const docsConfig: DocsConfig;
 }

@@ -9,6 +9,10 @@
 		"./semver": "./src/semver.ts",
 		"./applicability": "./src/applicability.ts",
 		"./overlay": "./src/overlay.ts",
+		"./content": "./src/content.ts",
+		"./navigation": "./src/navigation.ts",
+		"./topics": "./src/topics.ts",
+		"./search": "./src/search.ts",
 		"./search/match": "./src/search/match.ts",
 		"./search/query": "./src/search/query.ts",
 		"./search/rank": "./src/search/rank.ts"

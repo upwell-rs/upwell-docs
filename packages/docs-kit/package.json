@@ -1,0 +1,23 @@
+{
+	"name": "@upwell/docs-kit",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./content": "./src/content.ts",
+		"./authoring": "./src/authoring.ts",
+		"./client": "./src/client.svelte.ts",
+		"./server": "./src/server/index.ts",
+		"./sveltekit": "./src/sveltekit.ts",
+		"./sveltekit/server": "./src/sveltekit-server.ts",
+		"./components": "./src/components/index.ts"
+	},
+	"peerDependencies": {
+		"@sveltejs/kit": "next",
+		"@upwell/docs-core": "workspace:*",
+		"@upwell/docs-tools": "workspace:*",
+		"@upwell/docs-ui": "workspace:*",
+		"svelte": "^5.0.0"
+	}
+}

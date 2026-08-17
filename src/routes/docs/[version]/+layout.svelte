@@ -1,63 +1,17 @@
-<!--
-	The documentation shell: header, sidebar, article, table of contents, page navigation.
-
-	This is a SvelteKit layout rather than a component each page renders, and that is a behavioural
-	choice, not a tidiness one: a layout is **not remounted** when navigating between pages that
-	share it. The sidebar therefore keeps its scroll position and its collapsed groups across
-	navigations, instead of resetting every time a link is followed.
-
-	It owns the article element too, so the table of contents can read the rendered headings without
-	the page having to hand them upward.
--->
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { setDocsNotifier } from '@upwell/docs-ui/context';
+	import { DocsShell } from '@upwell/docs-kit/components';
+	import type { DocSummary, PageChrome } from '@upwell/docs-core/content';
 
-	import { Breadcrumbs, DocsArticle, DocsHeader, MobileNav, Notifications, PageNav, ReferenceNote, Search, Shortcuts, TableOfContents } from '@upwell/docs-ui';
-	import { docsConfig } from 'virtual:docs-config';
-	import DocsSidebar from '#lib/docs/integrations/DocsSidebar.svelte';
-	import { findPage } from '#lib/docs/content/pages';
-	import { findSymbolPage } from '#lib/docs/content/symbol-pages';
-	import type { DocSummary, PageChrome } from '#lib/docs/content/types';
-	import { setDocsVersion } from '#lib/docs/version.svelte';
-	import { notify } from '#lib/docs/notify.svelte';
-	import { toaster } from '#lib/docs/notify.svelte';
-	import { searchIndex } from '#lib/docs/search/index.svelte';
+	import { docsClient, docsContent } from '#lib/docs/runtime';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
 
-	let article = $state<HTMLElement>();
-	let search = $state<ReturnType<typeof Search>>();
-
-	setDocsVersion(() => data.version);
-	setDocsNotifier(notify);
-
-	/**
-	 * Page-specific chrome, read from the merged page data.
-	 *
-	 * A layout cannot be handed props by the page below it, but `page.data` is the merge of every
-	 * load in the chain — so the breadcrumb and pagination read what the current page returned
-	 * without each page re-rendering the shell to supply it.
-	 */
-	const current = $derived(page.data.chrome as PageChrome | undefined);
+	const chrome = $derived(page.data.chrome as PageChrome | undefined);
 	const previous = $derived(page.data.previous as DocSummary | undefined);
 	const next = $derived(page.data.next as DocSummary | undefined);
-
-	const slug = $derived(current?.slug ?? '');
-
-	function changeVersion(id: string): void {
-		const target = docsConfig.versions.find((candidate) => candidate.id === id);
-
-		if (!target) return;
-
-		const available = slug.startsWith('symbols/')
-			? Boolean(findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
-			: Boolean(findPage(slug, target.releaseVersion));
-
-		window.location.href = `/docs/${target.id}/${available ? slug : docsConfig.landingSlug}`;
-	}
 
 	function navigate(href: string, external = false): void {
 		if (external) {
@@ -69,108 +23,18 @@
 	}
 </script>
 
-		<DocsHeader
-			version={data.version}
-			name={docsConfig.framework.name}
-			repository={docsConfig.framework.repository}
-			versions={docsConfig.versions}
-			onversionchange={changeVersion}
-			onsearch={() => search?.open()}
-		>
-		{#snippet nav()}
-			<MobileNav title={data.version.label} pathname={page.url.pathname}>
-				{#snippet navigation()}
-					<DocsSidebar version={data.version} current={slug} />
-				{/snippet}
-				{#snippet toc()}
-					<TableOfContents {article} key={page.url.pathname} />
-				{/snippet}
-			</MobileNav>
-		{/snippet}
-	</DocsHeader>
-
-	<Shortcuts {previous} {next} homeHref={`/docs/${data.version.id}`} pageHref={(slug) => `/docs/${data.version.id}/${slug}`} {navigate} onsearch={() => search?.open()} />
-	<Search bind:this={search} version={data.version} {searchIndex} searchHref={(id) => `/docs/${id}/search.json`} {navigate} />
-	<Notifications requested={toaster.requested} />
-
-<div class="layout">
-	<aside class="layout__sidebar">
-		<DocsSidebar version={data.version} current={slug} />
-	</aside>
-
-	<main class="layout__main">
-		{#if current}
-			<Breadcrumbs version={data.version} section={current.section} title={current.title} />
-		{/if}
-
-		<DocsArticle bind:element={article}>
-			{@render children()}
-		</DocsArticle>
-
-		{#if current?.reference}
-			<ReferenceNote backTo={{ href: `/docs/${data.version.id}`, title: 'Back to the guides' }} />
-		{:else}
-			<PageNav version={data.version} {previous} {next} />
-		{/if}
-	</main>
-
-	<aside class="layout__toc">
-		<TableOfContents {article} key={page.url.pathname} />
-	</aside>
-</div>
-
-<style>
-	.layout {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 2rem;
-		max-width: 90rem;
-		margin: 0 auto;
-		padding: 1.5rem 1rem 3rem;
-	}
-
-	@media (min-width: 48rem) {
-		.layout {
-			padding: 2rem 1.5rem 4rem;
-		}
-	}
-
-	.layout__main {
-		min-width: 0;
-	}
-
-	.layout__sidebar,
-	.layout__toc {
-		display: none;
-	}
-
-	@media (min-width: 60rem) {
-		.layout {
-			grid-template-columns: 15rem minmax(0, 1fr);
-		}
-
-		.layout__sidebar {
-			display: block;
-			position: sticky;
-			top: 5rem;
-			align-self: start;
-			max-height: calc(100vh - 7rem);
-			overflow-y: auto;
-		}
-	}
-
-	@media (min-width: 80rem) {
-		.layout {
-			grid-template-columns: 15rem minmax(0, 1fr) 14rem;
-		}
-
-		.layout__toc {
-			display: block;
-			position: sticky;
-			top: 5rem;
-			align-self: start;
-			max-height: calc(100vh - 7rem);
-			overflow-y: auto;
-		}
-	}
-</style>
+<DocsShell
+	content={docsContent}
+	version={data.version}
+	pathname={page.url.pathname}
+	{chrome}
+	{previous}
+	{next}
+	searchIndex={docsClient.searchIndex}
+	sidebar={docsClient.sidebar}
+	notifications={docsClient.notifications}
+	{navigate}
+	assignLocation={(href) => { window.location.href = href; }}
+>
+	{@render children()}
+</DocsShell>

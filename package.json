@@ -48,6 +48,7 @@
   },
   "dependencies": {
 		"@upwell/docs-core": "workspace:*",
+		"@upwell/docs-kit": "workspace:*",
 		"@upwell/docs-ui": "workspace:*",
 		"@upwell/docs-tools": "workspace:*",
     "@upwell/docs-vite": "workspace:*",
