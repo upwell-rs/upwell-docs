@@ -1,0 +1,21 @@
+{
+	"name": "@upwell/docs-ui",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./styles.css": "./src/styles.css",
+		"./context": "./src/context.ts",
+		"./types": "./src/types.ts",
+		"./search": "./src/search/index.svelte.ts",
+		"./search/match": "./src/search/match.ts",
+		"./search/query": "./src/search/query.ts",
+		"./search/rank": "./src/search/rank.ts"
+	},
+	"peerDependencies": {
+		"svelte": "^5.0.0",
+		"@tanstack/svelte-hotkeys": "^0.10.0",
+		"svelte-sonner": "^1.2.1"
+	}
+}

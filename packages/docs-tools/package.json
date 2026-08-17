@@ -1,0 +1,21 @@
+{
+	"name": "@upwell/docs-tools",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./artifact/load": "./src/artifact/load.ts",
+		"./rustdoc/symbols": "./src/rustdoc/symbols.ts",
+		"./render/document-index": "./src/render/document-index.ts",
+		"./render/preprocessors": "./src/render/preprocessors.ts"
+	},
+	"dependencies": {
+		"@upwell/docs-core": "workspace:*"
+	},
+	"peerDependencies": {
+		"mdsvex": "^0.12.0",
+		"shiki": "^4.0.0",
+		"svelte": "^5.0.0"
+	}
+}

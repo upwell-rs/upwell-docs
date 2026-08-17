@@ -11,12 +11,16 @@
 
 import { getContext, setContext } from 'svelte';
 
-import { docsConfig, type DocsVersion, latestVersion } from './config.ts';
+import { setDocsVersion as setUiDocsVersion } from '@upwell/docs-ui/context';
+
+import { type DocsVersion, latestVersion } from './config.ts';
+import { docsConfig } from 'virtual:docs-config';
 
 const KEY = Symbol('framework-docs-version');
 
 export function setDocsVersion(version: () => DocsVersion): void {
 	setContext(KEY, version);
+	setUiDocsVersion(version);
 }
 
 /**

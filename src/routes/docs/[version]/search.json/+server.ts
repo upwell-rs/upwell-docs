@@ -12,7 +12,8 @@
 import { json } from '@sveltejs/kit';
 import { error } from '@sveltejs/kit';
 
-import { docsConfig, resolveVersion } from '#lib/docs/config';
+import { resolveVersion } from '#lib/docs/config';
+import { docsConfig } from 'virtual:docs-config';
 import { buildSearchIndex } from '#lib/server/search-index';
 import type { EntryGenerator, RequestHandler } from './$types';
 

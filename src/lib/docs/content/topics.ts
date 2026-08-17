@@ -14,7 +14,8 @@
  * describe it without anyone maintaining a second list.
  */
 
-import { docsConfig, type DocsTopic } from '../config.ts';
+import { type DocsTopic } from '../config.ts';
+import { docsConfig } from 'virtual:docs-config';
 
 export type Topic = DocsTopic;
 

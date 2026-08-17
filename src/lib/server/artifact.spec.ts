@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { docsConfig, latestVersion, resolveVersion } from '../docs/config.ts';
+import { docsConfig } from '../../../docs.config.ts';
+import { latestVersion, resolveVersion } from '../docs/config.ts';
 import { artifactVersion, getArtifact } from './artifact.ts';
 
 describe('artifact lookup', () => {

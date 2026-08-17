@@ -6,7 +6,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import Example from '#lib/docs/components/Example.svelte';
+	import { Example } from '#lib/docs';
 </script>
 
 # Components and injection

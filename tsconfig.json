@@ -1,29 +1,29 @@
 {
-	"extends": "$app/tsconfig",
-	"compilerOptions": {
-		"rewriteRelativeImportExtensions": true,
-		"sourceMap": true,
-		"strict": true,
-		// TypeScript resolves the package.json `imports` field literally: `#lib/*` -> `./src/lib/*`
-		// only matches a file that exists under that exact name, with no extension substitution. The
-		// bundler does substitute extensions, so `#lib/paraglide/runtime` resolves at build time but
-		// not for `tsc`/`svelte-check`. Mirroring the subpath as a `paths` entry (which does
-		// substitute extensions) keeps the type checker in agreement with the bundler.
-		"paths": {
-			"#lib": [
-				"./src/lib/index.ts"
-			],
-			"#lib/*": [
-				"./src/lib/*"
-			],
-			"#tools/*": [
-				"./tools/*"
-			]
-		}
-	},
-	"include": [
-		"src",
-		"tools",
-		"*.config.ts"
-	]
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": true,
+    "strict": true,
+    // TypeScript resolves the package.json `imports` field literally: `#lib/*` -> `./src/lib/*`
+    // only matches a file that exists under that exact name, with no extension substitution. The
+    // bundler does substitute extensions, so `#lib/paraglide/runtime` resolves at build time but
+    // not for `tsc`/`svelte-check`. Mirroring the subpath as a `paths` entry (which does
+    // substitute extensions) keeps the type checker in agreement with the bundler.
+    "paths": {
+      "@upwell/docs-core": ["./packages/docs-core/src/index.ts"],
+      "@upwell/docs-core/*": ["./packages/docs-core/src/*"],
+      "@upwell/docs-vite": ["./packages/docs-vite/src/index.ts"],
+      "@upwell/docs-vite/*": ["./packages/docs-vite/src/*"],
+      "@upwell/docs-tools": ["./packages/docs-tools/src/index.ts"],
+      "@upwell/docs-tools/*": ["./packages/docs-tools/src/*"],
+      "#lib": ["./src/lib/index.ts"],
+      "#lib/*": ["./src/lib/*"]
+    }
+  },
+  "include": [
+    "src",
+    "packages/docs-vite/src",
+    "packages/docs-tools/src",
+    "*.config.ts"
+  ]
 }

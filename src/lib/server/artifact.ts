@@ -9,13 +9,27 @@
  * runs at build time and its cost is paid once for the whole site.
  */
 
-import process from 'node:process';
+import process from "node:process";
 
-import { docsConfig, isSymbolEnrichmentEligible, type DocsVersion } from '#lib/docs/config';
-import { findSymbolPage } from '#lib/docs/content/symbol-pages';
-import type { SymbolInfo, SymbolLink, SymbolMember } from '#lib/docs/symbol.svelte';
-import { artifactDir, findSymbol, type LoadedArtifact, loadArtifact, symbolSourceLink } from '#tools/docs/artifact/load';
-import { MEMBER_SYMBOL_KINDS, type Symbol } from '#tools/docs/rustdoc/symbols';
+import { isSymbolEnrichmentEligible, type DocsVersion } from "#lib/docs/config";
+import { docsConfig } from "virtual:docs-config";
+import { findSymbolPage } from "#lib/docs/content/symbol-pages";
+import type {
+  SymbolInfo,
+  SymbolLink,
+  SymbolMember,
+} from "#lib/docs/symbol.svelte";
+import {
+  artifactDir,
+  findSymbol,
+  type LoadedArtifact,
+  loadArtifact,
+  symbolSourceLink,
+} from "@upwell/docs-tools/artifact/load";
+import {
+  MEMBER_SYMBOL_KINDS,
+  type Symbol,
+} from "@upwell/docs-tools/rustdoc/symbols";
 
 const cache = new Map<string, Promise<LoadedArtifact | null>>();
 
@@ -28,28 +42,33 @@ const cache = new Map<string, Promise<LoadedArtifact | null>>();
  * the code lens: guides still render and code is still highlighted, but identifiers are not
  * annotated and symbol pages have no facts to show, so they are not generated for it.
  */
-export function getArtifact(version: DocsVersion): Promise<LoadedArtifact | null> {
-	if (!isSymbolEnrichmentEligible(docsConfig, version)) {
-		return Promise.resolve(null);
-	}
+export function getArtifact(
+  version: DocsVersion,
+): Promise<LoadedArtifact | null> {
+  if (!isSymbolEnrichmentEligible(docsConfig, version)) {
+    return Promise.resolve(null);
+  }
 
-	const key = artifactVersion(version);
-	const existing = cache.get(key);
+  const key = artifactVersion(version);
+  const existing = cache.get(key);
 
-	if (existing) {
-		return existing;
-	}
+  if (existing) {
+    return existing;
+  }
 
-	const loading = loadArtifact(artifactDir(process.cwd(), docsConfig.cacheDir, key), key).catch(() => null);
+  const loading = loadArtifact(
+    artifactDir(process.cwd(), docsConfig.cacheDir, key),
+    key,
+  ).catch(() => null);
 
-	cache.set(key, loading);
+  cache.set(key, loading);
 
-	return loading;
+  return loading;
 }
 
 /** Artifact identity is the public documentation release. Source provenance stays in its manifest. */
 export function artifactVersion(version: DocsVersion): string {
-	return version.releaseVersion.raw;
+  return version.releaseVersion.raw;
 }
 
 /**
@@ -59,30 +78,35 @@ export function artifactVersion(version: DocsVersion): string {
  * not the same as an authored mistake: a symbol page whose symbol does not exist fails the build,
  * because the build lists the pages and checks each one.
  */
-export async function getSymbolInfo(version: DocsVersion, symbolPath: string): Promise<SymbolInfo | undefined> {
-	const artifact = await getArtifact(version);
-	const symbol = artifact ? findSymbol(artifact, symbolPath) : undefined;
+export async function getSymbolInfo(
+  version: DocsVersion,
+  symbolPath: string,
+): Promise<SymbolInfo | undefined> {
+  const artifact = await getArtifact(version);
+  const symbol = artifact ? findSymbol(artifact, symbolPath) : undefined;
 
-	if (!artifact || !symbol) {
-		return undefined;
-	}
+  if (!artifact || !symbol) {
+    return undefined;
+  }
 
-	return {
-		path: symbolPath,
-		canonicalPath: symbol.path,
-		name: symbol.name,
-		kind: symbol.kind,
-		crate: symbol.crate,
-		signature: symbol.signature,
-		doc: symbol.doc,
-		feature: symbol.feature,
-		deprecation: symbol.deprecation,
-		sourceHref: symbolSourceLink(artifact, symbol),
-		source: symbol.source,
-		implementations: symbol.implementations,
-		implementors: symbol.implementors.map((path) => toLink(artifact, version, path)),
-		members: collectMembers(artifact, symbol)
-	};
+  return {
+    path: symbolPath,
+    canonicalPath: symbol.path,
+    name: symbol.name,
+    kind: symbol.kind,
+    crate: symbol.crate,
+    signature: symbol.signature,
+    doc: symbol.doc,
+    feature: symbol.feature,
+    deprecation: symbol.deprecation,
+    sourceHref: symbolSourceLink(artifact, symbol),
+    source: symbol.source,
+    implementations: symbol.implementations,
+    implementors: symbol.implementors.map((path) =>
+      toLink(artifact, version, path),
+    ),
+    members: collectMembers(artifact, symbol),
+  };
 }
 
 /**
@@ -91,38 +115,55 @@ export async function getSymbolInfo(version: DocsVersion, symbolPath: string): P
  * The page cannot do this itself: resolving a canonical path to the spelling a reader would use, and
  * asking whether the site documents it, both need the index, which never leaves the server.
  */
-function toLink(artifact: LoadedArtifact, version: DocsVersion, canonical: string): SymbolLink {
-	const path = preferredPath(artifact, canonical);
-	const page = findSymbolPage(path.replaceAll('::', '/'), version.releaseVersion);
+function toLink(
+  artifact: LoadedArtifact,
+  version: DocsVersion,
+  canonical: string,
+): SymbolLink {
+  const path = preferredPath(artifact, canonical);
+  const page = findSymbolPage(
+    path.replaceAll("::", "/"),
+    version.releaseVersion,
+  );
 
-	return {
-		path,
-		name: path.split('::').pop() ?? path,
-		href: page ? `/docs/${version.id}/symbols/${page.segments}` : null
-	};
+  return {
+    path,
+    name: path.split("::").pop() ?? path,
+    href: page ? `/docs/${version.id}/symbols/${page.segments}` : null,
+  };
 }
 
 /** The path a reader would write for a symbol: fewest segments, then shortest. */
 function preferredPath(artifact: LoadedArtifact, canonical: string): string {
-	let best = canonical;
+  let best = canonical;
 
-	for (const [reachable, target] of Object.entries(artifact.index.paths)) {
-		if (target !== canonical) {
-			continue;
-		}
+  for (const [reachable, target] of Object.entries(artifact.index.paths)) {
+    if (target !== canonical) {
+      continue;
+    }
 
-		const bySegments = reachable.split('::').length - best.split('::').length;
+    const bySegments = reachable.split("::").length - best.split("::").length;
 
-		if (bySegments < 0 || (bySegments === 0 && reachable.length < best.length)) {
-			best = reachable;
-		}
-	}
+    if (
+      bySegments < 0 ||
+      (bySegments === 0 && reachable.length < best.length)
+    ) {
+      best = reachable;
+    }
+  }
 
-	return best;
+  return best;
 }
 
 /** Order members are listed in: the shape of the type first, then how it is built, then behaviour. */
-const MEMBER_ORDER: readonly string[] = ['assoc_type', 'assoc_const', 'struct_field', 'variant', 'assoc_fn', 'method'];
+const MEMBER_ORDER: readonly string[] = [
+  "assoc_type",
+  "assoc_const",
+  "struct_field",
+  "variant",
+  "assoc_fn",
+  "method",
+];
 
 /**
  * The members declared directly on a symbol.
@@ -131,33 +172,41 @@ const MEMBER_ORDER: readonly string[] = ['assoc_type', 'assoc_const', 'struct_fi
  * its path under its owner, so the index needs no second edge to say what belongs to what. Only
  * direct members are taken — a nested path would be a member of a member, which Rust does not have.
  */
-function collectMembers(artifact: LoadedArtifact, owner: Symbol): SymbolMember[] {
-	const prefix = `${owner.path}::`;
-	const members: { member: SymbolMember; rank: number }[] = [];
+function collectMembers(
+  artifact: LoadedArtifact,
+  owner: Symbol,
+): SymbolMember[] {
+  const prefix = `${owner.path}::`;
+  const members: { member: SymbolMember; rank: number }[] = [];
 
-	for (const symbol of artifact.index.symbols) {
-		if (!symbol.path.startsWith(prefix) || symbol.path.slice(prefix.length).includes('::')) {
-			continue;
-		}
+  for (const symbol of artifact.index.symbols) {
+    if (
+      !symbol.path.startsWith(prefix) ||
+      symbol.path.slice(prefix.length).includes("::")
+    ) {
+      continue;
+    }
 
-		if (!MEMBER_SYMBOL_KINDS.has(symbol.kind)) {
-			continue;
-		}
+    if (!MEMBER_SYMBOL_KINDS.has(symbol.kind)) {
+      continue;
+    }
 
-		members.push({
-			rank: MEMBER_ORDER.indexOf(symbol.kind),
-			member: {
-				name: symbol.name,
-				kind: symbol.kind,
-				signature: symbol.signature,
-				doc: symbol.doc,
-				deprecated: symbol.deprecation !== null,
-				sourceHref: symbolSourceLink(artifact, symbol)
-			}
-		});
-	}
+    members.push({
+      rank: MEMBER_ORDER.indexOf(symbol.kind),
+      member: {
+        name: symbol.name,
+        kind: symbol.kind,
+        signature: symbol.signature,
+        doc: symbol.doc,
+        deprecated: symbol.deprecation !== null,
+        sourceHref: symbolSourceLink(artifact, symbol),
+      },
+    });
+  }
 
-	return members
-		.sort((a, b) => a.rank - b.rank || a.member.name.localeCompare(b.member.name))
-		.map((entry) => entry.member);
+  return members
+    .sort(
+      (a, b) => a.rank - b.rank || a.member.name.localeCompare(b.member.name),
+    )
+    .map((entry) => entry.member);
 }

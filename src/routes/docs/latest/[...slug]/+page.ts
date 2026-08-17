@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 
-import { docsConfig, latestVersion } from '#lib/docs/config';
+import { latestVersion } from '#lib/docs/config';
+import { docsConfig } from 'virtual:docs-config';
 import { pagesFor } from '#lib/docs/content/pages';
 import { symbolPagesFor } from '#lib/docs/content/symbol-pages';
 import type { EntryGenerator, PageLoad } from './$types';

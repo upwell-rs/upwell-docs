@@ -1,6 +1,6 @@
 <script lang="ts">
 	import favicon from '#lib/assets/favicon.svg';
-	import '#lib/docs/styles/docs.css';
+	import '@upwell/docs-ui/styles.css';
 
 	let { children } = $props();
 </script>

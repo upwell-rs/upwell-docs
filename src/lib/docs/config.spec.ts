@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { docsConfig, isArtifactReadOnly, isSymbolEnrichmentEligible, latestVersion, resolveVersion } from './config.ts';
+import { docsConfig } from '../../../docs.config.ts';
+import { isArtifactReadOnly, isSymbolEnrichmentEligible, latestVersion, resolveVersion } from './config.ts';
 
 describe('documentation releases', () => {
 	it('resolves latest to the explicit public release', () => {

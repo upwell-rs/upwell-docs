@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { docsConfig, latestVersion } from '../config.ts';
+import { docsConfig } from '../../../../docs.config.ts';
+import { latestVersion } from '../config.ts';
 import { buildGuideTree, navigationLeaves } from './navigation-tree.ts';
 import { symbolPagesFor } from './symbol-pages.ts';
 import type { DocSummary, NavigationNode, SymbolPageSummary } from './types.ts';

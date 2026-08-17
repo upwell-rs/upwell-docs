@@ -11,20 +11,19 @@
 -->
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { setDocsNotifier } from '@upwell/docs-ui/context';
 
-	import Breadcrumbs from '#lib/docs/components/Breadcrumbs.svelte';
-	import DocsArticle from '#lib/docs/components/DocsArticle.svelte';
-	import DocsHeader from '#lib/docs/components/DocsHeader.svelte';
-	import DocsSidebar from '#lib/docs/components/DocsSidebar.svelte';
-	import MobileNav from '#lib/docs/components/MobileNav.svelte';
-	import Notifications from '#lib/docs/components/Notifications.svelte';
-	import PageNav from '#lib/docs/components/PageNav.svelte';
-	import ReferenceNote from '#lib/docs/components/ReferenceNote.svelte';
-	import Search from '#lib/docs/components/Search.svelte';
-	import Shortcuts from '#lib/docs/components/Shortcuts.svelte';
-	import TableOfContents from '#lib/docs/components/TableOfContents.svelte';
+	import { Breadcrumbs, DocsArticle, DocsHeader, MobileNav, Notifications, PageNav, ReferenceNote, Search, Shortcuts, TableOfContents } from '@upwell/docs-ui';
+	import { docsConfig } from 'virtual:docs-config';
+	import DocsSidebar from '#lib/docs/integrations/DocsSidebar.svelte';
+	import { findPage } from '#lib/docs/content/pages';
+	import { findSymbolPage } from '#lib/docs/content/symbol-pages';
 	import type { DocSummary, PageChrome } from '#lib/docs/content/types';
 	import { setDocsVersion } from '#lib/docs/version.svelte';
+	import { notify } from '#lib/docs/notify.svelte';
+	import { toaster } from '#lib/docs/notify.svelte';
+	import { searchIndex } from '#lib/docs/search/index.svelte';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -33,6 +32,7 @@
 	let search = $state<ReturnType<typeof Search>>();
 
 	setDocsVersion(() => data.version);
+	setDocsNotifier(notify);
 
 	/**
 	 * Page-specific chrome, read from the merged page data.
@@ -46,17 +46,52 @@
 	const next = $derived(page.data.next as DocSummary | undefined);
 
 	const slug = $derived(current?.slug ?? '');
+
+	function changeVersion(id: string): void {
+		const target = docsConfig.versions.find((candidate) => candidate.id === id);
+
+		if (!target) return;
+
+		const available = slug.startsWith('symbols/')
+			? Boolean(findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
+			: Boolean(findPage(slug, target.releaseVersion));
+
+		window.location.href = `/docs/${target.id}/${available ? slug : docsConfig.landingSlug}`;
+	}
+
+	function navigate(href: string, external = false): void {
+		if (external) {
+			window.location.href = href;
+			return;
+		}
+
+		void goto(href);
+	}
 </script>
 
-	<DocsHeader version={data.version} {slug} onsearch={() => search?.open()}>
-	{#snippet nav()}
-		<MobileNav version={data.version} current={slug} {article} />
-	{/snippet}
-</DocsHeader>
+		<DocsHeader
+			version={data.version}
+			name={docsConfig.framework.name}
+			repository={docsConfig.framework.repository}
+			versions={docsConfig.versions}
+			onversionchange={changeVersion}
+			onsearch={() => search?.open()}
+		>
+		{#snippet nav()}
+			<MobileNav title={data.version.label} pathname={page.url.pathname}>
+				{#snippet navigation()}
+					<DocsSidebar version={data.version} current={slug} />
+				{/snippet}
+				{#snippet toc()}
+					<TableOfContents {article} key={page.url.pathname} />
+				{/snippet}
+			</MobileNav>
+		{/snippet}
+	</DocsHeader>
 
-<Shortcuts version={data.version} {previous} {next} onsearch={() => search?.open()} />
-<Search bind:this={search} version={data.version} />
-<Notifications />
+	<Shortcuts {previous} {next} homeHref={`/docs/${data.version.id}`} pageHref={(slug) => `/docs/${data.version.id}/${slug}`} {navigate} onsearch={() => search?.open()} />
+	<Search bind:this={search} version={data.version} {searchIndex} searchHref={(id) => `/docs/${id}/search.json`} {navigate} />
+	<Notifications requested={toaster.requested} />
 
 <div class="layout">
 	<aside class="layout__sidebar">

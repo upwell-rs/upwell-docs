@@ -1,0 +1,15 @@
+{
+	"name": "@upwell/docs-vite",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./config": "./src/config.ts",
+		"./frontmatter": "./src/frontmatter.ts",
+		"./manifest": "./src/manifest.ts"
+	},
+	"peerDependencies": {
+		"vite": "^8.0.0"
+	}
+}

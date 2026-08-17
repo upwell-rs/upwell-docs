@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-import { docsConfig, latestVersion } from '../../lib/docs/config.ts';
+import { docsConfig } from '../../../docs.config.ts';
+import { latestVersion } from '../../lib/docs/config.ts';
 
 /**
  * The release under test is read from the configuration rather than written into each URL.

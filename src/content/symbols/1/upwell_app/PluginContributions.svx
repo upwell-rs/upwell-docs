@@ -5,9 +5,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import SymbolMembers from '#lib/docs/components/SymbolMembers.svelte';
-	import SymbolMeta from '#lib/docs/components/SymbolMeta.svelte';
-	import SymbolSignature from '#lib/docs/components/SymbolSignature.svelte';
+	import { SymbolMembers, SymbolMeta, SymbolSignature } from '#lib/docs';
 </script>
 
 # `PluginContributions`

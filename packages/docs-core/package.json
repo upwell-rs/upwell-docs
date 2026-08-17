@@ -1,0 +1,16 @@
+{
+	"name": "@upwell/docs-core",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./config": "./src/config.ts",
+		"./semver": "./src/semver.ts",
+		"./applicability": "./src/applicability.ts",
+		"./overlay": "./src/overlay.ts",
+		"./search/match": "./src/search/match.ts",
+		"./search/query": "./src/search/query.ts",
+		"./search/rank": "./src/search/rank.ts"
+	}
+}

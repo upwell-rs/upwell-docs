@@ -8,7 +8,8 @@
 
 import { redirect } from '@sveltejs/kit';
 
-import { docsConfig, latestVersion } from '#lib/docs/config';
+import { latestVersion } from '#lib/docs/config';
+import { docsConfig } from 'virtual:docs-config';
 import type { PageLoad } from './$types';
 
 export const prerender = true;

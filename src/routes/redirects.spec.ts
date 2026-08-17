@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { docsConfig, latestVersion } from '../lib/docs/config.ts';
+import { docsConfig } from '../../docs.config.ts';
+import { latestVersion } from '../lib/docs/config.ts';
 
 describe('documentation redirects', () => {
 	it('targets the explicit release landing page', () => {

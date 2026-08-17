@@ -8,7 +8,7 @@
 
 import { error } from '@sveltejs/kit';
 
-import { docsConfig } from '#lib/docs/config';
+import { docsConfig } from 'virtual:docs-config';
 import { findPage, loadPage, pagesFor, siblings } from '#lib/docs/content/pages';
 import type { EntryGenerator, PageLoad } from './$types';
 

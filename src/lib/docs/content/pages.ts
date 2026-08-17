@@ -15,7 +15,7 @@
  * page's frontmatter on every route; only the page being read needs its markup. The frontmatter
  * comes from a build-time manifest that imports nothing, so the components can be code-split behind
  * a lazy glob — where importing metadata from the compiled modules would drag every page's markup
- * into a single chunk. See `tools/docs/content/manifest.ts`.
+ * into a single chunk. See `@upwell/docs-vite/manifest`.
  */
 
 import type { Component } from 'svelte';

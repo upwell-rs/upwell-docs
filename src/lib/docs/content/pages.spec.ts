@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { docsConfig, latestVersion } from '../config.ts';
+import { docsConfig } from '../../../../docs.config.ts';
+import { latestVersion } from '../config.ts';
 import { parseVersion } from '../version/semver.ts';
 import { buildGuideTree, navigationLeaves } from './navigation-tree.ts';
 import { findPage, guideLeafOrder, pagesFor, siblings, slugs } from './pages.ts';

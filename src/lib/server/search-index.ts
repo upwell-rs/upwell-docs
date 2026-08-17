@@ -20,186 +20,218 @@
  * way it loses the code lens, rather than losing search entirely.
  */
 
-import path from 'node:path';
-import process from 'node:process';
+import path from "node:path";
+import process from "node:process";
 
-import type { DocsVersion } from '#lib/docs/config';
-import { pageSource, pagesFor } from '#lib/docs/content/pages';
-import { symbolPageSource, symbolPagesFor } from '#lib/docs/content/symbol-pages';
-import { indexedDocuments } from '#tools/docs/render/document-index';
-import { getArtifact } from './artifact.ts';
+import type { DocsVersion } from "#lib/docs/config";
+import { pageSource, pagesFor } from "#lib/docs/content/pages";
+import {
+  symbolPageSource,
+  symbolPagesFor,
+} from "#lib/docs/content/symbol-pages";
+import { indexedDocuments } from "@upwell/docs-tools/render/document-index";
+import { getArtifact } from "./artifact.ts";
 
 /** One searchable entry. */
 export interface SearchRecord {
-	/** Where selecting it goes. Within the site, unless `external`. */
-	readonly href: string;
-	readonly title: string;
-	/** `guide`, `symbol-page` or `symbol`. */
-	readonly kind: 'guide' | 'symbol-page' | 'symbol';
-	/** For a symbol, what it is — a struct, a variant, a field. Used to rank incidental ones down. */
-	readonly symbolKind?: string;
-	/** Secondary line: a description, a symbol path, or the owning crate. */
-	readonly detail?: string;
-	/** Prose to match against. Absent for a symbol with no page of its own. */
-	readonly text?: string;
-	/** Section anchors within the page, so a result can point at the right part of it. */
-	readonly headings?: readonly { id: string; text: string }[];
-	/**
-	 * The signature of a symbol nobody has written a page for.
-	 *
-	 * Shown in the result itself, because there is nowhere on the site to send the reader — and the
-	 * alternative, which this replaced, was a link to a page that does not exist.
-	 */
-	readonly signature?: string;
-	/** True when `href` leaves the site: the framework repository, for an undocumented symbol. */
-	readonly external?: boolean;
+  /** Where selecting it goes. Within the site, unless `external`. */
+  readonly href: string;
+  readonly title: string;
+  /** `guide`, `symbol-page` or `symbol`. */
+  readonly kind: "guide" | "symbol-page" | "symbol";
+  /** For a symbol, what it is — a struct, a variant, a field. Used to rank incidental ones down. */
+  readonly symbolKind?: string;
+  /** Secondary line: a description, a symbol path, or the owning crate. */
+  readonly detail?: string;
+  /** Prose to match against. Absent for a symbol with no page of its own. */
+  readonly text?: string;
+  /** Section anchors within the page, so a result can point at the right part of it. */
+  readonly headings?: readonly { id: string; text: string }[];
+  /**
+   * The signature of a symbol nobody has written a page for.
+   *
+   * Shown in the result itself, because there is nowhere on the site to send the reader — and the
+   * alternative, which this replaced, was a link to a page that does not exist.
+   */
+  readonly signature?: string;
+  /** True when `href` leaves the site: the framework repository, for an undocumented symbol. */
+  readonly external?: boolean;
 }
 
 export interface SearchIndex {
-	readonly version: string;
-	readonly records: readonly SearchRecord[];
-	/** True when the release had no artifact, so symbols are absent. */
-	readonly degraded: boolean;
+  readonly version: string;
+  readonly records: readonly SearchRecord[];
+  /** True when the release had no artifact, so symbols are absent. */
+  readonly degraded: boolean;
 }
 
 /** Resolves a project-rooted manifest file to the compiler's absolute document key. */
-export function documentKey(file: string, projectRoot: string = process.cwd()): string {
-	return path.resolve(projectRoot, file.slice(1));
+export function documentKey(
+  file: string,
+  projectRoot: string = process.cwd(),
+): string {
+  return path.resolve(projectRoot, file.slice(1));
 }
 
 /** Selects the compiled prose for the exact content variant chosen for a release. */
 export function effectiveDocument<T extends { file: string }>(
-	documents: readonly T[],
-	source: string | undefined,
-	projectRoot: string = process.cwd()
+  documents: readonly T[],
+  source: string | undefined,
+  projectRoot: string = process.cwd(),
 ): T | undefined {
-	if (!source) {
-		return undefined;
-	}
+  if (!source) {
+    return undefined;
+  }
 
-	const wanted = documentKey(source, projectRoot);
+  const wanted = documentKey(source, projectRoot);
 
-	return documents.find((document) => path.resolve(document.file) === wanted);
+  return documents.find((document) => path.resolve(document.file) === wanted);
 }
 
-export async function buildSearchIndex(version: DocsVersion): Promise<SearchIndex> {
-	const documents = indexedDocuments();
+export async function buildSearchIndex(
+  version: DocsVersion,
+): Promise<SearchIndex> {
+  const documents = indexedDocuments();
 
-	const records: SearchRecord[] = [];
+  const records: SearchRecord[] = [];
 
-	for (const page of pagesFor(version.releaseVersion)) {
-		if (page.draft) {
-			continue;
-		}
+  for (const page of pagesFor(version.releaseVersion)) {
+    if (page.draft) {
+      continue;
+    }
 
-		const source = pageSource(page.slug, version.releaseVersion);
-		const document = effectiveDocument(documents, source);
+    const source = pageSource(page.slug, version.releaseVersion);
+    const document = effectiveDocument(documents, source);
 
-		records.push({
-			href: `/docs/${version.id}/${page.slug}`,
-			title: page.title,
-			kind: 'guide',
-			detail: page.description,
-			text: document?.text,
-			headings: document?.headings.map((heading) => ({ id: heading.id, text: heading.text }))
-		});
-	}
+    records.push({
+      href: `/docs/${version.id}/${page.slug}`,
+      title: page.title,
+      kind: "guide",
+      detail: page.description,
+      text: document?.text,
+      headings: document?.headings.map((heading) => ({
+        id: heading.id,
+        text: heading.text,
+      })),
+    });
+  }
 
-	const artifact = await getArtifact(version);
-	const pages = symbolPagesFor(version.releaseVersion).filter((page) => !page.draft);
+  const artifact = await getArtifact(version);
+  const pages = symbolPagesFor(version.releaseVersion).filter(
+    (page) => !page.draft,
+  );
 
-	if (!artifact) {
-		// Without an artifact there is no canonical path to key on, so symbol pages are listed as they
-		// stand and framework symbols are absent — the same degradation as the code lens.
-		for (const page of pages) {
-			records.push(fromPage(version, page, documentForSymbol(page.segments)));
-		}
+  if (!artifact) {
+    // Without an artifact there is no canonical path to key on, so symbol pages are listed as they
+    // stand and framework symbols are absent — the same degradation as the code lens.
+    for (const page of pages) {
+      records.push(fromPage(version, page, documentForSymbol(page.segments)));
+    }
 
-		return { version: version.id, records, degraded: true };
-	}
+    return { version: version.id, records, degraded: true };
+  }
 
-	/**
-	 * Symbol pages by the canonical path of the symbol they document.
-	 *
-	 * A page's location names one path out of several a symbol may be reachable at, so it is resolved
-	 * through the index before being used as a key — otherwise a page and its symbol never meet, and
-	 * both end up in the results.
-	 */
-	const pageByCanonical = new Map<string, (typeof pages)[number]>();
+  /**
+   * Symbol pages by the canonical path of the symbol they document.
+   *
+   * A page's location names one path out of several a symbol may be reachable at, so it is resolved
+   * through the index before being used as a key — otherwise a page and its symbol never meet, and
+   * both end up in the results.
+   */
+  const pageByCanonical = new Map<string, (typeof pages)[number]>();
 
-	for (const page of pages) {
-		pageByCanonical.set(artifact.index.paths[page.symbol] ?? page.symbol, page);
-	}
+  for (const page of pages) {
+    pageByCanonical.set(artifact.index.paths[page.symbol] ?? page.symbol, page);
+  }
 
-	for (const symbol of artifact.index.symbols) {
-		const preferred = preferredPath(artifact.index.paths, symbol.path);
-		const page = pageByCanonical.get(symbol.path);
+  for (const symbol of artifact.index.symbols) {
+    const preferred = preferredPath(artifact.index.paths, symbol.path);
+    const page = pageByCanonical.get(symbol.path);
 
-		if (page) {
-			records.push({ ...fromPage(version, page, documentForSymbol(page.segments)), symbolKind: symbol.kind, detail: preferred });
+    if (page) {
+      records.push({
+        ...fromPage(version, page, documentForSymbol(page.segments)),
+        symbolKind: symbol.kind,
+        detail: preferred,
+      });
 
-			continue;
-		}
+      continue;
+    }
 
-		// Nobody has written a page for this symbol, so there is nowhere on the site to send a reader.
-		// The result carries the signature and links to source, which is of more use than a 404.
-		const source = symbol.source
-			? artifact.manifest.sourceLinkTemplate
-					.replaceAll('{path}', symbol.source.file)
-					.replaceAll('{line}', String(symbol.source.line))
-			: undefined;
+    // Nobody has written a page for this symbol, so there is nowhere on the site to send a reader.
+    // The result carries the signature and links to source, which is of more use than a 404.
+    const source = symbol.source
+      ? artifact.manifest.sourceLinkTemplate
+          .replaceAll("{path}", symbol.source.file)
+          .replaceAll("{line}", String(symbol.source.line))
+      : undefined;
 
-		records.push({
-			href: source ?? `/docs/${version.id}/symbols/${preferred.replaceAll('::', '/')}`,
-			title: symbol.name,
-			kind: 'symbol',
-			symbolKind: symbol.kind,
-			detail: preferred,
-			signature: symbol.signature ?? undefined,
-			external: source !== undefined
-		});
-	}
+    records.push({
+      href:
+        source ??
+        `/docs/${version.id}/symbols/${preferred.replaceAll("::", "/")}`,
+      title: symbol.name,
+      kind: "symbol",
+      symbolKind: symbol.kind,
+      detail: preferred,
+      signature: symbol.signature ?? undefined,
+      external: source !== undefined,
+    });
+  }
 
-	return { version: version.id, records, degraded: false };
+  return { version: version.id, records, degraded: false };
 
-	function documentForSymbol(segments: string): (typeof documents)[number] | undefined {
-		const source = symbolPageSource(segments, version.releaseVersion);
+  function documentForSymbol(
+    segments: string,
+  ): (typeof documents)[number] | undefined {
+    const source = symbolPageSource(segments, version.releaseVersion);
 
-		return effectiveDocument(documents, source);
-	}
+    return effectiveDocument(documents, source);
+  }
 }
 
 /** A record for a hand-written symbol page. */
 function fromPage(
-	version: DocsVersion,
-	page: { segments: string; title: string; symbol: string },
-	document: { text: string; headings: readonly { id: string; text: string }[] } | undefined
+  version: DocsVersion,
+  page: { segments: string; title: string; symbol: string },
+  document:
+    | { text: string; headings: readonly { id: string; text: string }[] }
+    | undefined,
 ): SearchRecord {
-	return {
-		href: `/docs/${version.id}/symbols/${page.segments}`,
-		title: page.title,
-		kind: 'symbol-page',
-		detail: page.symbol,
-		text: document?.text,
-		headings: document?.headings.map((heading) => ({ id: heading.id, text: heading.text }))
-	};
+  return {
+    href: `/docs/${version.id}/symbols/${page.segments}`,
+    title: page.title,
+    kind: "symbol-page",
+    detail: page.symbol,
+    text: document?.text,
+    headings: document?.headings.map((heading) => ({
+      id: heading.id,
+      text: heading.text,
+    })),
+  };
 }
 
 /** The path a reader would write: fewest segments, then shortest. */
-function preferredPath(paths: Readonly<Record<string, string>>, canonical: string): string {
-	let best = canonical;
+function preferredPath(
+  paths: Readonly<Record<string, string>>,
+  canonical: string,
+): string {
+  let best = canonical;
 
-	for (const [reachable, target] of Object.entries(paths)) {
-		if (target !== canonical) {
-			continue;
-		}
+  for (const [reachable, target] of Object.entries(paths)) {
+    if (target !== canonical) {
+      continue;
+    }
 
-		const bySegments = reachable.split('::').length - best.split('::').length;
+    const bySegments = reachable.split("::").length - best.split("::").length;
 
-		if (bySegments < 0 || (bySegments === 0 && reachable.length < best.length)) {
-			best = reachable;
-		}
-	}
+    if (
+      bySegments < 0 ||
+      (bySegments === 0 && reachable.length < best.length)
+    ) {
+      best = reachable;
+    }
+  }
 
-	return best;
+  return best;
 }

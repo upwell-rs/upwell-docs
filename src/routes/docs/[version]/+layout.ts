@@ -10,7 +10,8 @@
 
 import { error } from '@sveltejs/kit';
 
-import { docsConfig, resolveVersion } from '#lib/docs/config';
+import { resolveVersion } from '#lib/docs/config';
+import { docsConfig } from 'virtual:docs-config';
 import type { LayoutLoad } from './$types';
 
 export const prerender = true;

@@ -1,13 +1,18 @@
 /**
  * Types for the build-time virtual modules.
  *
- * `virtual:docs-manifest` is produced by the Vite plugin in `tools/docs/content/manifest.ts` and has
- * no file on disk, so its shape has to be declared. The types are imported from the plugin rather
- * than restated, which is what stops this declaration from drifting away from what is generated.
+ * These modules are produced by Vite plugins and have no file on disk, so their shapes have to be
+ * declared. Types come from their source modules rather than being restated, preventing drift.
  */
 
 declare module 'virtual:docs-manifest' {
-	import type { DocsManifest } from '#tools/docs/content/manifest';
+	import type { DocsManifest } from '@upwell/docs-vite/manifest';
 
 	export const manifest: DocsManifest;
+}
+
+declare module 'virtual:docs-config' {
+	import type { DocsConfig } from '#lib/docs/config';
+
+	export const docsConfig: DocsConfig;
 }

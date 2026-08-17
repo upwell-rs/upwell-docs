@@ -7,7 +7,8 @@
 -->
 <script lang="ts">
 	import { page } from '$app/state';
-	import { docsConfig, latestVersion } from '#lib/docs/config';
+	import { latestVersion } from '#lib/docs/config';
+	import { docsConfig } from 'virtual:docs-config';
 
 	const suggestions = $derived(page.error?.suggestions ?? []);
 	const version = $derived(page.params.version ?? latestVersion(docsConfig).id);
