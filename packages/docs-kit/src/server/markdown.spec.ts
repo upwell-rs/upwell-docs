@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderRustdocMarkdown } from './markdown.ts';
+import { renderRustdocMarkdown, renderSourceMarkdown } from './markdown.ts';
 
 describe('renderRustdocMarkdown', () => {
 	it('renders common Rustdoc Markdown with shared server-side Shiki highlighting', async () => {
@@ -88,5 +88,39 @@ describe('renderRustdocMarkdown', () => {
 
 		expect(fenced).toContain('data-language="rust"');
 		expect(indented).toContain('data-language="text"');
+	});
+});
+
+describe('renderSourceMarkdown', () => {
+	// A README is written for its repository, so its links have files behind them. Only Rustdoc's
+	// intra-doc links have nowhere to point.
+	const context = {
+		resolveLink: (url: string) => (url.endsWith('.png') ? null : `/docs/upwell/1.0.0/src/${url.replace(/^\.\//, '')}`)
+	};
+
+	it('keeps a fragment, which already addresses the rendered page', async () => {
+		const html = await renderSourceMarkdown('See [usage](#usage).', context);
+
+		expect(html).toContain('href="#usage"');
+	});
+
+	it('resolves a repository-relative link through the caller', async () => {
+		const html = await renderSourceMarkdown('Read the [guide](./docs/guide.md).', context);
+
+		expect(html).toContain('href="/docs/upwell/1.0.0/src/docs/guide.md"');
+	});
+
+	it('reduces a link the caller cannot place to its label', async () => {
+		const html = await renderSourceMarkdown('A [diagram](assets/plan.png) of it.', context);
+
+		expect(html).toContain('diagram');
+		expect(html).not.toContain('href=');
+	});
+
+	it('leaves absolute links alone with or without a caller', async () => {
+		const html = await renderSourceMarkdown('[Home](https://example.com) and [mail](mailto:a@example.com).');
+
+		expect(html).toContain('href="https://example.com"');
+		expect(html).toContain('href="mailto:a@example.com"');
 	});
 });

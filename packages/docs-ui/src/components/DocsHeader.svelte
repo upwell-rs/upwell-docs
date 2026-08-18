@@ -9,6 +9,7 @@
 <script lang="ts">
 	import { onMount, type Snippet } from 'svelte';
 	import type { DocsVersion } from '../types.ts';
+	import ReleaseSelect from './ReleaseSelect.svelte';
 
 	interface Props {
 		version: DocsVersion;
@@ -50,23 +51,9 @@
 		<kbd class="header__key">/</kbd>
 	</button>
 
-	<nav class="header__nav" aria-label="Release">
-		<label class="header__label" for="docs-version">Release</label>
-		<select
-			id="docs-version"
-			class="header__select"
-			onchange={(event) => {
-				const selected = event.currentTarget;
-				onversionchange(selected.value);
-			}}
-		>
-			{#each versions as option (option.id)}
-				<option value={option.id} selected={option.id === version.id}>
-					{option.label}
-				</option>
-			{/each}
-		</select>
-	</nav>
+	<div class="header__nav">
+		<ReleaseSelect {version} {versions} {onversionchange} />
+	</div>
 
 		<a class="header__repo" href={repository} rel="noreferrer">Repository</a>
 </header>
@@ -145,11 +132,10 @@
 	/*
 	 * Chrome that a narrow header cannot afford.
 	 *
-	 * The shortcut hint is for a keyboard the reader does not have; the "Release" label repeats what
-	 * the select already shows; the repository link is a destination away from the documentation. All
-	 * three are the first things to go when four items compete for a phone's width — and dropping them
-	 * is what leaves room for the menu button, which is the one thing a narrow screen cannot do
-	 * without.
+	 * The shortcut hint is for a keyboard the reader does not have, and the repository link is a
+	 * destination away from the documentation. Search and the release selector are not dropped, only
+	 * moved: the menu button that replaces them carries both, because a phone that cannot search or
+	 * change release has lost function rather than clutter.
 	 */
 	.header__key {
 		display: none;
@@ -166,17 +152,8 @@
 		gap: 0.5rem;
 	}
 
-	.header__label {
-		display: none;
-		color: var(--text-subtle);
-		font-size: 0.75rem;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-	}
-
 	@media (min-width: 48rem) {
-		.header__key,
-		.header__label {
+		.header__key {
 			display: inline-block;
 		}
 	}
@@ -190,16 +167,6 @@
 		.header__areas a {
 			padding: 0 0.35rem;
 		}
-	}
-
-	.header__select {
-		padding: 0.2rem 0.4rem;
-		border: 1px solid var(--border);
-		border-radius: calc(var(--radius) - 2px);
-		background: var(--surface-raised);
-		color: var(--text);
-		font: inherit;
-		font-size: 0.8125rem;
 	}
 
 	.header__repo {

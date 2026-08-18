@@ -613,6 +613,25 @@ test('search highlights what matched', async ({ page }) => {
 	await expect(page.locator('.search__result mark').first()).toBeVisible();
 });
 
+test('a phone reaches search and release selection through the menu', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 780 });
+	await page.goto(`/docs/${VERSION}/${docsConfig.landingSlug}`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
+
+	// The header has no room for either control at this width, so the menu carries them. Hiding them
+	// with nowhere else to go would cost a phone the ability to search or leave this release.
+	await expect(page.locator('.header__search')).toBeHidden();
+
+	await page.getByRole('button', { name: 'Menu' }).click();
+
+	const menu = page.getByRole('dialog', { name: 'Documentation navigation' });
+
+	await expect(menu.getByRole('navigation', { name: 'Release' }).getByRole('combobox')).toBeVisible();
+	await menu.getByRole('button', { name: 'Search' }).click();
+
+	await expect(page.getByRole('searchbox')).toBeVisible();
+});
+
 test('narrow viewports get navigation, which the sidebar cannot provide', async ({ page }) => {
 	await page.setViewportSize({ width: 420, height: 800 });
 	await page.goto(`/docs/${VERSION}/di/components`);

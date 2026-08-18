@@ -53,12 +53,27 @@ export async function renderRustdocMarkdown(markdown: string | null): Promise<st
 	return renderMarkdown(markdown, true);
 }
 
-/** Renders a repository Markdown file without Rustdoc's heading-level adjustment. */
-export async function renderSourceMarkdown(markdown: string | null): Promise<string> {
-	return renderMarkdown(markdown, false);
+export interface SourceMarkdownContext {
+	/**
+	 * Points a link written inside the repository at something reachable, or returns null when it
+	 * cannot be pointed anywhere and should be reduced to its label.
+	 */
+	readonly resolveLink: (url: string) => string | null;
 }
 
-async function renderMarkdown(markdown: string | null, rustdoc: boolean): Promise<string> {
+/**
+ * Renders a repository Markdown file without Rustdoc's heading-level adjustment.
+ *
+ * A README's links are ordinary links: `docs/guide.md` names a file in the repository and `#usage`
+ * names a heading in the page being rendered. Only Rustdoc's intra-doc links need to disappear, so
+ * this keeps fragments and hands relative URLs to the caller, which knows the repository they are
+ * relative to.
+ */
+export async function renderSourceMarkdown(markdown: string | null, context?: SourceMarkdownContext): Promise<string> {
+	return renderMarkdown(markdown, false, context);
+}
+
+async function renderMarkdown(markdown: string | null, rustdoc: boolean, context?: SourceMarkdownContext): Promise<string> {
 	if (!markdown) {
 		return '';
 	}
@@ -66,7 +81,7 @@ async function renderMarkdown(markdown: string | null, rustdoc: boolean): Promis
 	const rendered = await unified()
 		.use(remarkParse)
 		.use(remarkGfm)
-			.use(normalizeMarkdown, markdown, rustdoc)
+			.use(normalizeMarkdown, markdown, rustdoc, context)
 		.use(remarkRehype)
 		.use(rehypeSlug)
 		.use(rehypeSanitize)
@@ -78,7 +93,7 @@ async function renderMarkdown(markdown: string | null, rustdoc: boolean): Promis
 }
 
 /** Normalizes Rustdoc conventions before conversion to HTML. */
-function normalizeMarkdown(markdown: string, rustdoc: boolean) {
+function normalizeMarkdown(markdown: string, rustdoc: boolean, context?: SourceMarkdownContext) {
 	return (tree: MarkdownNode): void => {
 		visit(tree, (node: MarkdownNode, index: number | undefined, parent: MarkdownNode | undefined) => {
 			if (node.type === 'code') {
@@ -95,6 +110,22 @@ function normalizeMarkdown(markdown: string, rustdoc: boolean) {
 
 			if (node.type !== 'link' || !node.url || isSafeStandaloneLink(node.url) || index === undefined || !parent?.children) {
 				return;
+			}
+
+			if (!rustdoc) {
+				// A fragment already addresses the page this Markdown became, and every other relative
+				// URL has a repository file behind it.
+				if (node.url.startsWith('#')) {
+					return;
+				}
+
+				const resolved = context?.resolveLink(node.url);
+
+				if (resolved) {
+					node.url = resolved;
+
+					return;
+				}
 			}
 
 			// Relative rustdoc HTML links and fragments need symbol-aware resolution. Until that data

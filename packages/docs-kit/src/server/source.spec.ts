@@ -56,6 +56,30 @@ describe('createSourceService', () => {
 		expect(directory?.markdownHtml).toContain('<h1 id="user-content-app">App</h1>');
 	});
 
+	it("resolves a README's own links against the file that wrote them", async () => {
+		const readme = '[guide](../../docs/guide.md), [logo](assets/logo.png), [usage](#usage)';
+		const fetch = vi.fn().mockResolvedValue(new Response(readme, { status: 200 }));
+		vi.stubGlobal('fetch', fetch);
+		const service = createSourceService({
+			config: { framework: { root: source, crates: [] } } as never,
+			artifacts: {
+				getArtifact: async () => ({
+					manifest: { sources: [{ crate: 'upwell', version: '1.0.0', repository: source.repository, sha: 'abc123', crates: ['upwell'], primary: true, files: [{ path: 'crates/app/README.md', bytes: readme.length }] }] },
+					index: { symbols: [], paths: {} }
+				})
+			} as never,
+			fileHref: (crate, versionId, file) => `/docs/${crate}/${versionId}/src/${file}`
+		});
+
+		const directory = await service.loadFile(source as never, version, 'crates/app');
+
+		// A viewable file stays in the site, anything else goes to the repository at the pinned
+		// revision, and a fragment already addresses the rendered page.
+		expect(directory?.markdownHtml).toContain('href="/docs/upwell/v1/src/docs/guide.md"');
+		expect(directory?.markdownHtml).toContain('href="https://github.com/upwell-rs/upwell/blob/abc123/crates/app/assets/logo.png"');
+		expect(directory?.markdownHtml).toContain('href="#usage"');
+	});
+
 	it('renders an opened Markdown file as preview and plain source', async () => {
 		const fetch = vi.fn().mockResolvedValue(new Response('# App', { status: 200 }));
 		vi.stubGlobal('fetch', fetch);

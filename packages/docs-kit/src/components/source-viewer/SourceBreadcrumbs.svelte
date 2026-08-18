@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { sourceBreadcrumbs } from './model.ts';
+	import { encodeSourcePath, sourceBreadcrumbs } from './model.ts';
 
 	interface Props {
 		source: string;
@@ -18,7 +18,7 @@
 		{#if crumb.current}
 			<strong aria-current="page">{crumb.name}</strong>
 		{:else}
-			<a href={`${baseHref}${crumb.path}`}>{crumb.name}</a>
+			<a href={`${baseHref}${encodeSourcePath(crumb.path)}`}>{crumb.name}</a>
 		{/if}
 	{/each}
 </nav>
