@@ -582,19 +582,38 @@ function markdownLinks(
 
 	return {
 		resolveLink(url) {
-			const hash = url.indexOf('#');
-			const fragment = hash === -1 ? '' : url.slice(hash);
-			const path = resolveRepositoryPath(directory, hash === -1 ? url : url.slice(0, hash));
+			const target = splitUrl(url);
+			const path = resolveRepositoryPath(directory, target.path);
 
 			if (!path) {
 				return null;
 			}
 
 			return isTextSource(path) && options.fileHref
-				? `${options.fileHref(source.crate, version.id, encodePath(path))}${fragment}`
-				: `${snapshot.repository}/blob/${snapshot.sha}/${encodePath(path)}${fragment}`;
+				? `${options.fileHref(source.crate, version.id, encodePath(path))}${target.suffix}`
+				: `${snapshot.repository}/blob/${snapshot.sha}/${encodePath(path)}${target.suffix}`;
+		},
+		resolveImage(url) {
+			const target = splitUrl(url);
+			const path = resolveRepositoryPath(directory, target.path);
+
+			// An image needs the bytes, so it goes to the raw file rather than to the page about it.
+			return path ? githubRawUrl(snapshot, path) : null;
 		}
 	};
+}
+
+/**
+ * Separates a URL's path from the query and fragment that follow it.
+ *
+ * Both belong to the URL, not to the filename: `guide.md?plain=1#usage` is one repository file with
+ * two things said about how to display it, and resolving the whole string as a path invents a file
+ * that does not exist.
+ */
+function splitUrl(url: string): { readonly path: string; readonly suffix: string } {
+	const boundary = url.search(/[?#]/);
+
+	return boundary === -1 ? { path: url, suffix: '' } : { path: url.slice(0, boundary), suffix: url.slice(boundary) };
 }
 
 /** Resolves a repository-relative URL against the directory of the file that wrote it. */

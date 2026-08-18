@@ -209,6 +209,19 @@ export function buildCatalog(
 		);
 	}
 
+	/**
+	 * The release this artifact documents, under the id this site gives it.
+	 *
+	 * Three numbers could stand in here and only this one is right. Not the requested release: a
+	 * vendored artifact is selected for a snapshot it carries, so the request belongs to the dependency
+	 * rather than to the artifact's own crate. Not the primary source entry's version either — that is
+	 * Cargo provenance, which is allowed to differ from the public release.
+	 */
+	const primaryVersion =
+		frameworkCrate(config, artifact.manifest.framework.crate)?.versions.find(
+			(candidate) => candidate.releaseVersion.raw === artifact.manifest.documentation?.releaseVersion
+		)?.id ?? version.id;
+
 	const symbols = new Map(artifact.index.symbols.map((symbol) => [symbol.path, symbol]));
 	const sourceByCargoCrate = new Map(
 		(artifact.manifest.sources ?? []).flatMap((entry) => entry.crates.map((crate) => [crate, entry] as const))
@@ -222,7 +235,7 @@ export function buildCatalog(
 		const owner = sourceByCargoCrate.get(symbol.crate);
 		const ownerConfig = owner ? frameworkCrate(config, owner.crate) : undefined;
 		const ownerVersion = ownerConfig?.versions.find((candidate) => candidate.releaseVersion.raw === owner?.version);
-		const destinationVersion = owner?.primary ? version.id : ownerVersion?.id ?? owner?.version ?? version.id;
+		const destinationVersion = owner?.primary ? primaryVersion : ownerVersion?.id ?? owner?.version ?? version.id;
 		const page = authored.get(symbol.path);
 		const inScope = ownerConfig !== undefined || policy.crates === null || policy.crates.has(symbol.crate);
 		const destination: SymbolDestination = page

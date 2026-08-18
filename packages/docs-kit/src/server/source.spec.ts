@@ -57,7 +57,7 @@ describe('createSourceService', () => {
 	});
 
 	it("resolves a README's own links against the file that wrote them", async () => {
-		const readme = '[guide](../../docs/guide.md), [logo](assets/logo.png), [usage](#usage)';
+		const readme = '## Usage\n\n[guide](../../docs/guide.md?plain=1#L4), [logo](assets/logo.png), ![logo](assets/logo.png), [usage](#usage)';
 		const fetch = vi.fn().mockResolvedValue(new Response(readme, { status: 200 }));
 		vi.stubGlobal('fetch', fetch);
 		const service = createSourceService({
@@ -73,11 +73,13 @@ describe('createSourceService', () => {
 
 		const directory = await service.loadFile(source as never, version, 'crates/app');
 
-		// A viewable file stays in the site, anything else goes to the repository at the pinned
-		// revision, and a fragment already addresses the rendered page.
-		expect(directory?.markdownHtml).toContain('href="/docs/upwell/v1/src/docs/guide.md"');
+		// A viewable file stays in the site — with the query and fragment that were written about it, not
+		// folded into its name — anything else goes to the repository at the pinned revision, an embedded
+		// image goes to the bytes, and a same-page fragment names the id the sanitizer emits.
+		expect(directory?.markdownHtml).toContain('href="/docs/upwell/v1/src/docs/guide.md?plain=1#L4"');
 		expect(directory?.markdownHtml).toContain('href="https://github.com/upwell-rs/upwell/blob/abc123/crates/app/assets/logo.png"');
-		expect(directory?.markdownHtml).toContain('href="#usage"');
+		expect(directory?.markdownHtml).toContain('src="https://raw.githubusercontent.com/upwell-rs/upwell/abc123/crates/app/assets/logo.png"');
+		expect(directory?.markdownHtml).toContain('href="#user-content-usage"');
 	});
 
 	it('renders an opened Markdown file as preview and plain source', async () => {
