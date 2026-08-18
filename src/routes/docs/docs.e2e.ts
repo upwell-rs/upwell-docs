@@ -211,6 +211,48 @@ test("a directory's index page is the group itself, ordered among the root pages
 	await expect(tooling.locator(':scope > summary')).toHaveClass(/tree__summary--current/);
 });
 
+test('a group entrypoint navigates in the client rather than reloading', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/getting-started`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
+
+	// A value on `window` only survives a client-side navigation, which is the difference being
+	// tested: the group's link sits inside a `<summary>`, and anything that stops that click from
+	// reaching the router silently turns it into a full page load.
+	await page.evaluate(() => {
+		(window as unknown as { marker?: boolean }).marker = true;
+	});
+
+	await page
+		.getByRole('navigation', { name: 'Documentation' })
+		.locator('details[data-group-id="guides:cargo-upwell"] > summary')
+		.getByRole('link')
+		.click();
+
+	await expect(page).toHaveURL(`/docs/${VERSION}/cargo-upwell`);
+	expect(await page.evaluate(() => (window as unknown as { marker?: boolean }).marker === true)).toBe(true);
+});
+
+test('moving between pages keeps the current sidebar entry in view', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/jobs/scheduled`);
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
+
+	const sidebar = page.locator('.layout__sidebar');
+
+	// The tree has to overflow for revealing to mean anything; without this the test would pass on a
+	// sidebar that happens to fit.
+	expect(await sidebar.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+	await sidebar.evaluate((element) => element.scrollTo({ top: 0 }));
+
+	await page.locator('body').click({ position: { x: 5, y: 5 } });
+	await page.keyboard.press('n');
+
+	await expect(page).toHaveURL(`/docs/${VERSION}/cargo-upwell`);
+
+	// The narrow-viewport navigation renders the same tree, so the entry is matched inside the pane
+	// whose scrolling is under test.
+	await expect(sidebar.locator('.tree__summary--current')).toBeInViewport();
+});
+
 test('sidebar state survives navigation, because the shell is a layout', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 

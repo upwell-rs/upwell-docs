@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { NavigationNode } from '../types.ts';
+	import { revealWithin } from '../reveal.ts';
 	import NavigationTree from './NavigationTree.svelte';
 
 	interface Props {
@@ -20,9 +21,27 @@
 	}
 
 	let { nodes, current, activeGroups, depth = 0, truncate = false, isOpen, onToggle }: Props = $props();
+
+	let root = $state<HTMLUListElement>();
+
+	/**
+	 * Keeps the current entry in view whenever it changes.
+	 *
+	 * The reader can reach a page without touching the tree — the previous and next shortcuts, search,
+	 * an in-page link — and then the entry marking where they are is wherever the tree was last left,
+	 * often outside the scroll box entirely. Only the outermost tree does this: the nested instances
+	 * render the same `current` and would each scroll for the one entry that owns it.
+	 */
+	$effect(() => {
+		void current;
+
+		if (depth === 0) {
+			revealWithin(root?.querySelector<HTMLElement>('[aria-current="page"]') ?? undefined, root);
+		}
+	});
 </script>
 
-<ul class="tree" data-depth={depth} data-truncate={truncate ? 'true' : undefined}>
+<ul bind:this={root} class="tree" data-depth={depth} data-truncate={truncate ? 'true' : undefined}>
 	{#each nodes as node (node.id)}
 		<li>
 			{#if node.type === 'group'}
@@ -36,7 +55,16 @@
 					>
 						<summary class="tree__summary" class:tree__summary--current={node.pageId === current}>
 							{#if node.href}
-								<a href={node.href} aria-current={node.pageId === current ? 'page' : undefined} onclick={(event) => event.stopPropagation()}>{node.label}</a>
+								<!--
+									The click must reach the router, so this link stops nothing.
+
+									A `stopPropagation` here looks harmless — the group is a disclosure and the link sits in
+									its summary — but the router listens for clicks on the document, so swallowing the event
+									turns every group entrypoint into a full page load. The summary does not toggle anyway:
+									the innermost activatable element in the path is the activation target, and that is the
+									link.
+								-->
+								<a href={node.href} aria-current={node.pageId === current ? 'page' : undefined}>{node.label}</a>
 							{:else}
 								{node.label}
 							{/if}
