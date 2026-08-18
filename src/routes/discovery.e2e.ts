@@ -74,6 +74,19 @@ test('a guide has a Markdown copy with its code and without its components', asy
 	expect(body).not.toContain('---\ntitle:');
 });
 
+test('a guide\'s links to its neighbours point at their Markdown copies', async ({ request }) => {
+	const response = await request.get(`/llms/${VERSION}/di/components.md`);
+	const body = await response.text();
+
+	// The guide links its neighbour by slug. Served as `components.md`, that neighbour is `advanced.md`;
+	// without the suffix the link resolves to a path only the site serves.
+	expect(body).toContain('](advanced.md)');
+
+	const neighbour = await request.get(`/llms/${VERSION}/di/advanced.md`);
+
+	expect(neighbour.status()).toBe(200);
+});
+
 test('a Markdown copy of a page that does not exist is a 404', async ({ request }) => {
 	const response = await request.get(`/llms/${VERSION}/nothing-here.md`);
 

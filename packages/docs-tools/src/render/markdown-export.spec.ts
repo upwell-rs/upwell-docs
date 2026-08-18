@@ -85,6 +85,61 @@ describe("markdownFromPageSource", () => {
     expect(bare).toBe("See `upwell::axum::Axum` for defaults.\n");
   });
 
+  it("leaves a fenced example alone, however much it looks like the page's own markup", () => {
+    const source = [
+      "# Writing a page",
+      "",
+      "A page may show one:",
+      "",
+      "````svx",
+      "<script>",
+      "\timport { Example } from '#lib/docs';",
+      "</script>",
+      "",
+      "<Example title=\"Inside a fence\">",
+      "",
+      "{#snippet body()}",
+      "",
+      "</Example>",
+      "````",
+      "",
+      "That is the shape.",
+    ].join("\n");
+    const markdown = markdownFromPageSource(source);
+
+    // The one output that promises to keep code cannot be the one that deletes the example.
+    expect(markdown).toContain("<script>");
+    expect(markdown).toContain('<Example title="Inside a fence">');
+    expect(markdown).toContain("{#snippet body()}");
+    expect(markdown).toContain("</Example>");
+    expect(markdown).toContain("That is the shape.");
+  });
+
+  it("points a relative link at the exported copy, and leaves every other kind alone", () => {
+    const source = [
+      "See [the advanced guide](advanced) and [one section](advanced#lifetimes).",
+      "",
+      "Also [the reference](/docs/latest/symbols/upwell_macros/app), [upstream](https://example.com), and [a heading](#usage).",
+      "",
+      "![diagram](assets/plan.png)",
+    ].join("\n");
+    const markdown = markdownFromPageSource(source, { relativeLinkSuffix: ".md" });
+
+    expect(markdown).toContain("[the advanced guide](advanced.md)");
+    expect(markdown).toContain("[one section](advanced.md#lifetimes)");
+    // An absolute path, an external URL and a fragment all already resolve; an image is a file.
+    expect(markdown).toContain("[the reference](/docs/latest/symbols/upwell_macros/app)");
+    expect(markdown).toContain("[upstream](https://example.com)");
+    expect(markdown).toContain("[a heading](#usage)");
+    expect(markdown).toContain("![diagram](assets/plan.png)");
+  });
+
+  it("does not rewrite a link written inside a code block", () => {
+    const source = ['```md', '[the advanced guide](advanced)', '```'].join("\n");
+
+    expect(markdownFromPageSource(source, { relativeLinkSuffix: ".md" })).toContain("[the advanced guide](advanced)\n```");
+  });
+
   it("collapses the blank lines that removing a wrapper leaves behind", () => {
     const source = "# Title\n\n<Example>\n\n\nBody.\n\n\n</Example>\n";
 

@@ -10,6 +10,10 @@
  * adjacent, `<Tabs>` shows one of several alternatives that are all worth reading, and a snippet
  * block is scaffolding for the tab it feeds. Dropping the wrapper and keeping what is inside it is
  * the faithful reading in every one of those cases.
+ *
+ * **Nothing is rewritten inside a fenced block.** A guide that demonstrates a component, or shows a
+ * `<script>` in a Svelte example, means that text literally — and a transform that reached into code
+ * would delete the very thing the page is about, silently, in the one output that promises to keep it.
  */
 
 /** Components whose content is the page's content, so only their tags come out. */
@@ -19,21 +23,99 @@ const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const SCRIPT_BLOCK = /<script\b[^>]*>[\s\S]*?<\/script>\s*/gi;
 const SNIPPET_BLOCK = /^[ \t]*\{[#/]snippet[^}]*\}[ \t]*\r?\n?/gm;
 const SYMBOL_TAG = /<Symbol\b([^>]*?)\/>/gi;
+/** A link, but not an image: an image's destination is a file, not a page, and takes no suffix. */
+const LINK = /(?<!!)\[([^\]]*)\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g;
+const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
 const ATTRIBUTE = (name: string): RegExp => new RegExp(`${name}\\s*=\\s*"([^"]*)"`, 'i');
 const EXTRA_BLANK_LINES = /\n{3,}/g;
 
-/** Renders one page's source as plain Markdown, with its Svelte layer removed. */
-export function markdownFromPageSource(source: string): string {
-	const tags = new RegExp(`^[ \\t]*</?(?:${CONTENT_TAGS.join('|')})\\b[^>]*>[ \\t]*\\r?\\n?`, 'gim');
+export interface MarkdownExportOptions {
+	/**
+	 * Appended to relative links, so they point at the exported copies rather than the pages.
+	 *
+	 * A guide links its neighbours by slug — `[the advanced guide](advanced)` — which resolves beside
+	 * whatever served it. Exported as `…/components.md`, that neighbour is `…/advanced.md`, and without
+	 * the suffix the link lands on a path only the site serves.
+	 */
+	readonly relativeLinkSuffix?: string;
+}
 
-	return `${source
-		.replace(FRONTMATTER, '')
-		.replace(SCRIPT_BLOCK, '')
-		.replace(SYMBOL_TAG, (_match, attributes: string) => symbolText(attributes))
-		.replace(tags, '')
-		.replace(SNIPPET_BLOCK, '')
-		.replace(EXTRA_BLANK_LINES, '\n\n')
-		.trim()}\n`;
+/** Renders one page's source as plain Markdown, with its Svelte layer removed. */
+export function markdownFromPageSource(source: string, options: MarkdownExportOptions = {}): string {
+	const tags = new RegExp(`^[ \\t]*</?(?:${CONTENT_TAGS.join('|')})\\b[^>]*>[ \\t]*\\r?\\n?`, 'gim');
+	const prose = (text: string): string =>
+		text
+			.replace(SCRIPT_BLOCK, '')
+			.replace(SYMBOL_TAG, (_match, attributes: string) => symbolText(attributes))
+			.replace(tags, '')
+			.replace(SNIPPET_BLOCK, '')
+			.replace(LINK, (match, label: string, target: string, title: string) => relinked(match, label, target, title, options.relativeLinkSuffix))
+			.replace(EXTRA_BLANK_LINES, '\n\n');
+
+	return `${outsideCode(source.replace(FRONTMATTER, ''), prose).trim()}\n`;
+}
+
+/**
+ * Applies a transform to the prose of a document, leaving fenced blocks exactly as they are.
+ *
+ * Whole runs of prose are handed over rather than single lines, because what is being removed spans
+ * lines: a `<script>` block, or a wrapper and the blank line after it.
+ */
+function outsideCode(source: string, transform: (text: string) => string): string {
+	const output: string[] = [];
+	let prose: string[] = [];
+	let fence: string | undefined;
+
+	const flush = (): void => {
+		if (prose.length > 0) {
+			output.push(transform(prose.join('\n')));
+			prose = [];
+		}
+	};
+
+	for (const line of source.split('\n')) {
+		const marker = FENCE.exec(line)?.[1];
+
+		if (fence) {
+			output.push(line);
+
+			// A fence closes on the same character, at least as long as the one that opened it.
+			if (marker && marker[0] === fence[0] && marker.length >= fence.length) {
+				fence = undefined;
+			}
+
+			continue;
+		}
+
+		if (marker) {
+			flush();
+			output.push(line);
+			fence = marker;
+
+			continue;
+		}
+
+		prose.push(line);
+	}
+
+	flush();
+
+	return output.join('\n');
+}
+
+/** Points a relative link at the exported copy, keeping any fragment and title it carried. */
+function relinked(match: string, label: string, target: string, title: string, suffix: string | undefined): string {
+	const absolute = target.startsWith('/') || target.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(target);
+
+	if (!suffix || absolute || target.endsWith(suffix) || target.includes(suffix + '#')) {
+		return match;
+	}
+
+	const hash = target.indexOf('#');
+	const path = hash === -1 ? target : target.slice(0, hash);
+	const fragment = hash === -1 ? '' : target.slice(hash);
+
+	return `[${label}](${path}${suffix}${fragment}${title})`;
 }
 
 /**

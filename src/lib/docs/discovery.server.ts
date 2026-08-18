@@ -137,7 +137,9 @@ export async function guideMarkdown(versionId: string, requested: string): Promi
 	const file = page ? docsContent.pageSource(slug, version.releaseVersion) : undefined;
 	const load = file ? guideSources[file] : undefined;
 
-	return load ? markdownFromPageSource(await load()) : undefined;
+	// The exported copies link each other, so a neighbour's slug has to name the copy rather than the
+	// page: only the `.md` variants are published under `/llms`.
+	return load ? markdownFromPageSource(await load(), { relativeLinkSuffix: '.md' }) : undefined;
 }
 
 /** Every guide that has a Markdown copy, for prerendering them all. */
