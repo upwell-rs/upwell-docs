@@ -93,4 +93,66 @@ describe('createSourceService', () => {
 		expect(await service.loadFile(source as never, version, 'src/missing.rs')).toBeNull();
 		expect(fetch).not.toHaveBeenCalled();
 	});
+
+	it('renders semantic members and preserves bound ambiguity', async () => {
+		const contents = [
+			'use crate::prelude::*;',
+			'fn run<T: Alpha + Beta>(value: T, item: Thing, object: Alpha) {',
+			'    Thing::new();',
+			'    Kind::Ready;',
+			'    item.field;',
+			'    item.method();',
+			'    value.shared();',
+			'    object.only_alpha();',
+			'}'
+		].join('\n');
+		const symbols = [
+			symbolFixture('crate::Thing', 'Thing', 'struct'),
+			symbolFixture('crate::Thing::new', 'new', 'assoc_fn'),
+			symbolFixture('crate::Thing::field', 'field', 'struct_field'),
+			symbolFixture('crate::Thing::method', 'method', 'method'),
+			symbolFixture('crate::Kind', 'Kind', 'enum'),
+			symbolFixture('crate::Kind::Ready', 'Ready', 'variant'),
+			symbolFixture('crate::Alpha', 'Alpha', 'trait'),
+			symbolFixture('crate::Alpha::shared', 'shared', 'method'),
+			symbolFixture('crate::Alpha::only_alpha', 'only_alpha', 'method'),
+			symbolFixture('crate::Beta', 'Beta', 'trait'),
+			symbolFixture('crate::Beta::shared', 'shared', 'method')
+		];
+		const fetch = vi.fn().mockResolvedValue(new Response(contents, { status: 200 }));
+		vi.stubGlobal('fetch', fetch);
+		const service = createSourceService({
+			config: { framework: { root: source, crates: [] } } as never,
+			artifacts: {
+				getArtifact: async () => ({
+					manifest: { sources: [{ crate: 'upwell', version: '1.0.0', repository: source.repository, sha: 'abc123', crates: ['crate'], primary: true, files: [{ path: 'src/lib.rs', bytes: contents.length }] }] },
+					index: {
+						symbols,
+						paths: Object.fromEntries(symbols.map((symbol) => [symbol.path, symbol.path])),
+						names: Object.groupBy(symbols.map((symbol) => symbol.path), (path) => path.split('::').at(-1)!) as never,
+						externals: { symbols: [], names: {}, direct: [], aliases: {} }
+					}
+				})
+			} as never
+		});
+
+		const file = await service.loadFile(source as never, version, 'src/lib.rs');
+
+		expect(file?.sourceHtml).toContain('data-symbol="crate::Thing::new"');
+		expect(file?.sourceHtml).toContain('data-symbol="crate::Kind::Ready"');
+		expect(file?.sourceHtml).toContain('data-symbol="crate::Thing::field"');
+		expect(file?.sourceHtml).toContain('data-symbol="crate::Thing::method"');
+		expect(file?.sourceHtml).toContain('data-symbol="crate::Alpha::only_alpha"');
+		expect(file?.sourceHtml).toContain('data-candidates=');
+		expect(file?.sourceHtml).toContain('crate::Alpha::shared');
+		expect(file?.sourceHtml).toContain('crate::Beta::shared');
+	});
 });
+
+function symbolFixture(path: string, name: string, kind: string) {
+	return {
+		path, name, kind, procMacro: null, crate: 'crate', signature: `${kind} ${name}`, doc: null, docs: null,
+		source: { file: 'src/definitions.rs', line: 1 }, deprecation: null, feature: null, returns: null,
+		implementations: [], implementors: [], derefTarget: null, aliasOf: null
+	};
+}

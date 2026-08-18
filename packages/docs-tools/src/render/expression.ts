@@ -1221,17 +1221,26 @@ function readAnnotation(
   conversions: Map<string, Conversion>,
 ): number {
   const name = tokens[at];
+  let typeAt = at + 2;
 
-  if (!tokens[at + 2]?.isIdentifier) {
-    return at + 2;
+  while (tokens[typeAt]?.text === "&" || tokens[typeAt]?.text === "mut") {
+    typeAt += 1;
   }
 
-  const bound = bindings.get(tokens[at + 2].text);
+  if (tokens[typeAt]?.text === "dyn" || tokens[typeAt]?.text === "impl") {
+    typeAt += 1;
+  }
+
+  if (!tokens[typeAt]?.isIdentifier) {
+    return typeAt;
+  }
+
+  const bound = bindings.get(tokens[typeAt].text);
   let annotated: string | undefined;
 
   const next = readPath(
     tokens,
-    at + 2,
+    typeAt,
     scope,
     index,
     resolved,

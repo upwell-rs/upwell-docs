@@ -13,17 +13,13 @@ import path from "node:path";
 import process from "node:process";
 
 import { latestVersion, resolveSymbolPagesConfig, type DocsConfig } from "@upwell/docs-core/config";
-import {
-  artifactDir,
-  type LoadedArtifact,
-  loadArtifact,
-} from "../artifact/load.ts";
+import { artifactDir, loadArtifact } from "../artifact/load.ts";
 import { sourceLink } from "../artifact/schema.ts";
 import type { Symbol } from "../rustdoc/symbols.ts";
 import { resolveSymbolPages } from "../validate.ts";
 import { renderCodeBlock, type RenderContext } from "./highlight.ts";
+import { createResolverIndex } from "./resolution.ts";
 import { VERSION_SENTINEL } from "./version-expression.ts";
-import type { ResolverIndex } from "./resolve.ts";
 
 /** Where authored guides live, relative to the project root. */
 export const CONTENT_DIR = path.join("src", "content", "docs");
@@ -105,7 +101,7 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
     );
 
     return {
-      index: toResolverIndex(artifact),
+      index: createResolverIndex(artifact.index),
       docsHref: (symbolPath) => {
         const canonical = artifact.index.paths[symbolPath] ?? symbolPath;
         const page = symbolPages.get(canonical);
@@ -153,24 +149,6 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
       ),
     resetContext: () => {
       context = undefined;
-    },
-  };
-}
-
-function toResolverIndex(artifact: LoadedArtifact): ResolverIndex {
-  return {
-    paths: artifact.index.paths,
-    names: artifact.index.names,
-    symbols: new Map(
-      artifact.index.symbols.map((symbol) => [symbol.path, symbol]),
-    ),
-    externals: {
-      byPath: new Map(
-        artifact.index.externals.symbols.map((symbol) => [symbol.path, symbol]),
-      ),
-      byName: artifact.index.externals.names,
-      direct: new Set(artifact.index.externals.direct),
-      aliases: artifact.index.externals.aliases,
     },
   };
 }

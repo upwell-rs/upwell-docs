@@ -308,7 +308,7 @@ export async function renderSourceCode(
             }
 
             const properties: Record<string, string> = {
-              class: "symbol",
+              class: annotation.metadata?.class ?? "symbol",
               href: annotation.href,
               "data-symbol": annotation.symbol,
               "data-symbol-kind": annotation.kind,
@@ -321,6 +321,9 @@ export async function renderSourceCode(
             }
 
             for (const [name, value] of Object.entries(annotation.metadata ?? {})) {
+              if (name === "class") {
+                continue;
+              }
               if (value != null) {
                 properties[name] = value;
               }

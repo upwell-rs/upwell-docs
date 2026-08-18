@@ -79,6 +79,21 @@ describe('source path models', () => {
 		expect(declaration.find((token) => token.text === 'configure')?.kind).toBe('callable');
 	});
 
+	it('filters declaration candidates by the written item kind', () => {
+		const structure = { name: 'Test', kind: 'struct', lens: 'type', path: 'src/lib.rs', line: 1, reachablePaths: ['crate::Test'] } as never;
+		const enumeration = { name: 'Test', kind: 'enum', lens: 'type', path: 'src/lib.rs', line: 1, reachablePaths: ['other::Test'] } as never;
+		const tokens = tokenizeSource('struct Test;', [structure, enumeration], { file: 'src/lib.rs', line: 1 });
+
+		expect(tokens.find((token) => token.text === 'Test')?.target).toBe(structure);
+	});
+
+	it('keeps a procedural macro semantic kind at its fn declaration', () => {
+		const macro = { name: 'config', kind: 'proc_macro', lens: 'macro', procMacro: 'attribute', path: 'src/lib.rs', line: 2, reachablePaths: ['crate::config'] } as never;
+		const tokens = tokenizeSource('pub fn config() {}', [macro], { file: 'src/lib.rs', line: 2 });
+
+		expect(tokens.find((token) => token.text === 'config')?.target).toBe(macro);
+	});
+
 	it('builds clickable breadcrumb ancestry', () => {
 		expect(sourceBreadcrumbs('crates/app/src/lib.rs')).toEqual([
 			{ name: 'crates', path: 'crates', current: false },

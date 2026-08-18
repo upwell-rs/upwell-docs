@@ -2,6 +2,7 @@ import type { DocsConfig, DocsVersion, FrameworkCrateCoordinates } from '@upwell
 import type { SymbolInfo } from '@upwell/docs-ui/types';
 import type { ArtifactSource } from '@upwell/docs-tools/artifact/schema';
 import { renderSourceCode, type SourceCodeAnnotation } from '@upwell/docs-tools/render/highlight';
+import { createResolverIndex, readScope, resolveExpressions } from '@upwell/docs-tools/render/resolution';
 import type { ExternalSymbol } from '@upwell/docs-tools/rustdoc/symbols';
 
 import { tokenizeSource } from '../components/source-viewer/model.ts';
@@ -32,6 +33,15 @@ export interface SourceTokenTarget {
 	readonly doc: string | null;
 	readonly feature: string | null;
 	readonly deprecated: string | null;
+}
+
+export interface SourceCandidate {
+	readonly symbol: string;
+	readonly name: string;
+	readonly kind: string;
+	readonly href: string;
+	readonly signature: string | null;
+	readonly doc: string | null;
 }
 
 export interface SourceFile {
@@ -186,7 +196,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 			}
 
 			const language = languageFor(file);
-			const annotations = sourceAnnotations(contents, file, targets, artifact.index.externals?.symbols ?? []);
+			const annotations = sourceAnnotations(contents, file, targets, artifact.index);
 
 			return {
 				kind: 'file',
@@ -207,17 +217,25 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 	};
 }
 
-function sourceAnnotations(contents: string, file: string, targets: readonly SourceTokenTarget[], externals: readonly ExternalSymbol[]): SourceCodeAnnotation[] {
+function sourceAnnotations(contents: string, file: string, targets: readonly SourceTokenTarget[], index: Parameters<typeof createResolverIndex>[0]): SourceCodeAnnotation[] {
 	const annotations: SourceCodeAnnotation[] = [];
-	const imports = sourceImports(contents);
+	const scope = readScope(contents);
+	const imports = [...scope.imports.values(), ...scope.globs.map((glob) => `${glob}::*`)];
+	const expressions = resolveExpressions(contents, scope, createResolverIndex(index));
+	const targetsBySymbol = new Map(targets.map((target) => [target.symbol, target]));
 	let lineOffset = 0;
 
 	for (const [lineIndex, line] of contents.split('\n').entries()) {
 		let tokenOffset = 0;
 
 		for (const token of tokenizeSource(line, targets, { file, line: lineIndex + 1, imports })) {
-			if (token.target) {
-				const target = token.target;
+			const semantic = expressions.members.get(lineOffset + tokenOffset);
+			const target = semantic ? targetsBySymbol.get(semantic.symbol.path) : token.target;
+			const candidates = sourceCandidates(contents, file, lineIndex + 1, lineOffset + tokenOffset, token.text, targets, imports);
+
+			if (candidates.length > 1) {
+				annotations.push(ambiguousAnnotation(candidates, token.text, lineOffset + tokenOffset));
+			} else if (target) {
 
 				annotations.push({
 					start: lineOffset + tokenOffset,
@@ -231,10 +249,16 @@ function sourceAnnotations(contents: string, file: string, targets: readonly Sou
 					metadata: internalMetadata(target)
 				});
 			} else {
-				const external = externalTarget(token.text, line, tokenOffset, externals);
+				const external = externalTarget(token.text, line, tokenOffset, index.externals?.symbols ?? []);
 
 				if (external) {
 					annotations.push(externalAnnotation(external, token.text, lineOffset + tokenOffset));
+				} else {
+					if (candidates.length === 1) {
+						annotations.push(targetAnnotation(candidates[0], token.text, lineOffset + tokenOffset));
+					} else if (candidates.length > 1) {
+						annotations.push(ambiguousAnnotation(candidates, token.text, lineOffset + tokenOffset));
+					}
 				}
 			}
 
@@ -247,30 +271,153 @@ function sourceAnnotations(contents: string, file: string, targets: readonly Sou
 	return annotations;
 }
 
-function sourceImports(contents: string): string[] {
-	const imports: string[] = [];
+function targetAnnotation(target: SourceTokenTarget, text: string, start: number): SourceCodeAnnotation {
+	return {
+		start,
+		end: start + text.length,
+		href: `/docs/${target.source}/${target.version}/src/${target.path}#L${target.line}`,
+		symbol: target.symbol,
+		kind: target.kind,
+		lens: target.lens,
+		procMacro: target.procMacro,
+		title: target.kind.replace('_', ' '),
+		metadata: internalMetadata(target)
+	};
+}
 
-	for (const match of contents.matchAll(/^\s*use\s+([^;]+);/gm)) {
-		const body = match[1].trim();
-		const open = body.indexOf('{');
+function sourceCandidates(
+	contents: string,
+	file: string,
+	line: number,
+	offset: number,
+	text: string,
+	targets: readonly SourceTokenTarget[],
+	imports: readonly string[]
+): SourceTokenTarget[] {
+	const members = memberCandidates(contents, offset, text, targets, imports);
 
-		if (open === -1) {
-			imports.push(body.replace(/\s+as\s+\w+$/, ''));
+	if (members.length > 0) return members;
+	const name = text.replace(/!$/, '');
+	const sameName = targets.filter((target) => target.name === name);
+	const declarations = sameName.filter((target) => target.path === file && target.line === line);
 
-			continue;
+	if (declarations.length > 0) return deduplicate(declarations);
+	const before = contents.slice(Math.max(0, contents.lastIndexOf('\n', offset - 1)), offset);
+	const derive = /#\s*\[\s*derive\s*\([^)]*$/.test(before);
+	const attribute = /#\s*\[\s*$/.test(before);
+	const bang = text.endsWith('!');
+	const syntax = sameName.filter((target) =>
+		derive ? target.procMacro === 'derive' : attribute ? target.procMacro === 'attribute' : bang ? target.procMacro === 'bang' || target.kind === 'macro' : false
+	);
+
+	if (syntax.length === 0) return [];
+	const scoped = syntax.filter((target) => target.reachablePaths.some((path) => imports.some((scope) => path.startsWith(scope.replace(/::\*$/, '::')))));
+
+	return deduplicate(scoped.length > 0 ? scoped : syntax);
+}
+
+function ambiguousAnnotation(candidates: readonly SourceTokenTarget[], text: string, start: number): SourceCodeAnnotation {
+	return {
+		start,
+		end: start + text.length,
+		href: '#',
+		symbol: '',
+		kind: 'ambiguous',
+		lens: 'ambiguous',
+		procMacro: null,
+		title: `${candidates.length} possible symbols`,
+		metadata: {
+			'class': 'ambiguous',
+			'data-candidates': JSON.stringify(candidates.map(toCandidate))
 		}
+	};
+}
 
-		const close = body.lastIndexOf('}');
-		const prefix = body.slice(0, open);
+function toCandidate(target: SourceTokenTarget): SourceCandidate {
+	return {
+		symbol: target.symbol,
+		name: target.name,
+		kind: target.kind,
+		href: `/docs/${target.source}/${target.version}/src/${target.path}#L${target.line}`,
+		signature: target.signature,
+		doc: target.doc
+	};
+}
 
-		if (close > open) {
-			for (const item of body.slice(open + 1, close).split(',')) {
-				imports.push(`${prefix}${item.trim()}`.replace(/\s+as\s+\w+$/, ''));
-			}
+function memberCandidates(contents: string, offset: number, name: string, targets: readonly SourceTokenTarget[], imports: readonly string[]): SourceTokenTarget[] {
+	const before = contents.slice(0, offset);
+	const memberAccess = /\.\s*$/.test(before);
+	const associated = /::\s*$/.test(before);
+
+	if (!memberAccess && !associated) return [];
+	const allowed = memberAccess ? new Set(['method', 'struct_field']) : new Set(['method', 'assoc_fn', 'assoc_const', 'assoc_type', 'variant']);
+	let candidates = targets.filter((target) => target.name === name && allowed.has(target.kind));
+
+	if (memberAccess) {
+		const receiver = /([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*$/.exec(before)?.[1];
+		const owners = receiver ? receiverOwners(contents, receiver, targets, imports) : [];
+
+		if (owners.length === 0) return [];
+		candidates = candidates.filter((target) => target.reachablePaths.some((path) => owners.some((owner) => path.startsWith(`${owner}::`))));
+	} else {
+		const owner = /([A-Za-z_][A-Za-z0-9_:]*)::\s*$/.exec(before)?.[1];
+
+		if (!owner) return [];
+		const owners = resolveTypeNames([owner], targets, imports);
+
+		if (owners.length === 0) return [];
+		candidates = candidates.filter((target) => target.reachablePaths.some((path) => owners.some((resolved) => path === `${resolved}::${name}`)));
+	}
+
+	const scoped = candidates.filter((target) => target.reachablePaths.some((path) => imports.some((scope) => path.startsWith(scope.replace(/::\*$/, '::')))));
+
+	return deduplicate(scoped.length > 0 ? scoped : candidates);
+}
+
+function receiverOwners(contents: string, receiver: string, targets: readonly SourceTokenTarget[], imports: readonly string[]): string[] {
+	const genericBounds = new Map<string, string[]>();
+
+	for (const match of contents.matchAll(/\b([A-Z][A-Za-z0-9_]*)\s*:\s*([^,>{}]+)/g)) {
+		genericBounds.set(match[1], splitBounds(match[2]));
+	}
+
+	const annotation = new RegExp(`\\b${escapeRegex(receiver)}\\s*:\\s*([^,)=;{]+)`).exec(contents)?.[1]?.trim();
+
+	if (!annotation) return [];
+	const generic = /^([A-Z][A-Za-z0-9_]*)$/.exec(annotation)?.[1];
+	const writtenBounds = generic ? genericBounds.get(generic) ?? [] : /^(?:&\s*(?:mut\s*)?)?(?:dyn|impl)\s+(.+)$/.exec(annotation)?.[1];
+	const names = Array.isArray(writtenBounds) ? writtenBounds : writtenBounds ? splitBounds(writtenBounds) : [annotation];
+
+	return resolveTypeNames(names, targets, imports);
+}
+
+function splitBounds(value: string): string[] {
+	return value.split('+').map((bound) => bound.trim().replace(/<.*$/, '')).filter((bound) => /^[A-Za-z_][A-Za-z0-9_:]*$/.test(bound));
+}
+
+function resolveTypeNames(names: readonly string[], targets: readonly SourceTokenTarget[], imports: readonly string[]): string[] {
+	const resolved: string[] = [];
+
+	for (const name of names) {
+		const bare = name.split('::').at(-1);
+		const candidates = targets.filter((target) => target.name === bare && (target.kind === 'trait' || target.kind === 'struct' || target.kind === 'enum' || target.kind === 'union' || target.kind === 'type_alias'));
+		const scoped = candidates.filter((target) => target.reachablePaths.some((path) => path === name || imports.some((scope) => path.startsWith(scope.replace(/::\*$/, '::')))));
+
+		for (const target of scoped.length > 0 ? scoped : candidates.length === 1 ? candidates : []) {
+			resolved.push(...target.reachablePaths);
 		}
 	}
 
-	return imports;
+	return [...new Set(resolved)];
+}
+
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function deduplicate(targets: readonly SourceTokenTarget[]): SourceTokenTarget[] {
+	return [...new Map(targets.map((target) => [target.symbol, target])).values()]
+		.sort((left, right) => left.symbol.localeCompare(right.symbol));
 }
 
 function internalMetadata(target: SourceTokenTarget): Record<string, string | null> {
