@@ -50,12 +50,13 @@
     "#lib/*": "./src/lib/*"
   },
   "dependencies": {
+    "@tanstack/svelte-hotkeys": "^0.10.0",
     "@upwell/docs-core": "workspace:*",
     "@upwell/docs-kit": "workspace:*",
-    "@upwell/docs-ui": "workspace:*",
     "@upwell/docs-tools": "workspace:*",
+    "@upwell/docs-ui": "workspace:*",
     "@upwell/docs-vite": "workspace:*",
-    "@tanstack/svelte-hotkeys": "^0.10.0",
+    "super-sitemap": "^2.0.6",
     "svelte-sonner": "^1.2.1"
   }
 }

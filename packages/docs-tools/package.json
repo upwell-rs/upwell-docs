@@ -9,6 +9,7 @@
 		"./rustdoc/symbols": "./src/rustdoc/symbols.ts",
 		"./render/document-index": "./src/render/document-index.ts",
 		"./render/highlight": "./src/render/highlight.ts",
+		"./render/markdown-export": "./src/render/markdown-export.ts",
 		"./render/resolution": "./src/render/resolution.ts",
 		"./render/preprocessors": "./src/render/preprocessors.ts"
 	},
