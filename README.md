@@ -86,6 +86,20 @@ use framework::prelude::*;
 <Callout type="info">Code blocks are always highlighted.</Callout>
 ````
 
+### Group entrypoints and ordering
+
+`order` sorts groups and pages against each other in one list, so a group can sit anywhere — above the root pages, between them, or last.
+
+A directory's `index.svx` is that group's entrypoint. Its `/index` segment is dropped from the URL, so `1/cargo-upwell/index.svx` serves `/docs/1.0.0/cargo-upwell`, and in navigation it *becomes* the group rather than appearing as a leaf beside its own siblings: the group takes the page's title as its label, links to it, and is ordered by its `order`. A group without an `index.svx` inherits the order of its earliest child.
+
+```text
+src/content/docs/1/getting-started.svx        order: 1     ->  first entry
+src/content/docs/1/cargo-upwell/index.svx     order: 150   ->  the group, placed last
+src/content/docs/1/cargo-upwell/inspect.svx   order: 20    ->  a child, ordered within the group
+```
+
+A child's `order` only ranks it against its siblings, so a group can be moved without renumbering its contents.
+
 When a prepared artifact is available, the build annotates resolvable framework identifiers in Rust fences automatically. No wrapper component is required.
 
 Fence options:

@@ -6,7 +6,7 @@ import {
 	FALLBACK_ORDER,
 	type DocFrontmatter,
 	type DocSummary,
-	type NavigationGroup,
+	type NavigationNode,
 	type SymbolFrontmatter,
 	type SymbolPageSummary
 } from '@upwell/docs-core/content';
@@ -77,7 +77,7 @@ export interface DocsContent {
 	findSymbolPage(segments: string, releaseVersion: DocsVersion['releaseVersion']): SymbolPageSummary | undefined;
 	symbolPageSource(segments: string, releaseVersion: DocsVersion['releaseVersion']): string | undefined;
 	loadSymbolPage(segments: string, releaseVersion: DocsVersion['releaseVersion']): Promise<Component | undefined>;
-	navigationFor(version: DocsVersion): readonly NavigationGroup[];
+	navigationFor(version: DocsVersion): readonly NavigationNode[];
 	pageHref(versionId: string, slug: string): string;
 	symbolHref(source: string, versionId: string, segments: string): string;
 }

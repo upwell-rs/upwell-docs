@@ -11,7 +11,7 @@ topics: ['tooling']
 
 # Inspect and query an application
 
-Start after [validating the application](/docs/latest/getting-started#validate-one-application). Each command prepares the selected application's probe before reading its canonical tooling document; no command infers relationships from source files.
+Start after [validating the application](/docs/latest/cargo-upwell#validate-one-application). Each command prepares the selected application's probe before reading its canonical tooling document; no command infers relationships from source files.
 
 ## Find the resource you need
 
