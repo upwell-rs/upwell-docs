@@ -1,99 +1,236 @@
 ---
-title: Cargo Upwell
-description: Install cargo-upwell, select an application target, and validate an Upwell project.
-order: 10
-topics: ['tooling']
+title: Getting started
+description: Build a first Upwell application with Cargo alone or from a template, declaring a component, a controller, and the generated host.
+order: 1
+topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Callout, Example, Tabs } from '#lib/docs';
 </script>
 
-# Cargo Upwell
+# Getting started
 
-Use `cargo-upwell` to prepare an Upwell application's tooling document, validate it, and then inspect its resources. It builds a generated probe in an isolated tooling path; it never starts the application server.
+An Upwell application is ordinary Rust: types you declare, plus the wiring Upwell generates around them. You describe *what* the application is made of — components, controllers or services, configuration — and the framework owns dependency resolution, the process entry point, configuration loading, and the shutdown lifecycle. Nothing here requires additional tooling; `cargo run` is enough.
 
-## Install the matching tool
+This guide builds one HTTP application end to end. The same three steps — declare a component, expose it through a protocol, name the host — apply to an RPC daemon or a background worker.
 
-Install Cargo Upwell from crates.io, then confirm Cargo can discover the subcommand:
+## Create the project
 
-<Example title="Install and identify Cargo Upwell">
+There are two ways to start, and the rest of this guide is identical either way. Cargo alone needs nothing but the framework crate. `cargo upwell init` generates the same shape from a template, including the host declaration, a configuration file, and the library and binary split — useful once, not required.
+
+{#snippet withCargo()}
+
+<Example title="Start with Cargo alone">
+
+```sh
+cargo new catalog-api
+cd catalog-api
+cargo add upwell --features axum
+```
+
+Protocols are features: `axum` for HTTP, `daemon` for the native RPC protocol, or both. Two more direct dependencies are needed because generated code names them — the async runtime that starts the process, and `serde` for the types that cross the wire.
+
+```sh
+cargo add tokio --features macros,rt-multi-thread
+cargo add serde --features derive
+```
+
+</Example>
+
+{/snippet}
+
+{#snippet withTooling()}
+
+<Example title="Scaffold with Cargo Upwell">
 
 ```sh
 cargo install cargo-upwell
 ```
 
-Cargo discovers executables named `cargo-<name>`, so either form invokes the same program:
+Generate a project from the built-in application template. Naming the template keeps the command reproducible; without it, the tool selects one interactively:
 
 ```sh
-cargo upwell --version
-cargo-upwell --help
+cargo upwell init catalog-api --template upwell/application
+cd catalog-api
+```
+
+The generated project already declares its host, its dependencies, and its `application.toml`, so it builds and serves before you write anything:
+
+```sh
+cargo run
 ```
 
 </Example>
 
-Install the release matching the Upwell dependency in the application. `doctor` verifies this after a successful probe.
+{/snippet}
 
-### Version policy
+<Tabs labels={['Cargo only', 'cargo upwell init']} panels={[withCargo, withTooling]} />
 
-Install a published `cargo-upwell` release compatible with the Upwell application being checked. Verify the installed tool with `cargo upwell --version`; this guide does not infer a Cargo package version from the documentation release label.
+The `cli` and `di-check` features are enabled by default. `cli` generates the process runner and argument parser for a named application; `di-check` turns a missing dependency into a `cargo check` error instead of a startup failure. Add `jobs` for scheduled work, `ws` or `stomp` for WebSocket protocols, and `client` to generate typed clients.
 
-## Validate one application
+The framework never requires the tool: `cargo build` and `cargo run` are the only commands this guide needs. See [Cargo Upwell](/docs/latest/cargo-upwell) for what it adds afterwards — validation, inspection, and the other project templates.
 
-From a package directory containing one eligible application binary, run `check`. A successful check means Cargo Upwell selected a target, built its probe, and prepared a valid tooling document.
+The sections below write the application from nothing. If you scaffolded one instead, read them as a tour of the code the template generated.
 
-<Example title="Validate and diagnose an application">
+## Declare a component
 
-```sh
-cargo upwell check
+A component is a singleton the container constructs once and injects wherever it is declared as a field. Write the type and its behavior as you normally would; <Symbol path="upwell::prelude::component" label="#[component]" /> registers it and derives its factory from its fields.
+
+<Example title="A greeting component">
+
+```rust
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use upwell::prelude::*;
+
+#[component(by_value)]
+#[derive(Clone)]
+struct Greeter {
+    #[default]
+    greetings: Arc<AtomicU64>,
+}
 ```
 
-When validation fails or before wiring the tool into automation, run the broader health report:
+Behavior stays in an ordinary inherent implementation — the attribute changes how the type is *constructed*, not how it is written:
 
-```sh
-cargo upwell doctor
-```
+```rust
+impl Greeter {
+    fn greet(&self, who: &str) -> (String, u64) {
+        let count = self.greetings.fetch_add(1, Ordering::Relaxed) + 1;
 
-Use JSON only when another program consumes the report:
-
-```sh
-cargo upwell doctor --format json
-```
-
-</Example>
-
-`doctor` includes application validation plus checks for workspace selection, the isolated build, probe compatibility, framework-version agreement, and preparation. Its JSON report has a versioned `schema`, stable `outcome`, numeric `exit_code`, selected target when available, and canonical diagnostics. See [automate validation](/docs/latest/cargo-upwell/automation-and-extensions#automate-validation) before depending on those fields in CI.
-
-## Resolve a workspace ambiguity
-
-When the current directory has several eligible packages or binaries, Cargo Upwell stops rather than guessing. Start with the intended manifest, then name the package and binary explicitly. Keep these options in CI even if the workspace currently has only one target.
-
-<Example title="Select a workspace application">
-
-```sh
-cargo upwell check \
-  --manifest-path apps/api/Cargo.toml \
-  --package api \
-  --bin api-server
-```
-
-Enable the same features and target that the application needs:
-
-```sh
-cargo upwell check \
-  --manifest-path apps/api/Cargo.toml \
-  --package api \
-  --bin api-server \
-  --features admin,metrics \
-  --target x86_64-unknown-linux-gnu
+        (format!("Hello, {who}!"), count)
+    }
+}
 ```
 
 </Example>
 
-`--features` may be repeated and accepts comma-separated values. `--all-features` cannot be combined with `--features`; `--no-default-features` disables default features. A feature-gated binary remains ineligible until its required features are enabled.
+Consumers usually inject `Arc<T>` and share one value. `by_value` additionally allows the component to be injected as an owned clone, which is what a controller field needs. `#[default]` supplies a field the container cannot resolve from another component.
 
-Without explicit flags, Cargo Upwell selects one eligible default-member binary, then one eligible workspace binary, and finally a package's `default-run` or sole eligible binary. A normal Cargo build can still succeed when the generated probe is incompatible or application preparation fails, which is why `check` is the useful boundary.
+## Expose it through the protocol
 
-## Continue from a valid document
+A protocol turns components into a served surface. For HTTP, a controller groups routes under one base path and declares its dependencies as fields.
 
-After `check` succeeds, follow [inspect and query an application](/docs/latest/cargo-upwell/inspect-and-graph) to trace a resource or render its relationships. Use [automation and extension points](/docs/latest/cargo-upwell/automation-and-extensions) to retain structured reports in CI, generate projects, add renderers, or configure completion.
+<Example title="A controller over the component">
+
+```rust
+use upwell::axum::dto;
+use upwell::axum::prelude::*;
+use upwell::prelude::*;
+
+#[dto]
+struct Greeting {
+    message: String,
+    count: u64,
+}
+```
+
+The controller is a singleton like any other component, so `greeter` is resolved for it once:
+
+```rust
+#[controller(path = "/greet")]
+struct GreetController {
+    greeter: Greeter,
+}
+```
+
+Routes are methods in a `#[handlers]` block. Axum extractors supply request data; `Json<T>` writes a typed response:
+
+```rust
+#[handlers]
+impl GreetController {
+    #[get("/{who}")]
+    async fn greet(&self, Path(who): Path<String>) -> Json<Greeting> {
+        let (message, count) = self.greeter.greet(&who);
+
+        Json(Greeting { message, count })
+    }
+}
+```
+
+</Example>
+
+`#[dto]` marks a type as wire data and derives its serialization. Controllers register themselves at link time, so no route table is maintained by hand.
+
+## Name the host
+
+`app!` declares the application host: one name, one protocol, and the lifecycle phase that starts serving. It generates the entry point, argument parsing, and startup and shutdown orchestration that a hand-written `main` would otherwise own.
+
+<Example title="The generated host">
+
+```rust
+use upwell::axum::Axum;
+use upwell::axum::prelude::*;
+use upwell::prelude::*;
+
+app! {
+    app CatalogApplication {
+        name: "catalog-api",
+        protocol: Axum,
+        serve(_context, app) {
+            app.serve_configured().await
+        },
+    }
+}
+```
+
+`main` hands the process to that host and nothing else:
+
+```rust
+#[tokio::main]
+async fn main() -> Result<(), upwell::CliError> {
+    CatalogApplication::run().await
+}
+```
+
+</Example>
+
+The host discovers linked declarations, so `Greeter` and `GreetController` need no registration list. `serve_configured()` binds the listener described by the protocol's own configuration rather than a hardcoded address.
+
+<Callout type="info" title="An item, not an expression">
+
+`app!` declares a type. Do not assign it to a variable or invoke it inside `main`; when a process must own its own startup, assemble the application with `App::<Axum>::builder(...)` instead. See [the application model](/docs/latest/framework/application-model) for that path.
+
+</Callout>
+
+## Run it
+
+<Symbol path="upwell::axum::Axum" /> gives every configuration field an environment-aware default, so the application serves on `127.0.0.1:3000` without a configuration file.
+
+<Example title="Serve the application">
+
+```sh
+cargo run
+```
+
+```sh
+curl localhost:3000/greet/world
+```
+
+Override the listener in `application.toml` beside the binary, or with the matching `AXUM_*` environment variables:
+
+```toml
+[axum]
+bind = "0.0.0.0"
+port = 8080
+```
+
+</Example>
+
+The generated CLI is part of the host: `cargo run -- --help` lists the commands and arguments this application accepts. A failure to resolve a dependency has already been reported by `cargo check`, not here.
+
+## Where to go next
+
+- [Application model](/docs/latest/framework/application-model) — the assembled `App<P>`, its lifecycle, and when to use the builder instead of a generated host.
+- [Components and injection](/docs/latest/di/components) — construction, providers, and lifetimes beyond a plain singleton.
+- [HTTP controllers](/docs/latest/axum/http) — extraction, request scope, and streaming responses.
+- [The `app!` macro](/docs/latest/framework/app-macro) — configuration callbacks, plugins, and CLI commands on the host.
+- [Cargo Upwell](/docs/latest/cargo-upwell) — the optional command-line tool that validates and inspects an application.
+
+<Callout type="info" title="Project layout">
+
+Once the application grows, keep controllers and components in `lib.rs` and leave `main.rs` as the bootstrap. The library half is what compiles to a browser client, and the split costs nothing before then.
+
+</Callout>

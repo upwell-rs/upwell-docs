@@ -11,7 +11,7 @@ topics: ['tooling']
 
 # Automation and extension points
 
-Use structured output, explicit targets, and catalog-backed extensions rather than parsing terminal text. This guide builds on a validated application from [Cargo Upwell](/docs/latest/getting-started).
+Use structured output, explicit targets, and catalog-backed extensions rather than parsing terminal text. This guide builds on a validated application from [Cargo Upwell](/docs/latest/cargo-upwell).
 
 ## Automate validation
 

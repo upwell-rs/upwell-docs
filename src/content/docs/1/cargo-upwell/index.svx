@@ -1,0 +1,101 @@
+---
+title: Cargo Upwell
+description: Install cargo-upwell, select an application target, and validate an Upwell project.
+order: 150
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Example } from '#lib/docs';
+</script>
+
+# Cargo Upwell
+
+Cargo Upwell is the command-line companion to the framework, not a requirement for building an application. Start with [getting started](/docs/latest/getting-started) if you have not written an Upwell application yet.
+
+Use `cargo-upwell` to prepare an Upwell application's tooling document, validate it, and then inspect its resources. It builds a generated probe in an isolated tooling path; it never starts the application server.
+
+## Install the matching tool
+
+Install Cargo Upwell from crates.io, then confirm Cargo can discover the subcommand:
+
+<Example title="Install and identify Cargo Upwell">
+
+```sh
+cargo install cargo-upwell
+```
+
+Cargo discovers executables named `cargo-<name>`, so either form invokes the same program:
+
+```sh
+cargo upwell --version
+cargo-upwell --help
+```
+
+</Example>
+
+Install the release matching the Upwell dependency in the application. `doctor` verifies this after a successful probe.
+
+### Version policy
+
+Install a published `cargo-upwell` release compatible with the Upwell application being checked. Verify the installed tool with `cargo upwell --version`; this guide does not infer a Cargo package version from the documentation release label.
+
+## Validate one application
+
+From a package directory containing one eligible application binary, run `check`. A successful check means Cargo Upwell selected a target, built its probe, and prepared a valid tooling document.
+
+<Example title="Validate and diagnose an application">
+
+```sh
+cargo upwell check
+```
+
+When validation fails or before wiring the tool into automation, run the broader health report:
+
+```sh
+cargo upwell doctor
+```
+
+Use JSON only when another program consumes the report:
+
+```sh
+cargo upwell doctor --format json
+```
+
+</Example>
+
+`doctor` includes application validation plus checks for workspace selection, the isolated build, probe compatibility, framework-version agreement, and preparation. Its JSON report has a versioned `schema`, stable `outcome`, numeric `exit_code`, selected target when available, and canonical diagnostics. See [automate validation](/docs/latest/cargo-upwell/automation-and-extensions#automate-validation) before depending on those fields in CI.
+
+## Resolve a workspace ambiguity
+
+When the current directory has several eligible packages or binaries, Cargo Upwell stops rather than guessing. Start with the intended manifest, then name the package and binary explicitly. Keep these options in CI even if the workspace currently has only one target.
+
+<Example title="Select a workspace application">
+
+```sh
+cargo upwell check \
+  --manifest-path apps/api/Cargo.toml \
+  --package api \
+  --bin api-server
+```
+
+Enable the same features and target that the application needs:
+
+```sh
+cargo upwell check \
+  --manifest-path apps/api/Cargo.toml \
+  --package api \
+  --bin api-server \
+  --features admin,metrics \
+  --target x86_64-unknown-linux-gnu
+```
+
+</Example>
+
+`--features` may be repeated and accepts comma-separated values. `--all-features` cannot be combined with `--features`; `--no-default-features` disables default features. A feature-gated binary remains ineligible until its required features are enabled.
+
+Without explicit flags, Cargo Upwell selects one eligible default-member binary, then one eligible workspace binary, and finally a package's `default-run` or sole eligible binary. A normal Cargo build can still succeed when the generated probe is incompatible or application preparation fails, which is why `check` is the useful boundary.
+
+## Continue from a valid document
+
+After `check` succeeds, follow [inspect and query an application](/docs/latest/cargo-upwell/inspect-and-graph) to trace a resource or render its relationships. Use [automation and extension points](/docs/latest/cargo-upwell/automation-and-extensions) to retain structured reports in CI, generate projects, add renderers, or configure completion.

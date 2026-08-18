@@ -60,6 +60,8 @@ export interface NavigationGroup {
 	/** A namespace page represented by this group rather than a duplicate child leaf. */
 	readonly href?: string;
 	readonly pageId?: string;
+	/** Topics of the group's own page, so topic filtering can keep it when every child is hidden. */
+	readonly topics?: readonly string[];
 	readonly order: number;
 	readonly defaultOpen: boolean;
 	readonly kind: 'guide' | 'reference';

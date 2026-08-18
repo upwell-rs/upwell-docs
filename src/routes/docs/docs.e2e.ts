@@ -186,6 +186,31 @@ test('a documented symbol card keeps View source on GitHub', async ({ page }) =>
 	await expect(source).toHaveAttribute('href', /github\.com\/upwell-rs\/upwell\/blob\//);
 });
 
+test("a directory's index page is the group itself, ordered among the root pages", async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/getting-started`);
+
+	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
+	const tooling = sidebar.locator('details[data-group-id="guides:cargo-upwell"]');
+
+	// The group's label is its index page's title and links to it, instead of repeating as a child.
+	await expect(tooling.locator(':scope > summary').getByRole('link', { name: 'Cargo Upwell' })).toHaveAttribute(
+		'href',
+		`/docs/${VERSION}/cargo-upwell`
+	);
+	await expect(tooling.getByRole('link', { name: 'Cargo Upwell' })).toHaveCount(1);
+
+	// Its frontmatter order places the whole group last, below root pages a group used to outrank.
+	const entries = sidebar.locator('.tree[data-depth="0"] > li');
+
+	await expect(entries.first()).toContainText('Getting started');
+	await expect(entries.last()).toContainText('Cargo Upwell');
+
+	await tooling.locator(':scope > summary').getByRole('link', { name: 'Cargo Upwell' }).click();
+	await expect(page).toHaveURL(`/docs/${VERSION}/cargo-upwell`);
+	await expect(page.getByRole('heading', { level: 1, name: 'Cargo Upwell' })).toBeVisible();
+	await expect(tooling.locator(':scope > summary')).toHaveClass(/tree__summary--current/);
+});
+
 test('sidebar state survives navigation, because the shell is a layout', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 
@@ -325,7 +350,7 @@ test('letter shortcuts move between adjacent path-derived pages', async ({ page 
 	// unmodified and the matcher — which compares modifiers exactly — would never fire.
 	await page.keyboard.press('p');
 
-	await expect(page).toHaveURL(`/docs/${VERSION}/cargo-upwell/automation-and-extensions`);
+	await expect(page).toHaveURL(`/docs/${VERSION}/framework/app-macro`);
 });
 
 test('Alt+arrow moves between pages too', async ({ page }) => {
