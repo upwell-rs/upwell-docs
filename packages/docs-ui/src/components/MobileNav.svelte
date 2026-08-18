@@ -85,7 +85,16 @@
 	</div>
 
 	<div class="menu__body">
-		{@render navigation()}
+		<!--
+			The tree is built when the menu opens, not with the page.
+
+			Both layouts render the same navigation, so on every page it was in the document twice — and
+			the second copy is inside a closed dialog, where it cannot be seen or reached. On the
+			reference tree that doubling is thousands of nodes for a menu most readers never open.
+		-->
+		{#if open}
+			{@render navigation()}
+		{/if}
 
 		<div class="menu__toc">
 			{@render toc()}
