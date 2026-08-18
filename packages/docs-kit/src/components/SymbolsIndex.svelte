@@ -11,7 +11,7 @@
 	paths and summaries rather than the visible text alone.
 -->
 <script lang="ts">
-	import { createVirtualizer } from '@tanstack/svelte-virtual';
+	import { createVirtualizer, elementScroll, observeElementOffset, observeElementRect } from '@tanstack/svelte-virtual';
 	import { get } from 'svelte/store';
 
 	interface Record {
@@ -44,12 +44,27 @@
 		return (crate === 'all' || record.crate === crate) && (!wanted || record.path.toLowerCase().includes(wanted) || record.summary?.toLowerCase().includes(wanted));
 	}));
 
-	const rows = createVirtualizer<HTMLElement, HTMLLIElement>({
-		count: 0,
-		getScrollElement: () => scroller ?? null,
-		estimateSize: () => ROW_ESTIMATE,
-		overscan: 6
-	});
+	/**
+	 * The complete option set, named in one place.
+	 *
+	 * `setOptions` is handed all of it every time rather than the one field that changed. Only the
+	 * count changes, but an update naming the count alone would leave the observation and scrolling
+	 * callbacks to whatever the adapter merges in for its own defaults, and those callbacks are what
+	 * make the list follow its scroll box at all.
+	 */
+	function virtualizerOptions(count: number) {
+		return {
+			count,
+			getScrollElement: () => scroller ?? null,
+			estimateSize: () => ROW_ESTIMATE,
+			overscan: 6,
+			observeElementRect,
+			observeElementOffset,
+			scrollToFn: elementScroll
+		};
+	}
+
+	const rows = createVirtualizer<HTMLElement, HTMLLIElement>(virtualizerOptions(0));
 
 	/**
 	 * Tells the virtualizer how many rows exist, which filtering changes.
@@ -59,7 +74,7 @@
 	 * The count is what this effect is about, and that is the only thing it should follow.
 	 */
 	$effect(() => {
-		get(rows).setOptions({ count: visible.length, getScrollElement: () => scroller ?? null, estimateSize: () => ROW_ESTIMATE, overscan: 6 });
+		get(rows).setOptions(virtualizerOptions(visible.length));
 	});
 
 	// A filter that shortens the list leaves the reader scrolled past the end of it, looking at

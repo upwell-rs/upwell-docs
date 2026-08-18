@@ -29,12 +29,15 @@ cd catalog-api
 cargo add upwell --features axum
 ```
 
-Protocols are features: `axum` for HTTP, `daemon` for the native RPC protocol, or both. Two more direct dependencies are needed because generated code names them — the async runtime that starts the process, and `serde` for the types that cross the wire.
+Protocols are features: `axum` for HTTP, `daemon` for the native RPC protocol, or both. Three more direct dependencies are needed because generated code names them rather than reaching them through Upwell — the async runtime that starts the process, `serde` for the types that cross the wire, and `clap` for the command line the default `cli` feature generates.
 
 ```sh
 cargo add tokio --features macros,rt-multi-thread
 cargo add serde --features derive
+cargo add clap --features derive
 ```
+
+A transitive dependency is not enough for any of the three: the code Upwell generates writes `::clap`, `::serde`, and `::tokio` paths into your crate, which only resolve against its own dependencies.
 
 </Example>
 

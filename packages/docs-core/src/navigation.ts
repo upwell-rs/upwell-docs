@@ -260,6 +260,15 @@ export function navigationLeaves(nodes: readonly NavigationNode[]): readonly Nav
 	});
 }
 
+/**
+ * Collects every topic the tree can be filtered by, a group's own entrypoint included.
+ *
+ * A group that stands for a page carries that page's topics, and the filter list is built from this:
+ * without them, a topic used only by an `index.svx` would never be offered even though filtering on
+ * it would keep that group.
+ */
 export function navigationTopics(nodes: readonly NavigationNode[]): readonly string[] {
-	return nodes.flatMap((node) => (node.type === 'page' ? node.topics : navigationTopics(node.children)));
+	return nodes.flatMap((node) =>
+		node.type === 'page' ? node.topics : [...(node.topics ?? []), ...navigationTopics(node.children)]
+	);
 }

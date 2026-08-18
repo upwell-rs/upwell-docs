@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildGuideTree, buildSymbolTree, filterNavigation, navigationLeaves } from './navigation.ts';
+import { buildGuideTree, buildSymbolTree, filterNavigation, navigationLeaves, navigationTopics } from './navigation.ts';
 import type { DocSummary, NavigationNode } from './content.ts';
 
 const page = (slug: string, topics: readonly string[] = [], order = 0): DocSummary => ({
@@ -67,6 +67,12 @@ describe('navigation trees', () => {
 		const filtered = filterNavigation(tree, (topics) => topics.includes('tooling'), '');
 
 		expect(ids(filtered)).toEqual(['guides:tooling']);
+	});
+
+	it('offers an entrypoint page\'s topics as filters', () => {
+		const tree = buildGuideTree([page('tooling', ['tooling'], 10), page('tooling/inspect', ['web'], 20)], (slug) => slug);
+
+		expect(navigationTopics(tree)).toEqual(['tooling', 'web']);
 	});
 
 	it('keeps leaves in rendered depth-first order', () => {

@@ -315,6 +315,37 @@ test('topic filtering retains matching ancestors and the current page branch', a
 	await expect(sidebar.locator('details[data-group-id="guides:axum"]')).toHaveCount(1);
 });
 
+test('the symbol index renders a window of its thousands of rows', async ({ page }) => {
+	await page.goto(`/docs/upwell/${VERSION}/symbols`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
+
+	const rows = page.locator('.symbols li');
+	const results = page.locator('.results');
+
+	await expect(rows.first()).toBeVisible();
+
+	// The whole point: a release has thousands of symbols and the document holds a few dozen of them.
+	const total = Number((await page.locator('.count').innerText()).split(' ')[0]);
+
+	expect(total).toBeGreaterThan(1000);
+	expect(await rows.count()).toBeLessThan(60);
+
+	const firstBefore = await rows.first().innerText();
+
+	await results.evaluate((element) => element.scrollTo({ top: 8000 }));
+	await expect.poll(async () => (await rows.first().innerText()) !== firstBefore).toBe(true);
+	expect(await rows.count()).toBeLessThan(60);
+
+	// Filtering re-counts the list, and returns the reader to the top of it rather than leaving them
+	// scrolled past the end of a shorter one.
+	await page.getByPlaceholder('Try component or AxumConfig').fill('AxumConfig');
+	await expect.poll(async () => Number((await page.locator('.count').innerText()).split(' ')[0])).toBeLessThan(total);
+	expect(await results.evaluate((element) => element.scrollTop)).toBe(0);
+
+	await rows.first().getByRole('link').click();
+	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols/upwell_axum/config/AxumConfig`);
+});
+
 test('guides and symbols have explicit, independent navigation', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 
@@ -328,7 +359,15 @@ test('guides and symbols have explicit, independent navigation', async ({ page }
 
 	await expect(sidebar.getByRole('link', { name: 'All symbols' })).toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.locator('details[data-group-id="symbols:upwell_axum"]')).toHaveAttribute('open', '');
-	await expect(sidebar.locator(`a[href="/docs/upwell/${VERSION}/symbols/upwell_axum/config/AxumConfig"]`)).toHaveCount(1);
+
+	// A collapsed group renders nothing, so the entry appears when the module it belongs to is opened.
+	// The reference tree is thousands of entries; keeping the closed ones in the document is what that
+	// costs the browser.
+	const entry = sidebar.locator(`a[href="/docs/upwell/${VERSION}/symbols/upwell_axum/config/AxumConfig"]`);
+
+	await expect(entry).toHaveCount(0);
+	await sidebar.locator('details[data-group-id="symbols:upwell_axum/config"] > summary').press('Enter');
+	await expect(entry).toHaveCount(1);
 });
 
 test('a symbol page shows hand-written prose alongside generated facts', async ({ page }) => {
