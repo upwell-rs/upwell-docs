@@ -18,6 +18,7 @@ export interface ArtifactServiceOptions {
 	readonly config: DocsConfig;
 	readonly symbolPagesFor: (releaseVersion: DocsVersion['releaseVersion']) => readonly SymbolPageSummary[];
 	readonly symbolHref: (source: string, versionId: string, segments: string) => string;
+	readonly sourceHref?: (source: string, versionId: string, file: string, line: number) => string;
 	readonly building: boolean;
 	readonly projectRoot?: string;
 }
@@ -56,7 +57,7 @@ export interface ArtifactService {
 
 /** Server-only artifact access and the canonical destination catalog shared by all consumers. */
 export function createArtifactService(options: ArtifactServiceOptions): ArtifactService {
-	const { config, symbolPagesFor, symbolHref, building, projectRoot = process.cwd() } = options;
+	const { config, symbolPagesFor, symbolHref, sourceHref, building, projectRoot = process.cwd() } = options;
 	const artifacts = new Map<string, Promise<LoadedArtifact | null>>();
 	const catalogs = new Map<string, Promise<SymbolCatalog | null>>();
 
@@ -69,9 +70,17 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 		}
 
 		const loading = loadArtifact(artifactDir(projectRoot, config.cacheDir, source.crate, version.releaseVersion.raw), version.releaseVersion.raw)
-			.catch(() => source === config.framework.root
-				? loadArtifact(legacyArtifactDir(projectRoot, config.cacheDir, version.releaseVersion.raw), version.releaseVersion.raw).catch(() => findVendoredArtifact(source, version))
-				: findVendoredArtifact(source, version));
+			.catch(async (cause) => {
+				const fallback = source === config.framework.root
+					? await loadArtifact(legacyArtifactDir(projectRoot, config.cacheDir, version.releaseVersion.raw), version.releaseVersion.raw).catch(() => null)
+					: await findVendoredArtifact(source, version);
+
+				if (!fallback) {
+					throw cause;
+				}
+
+				return fallback;
+			});
 
 		artifacts.set(key, loading);
 
@@ -87,7 +96,7 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 				).catch(() => null);
 				const snapshot = candidate?.manifest.sources?.find((entry) => entry.crate === source.crate && entry.version === version.releaseVersion.raw);
 
-				if (candidate && snapshot) {
+				if (candidate && snapshot && candidate.manifest.documentation.releaseVersion === version.releaseVersion.raw) {
 					return candidate;
 				}
 			}
@@ -129,7 +138,7 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 			return undefined;
 		}
 
-		return {
+			return {
 			path: symbolPath,
 			canonicalPath: symbol.path,
 			name: symbol.name,
@@ -140,7 +149,7 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 			doc: symbol.doc,
 			feature: symbol.feature,
 			deprecation: symbol.deprecation,
-			sourceHref: symbolSourceLink(catalog.artifact, symbol),
+				sourceHref: symbol.source && sourceHref ? sourceHref(catalog.resolve(symbolPath)?.source ?? source.crate, version.id, symbol.source.file, symbol.source.line) : symbolSourceLink(catalog.artifact, symbol),
 			source: symbol.source,
 			implementations: symbol.implementations,
 			implementors: symbol.implementors.map((canonical) => toLink(catalog, canonical)),

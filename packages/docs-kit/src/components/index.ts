@@ -4,3 +4,4 @@ export { default as GuidePage } from './GuidePage.svelte';
 export { default as PackageInstall } from './PackageInstall.svelte';
 export { default as SymbolPage } from './SymbolPage.svelte';
 export { default as SymbolsIndex } from './SymbolsIndex.svelte';
+export { default as SourceViewer } from './SourceViewer.svelte';

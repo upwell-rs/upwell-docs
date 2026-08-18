@@ -31,6 +31,7 @@ import {
   type CrateInfo,
   readDirectDependencies,
   readGit,
+  readGitSourceFiles,
   readToolchain,
   readSysroot,
   readWorkspace,
@@ -214,7 +215,7 @@ export async function generateArtifact(
       });
     }),
   );
-  const artifactSources = sources.map((source) => {
+  const artifactSources = await Promise.all(sources.map(async (source) => {
     const registration = sourcesByRoot.get(source.workspace.facadeCrate)!;
 
     return {
@@ -224,14 +225,16 @@ export async function generateArtifact(
       sha: source.git.sha,
       crates: source.workspace.crates.filter((crate) => crate.published).map((crate) => crate.name),
       primary: source.primary,
+      files: await readGitSourceFiles(source.checkout, source.git.sha),
     };
-  });
+  }));
   const capabilities: ArtifactCapability[] = [
     "symbols",
     "crates",
     "search",
     "externals",
     "docs",
+    "sources",
   ];
 
   const manifest: ArtifactManifest = {

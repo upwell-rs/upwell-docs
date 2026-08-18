@@ -50,6 +50,15 @@ const RUSTDOC_FLAG = /^(?:ignore|no_run|should_panic|compile_fail|edition(?:2015
  * application routes.
  */
 export async function renderRustdocMarkdown(markdown: string | null): Promise<string> {
+	return renderMarkdown(markdown, true);
+}
+
+/** Renders a repository Markdown file without Rustdoc's heading-level adjustment. */
+export async function renderSourceMarkdown(markdown: string | null): Promise<string> {
+	return renderMarkdown(markdown, false);
+}
+
+async function renderMarkdown(markdown: string | null, rustdoc: boolean): Promise<string> {
 	if (!markdown) {
 		return '';
 	}
@@ -57,7 +66,7 @@ export async function renderRustdocMarkdown(markdown: string | null): Promise<st
 	const rendered = await unified()
 		.use(remarkParse)
 		.use(remarkGfm)
-		.use(normalizeRustdoc, markdown)
+			.use(normalizeMarkdown, markdown, rustdoc)
 		.use(remarkRehype)
 		.use(rehypeSlug)
 		.use(rehypeSanitize)
@@ -69,7 +78,7 @@ export async function renderRustdocMarkdown(markdown: string | null): Promise<st
 }
 
 /** Normalizes Rustdoc conventions before conversion to HTML. */
-function normalizeRustdoc(markdown: string) {
+function normalizeMarkdown(markdown: string, rustdoc: boolean) {
 	return (tree: MarkdownNode): void => {
 		visit(tree, (node: MarkdownNode, index: number | undefined, parent: MarkdownNode | undefined) => {
 			if (node.type === 'code') {
@@ -79,7 +88,7 @@ function normalizeRustdoc(markdown: string) {
 				node.lang = normalizeFenceLanguage(node.lang, fenced);
 			}
 
-			if (node.type === 'heading' && node.depth) {
+			if (rustdoc && node.type === 'heading' && node.depth) {
 				// The generated page owns h1. Rustdoc's sections begin one level below it.
 				node.depth = Math.min(node.depth + 1, 6);
 			}

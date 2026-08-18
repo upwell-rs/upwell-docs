@@ -179,6 +179,30 @@ export interface GitInfo {
   readonly dirty: boolean;
 }
 
+export interface GitSourceFile {
+  readonly path: string;
+  readonly bytes: number;
+}
+
+/** Lists regular files from the captured commit without traversing the mutable checkout. */
+export async function readGitSourceFiles(
+  checkout: string,
+  sha: string,
+): Promise<GitSourceFile[]> {
+  const listing = await git(checkout, ["ls-tree", "-r", "-l", "--full-tree", sha]);
+  const files: GitSourceFile[] = [];
+
+  for (const line of listing.split("\n")) {
+    const match = /^100\d{3} blob [0-9a-f]+\s+(\d+)\t(.+)$/.exec(line);
+
+    if (match) {
+      files.push({ path: match[2], bytes: Number(match[1]) });
+    }
+  }
+
+  return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
 /**
  * Reads the checkout's commit, its release tag if it sits exactly on one, and whether it is dirty.
  *
@@ -199,7 +223,7 @@ export async function readGit(
     tags
       .split("\n")
       .map((entry) => entry.trim())
-      .find((entry) => entry.startsWith(tagPrefix)) ?? null;
+      .find((entry) => entry.length > 0 && entry.startsWith(tagPrefix)) ?? null;
 
   return { sha, tag, dirty: status.trim().length > 0 };
 }

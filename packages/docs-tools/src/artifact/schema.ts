@@ -33,7 +33,7 @@ export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [3];
  * Tiers are declared rather than inferred, so the site can degrade per capability instead of
  * probing for files.
  */
-export type ArtifactCapability = "symbols" | "crates" | "search" | "externals" | "docs";
+export type ArtifactCapability = "symbols" | "crates" | "search" | "externals" | "docs" | "sources";
 
 export const REQUIRED_CAPABILITIES: readonly ArtifactCapability[] = ["symbols"];
 
@@ -116,6 +116,13 @@ export interface ArtifactSource {
   readonly sha: string;
   readonly crates: readonly string[];
   readonly primary: boolean;
+  /** Tracked, regular files at `sha`; source bytes remain in the repository. */
+  readonly files?: readonly ArtifactSourceFile[];
+}
+
+export interface ArtifactSourceFile {
+  readonly path: string;
+  readonly bytes: number;
 }
 
 /** One workspace crate and its Cargo features. */
@@ -273,12 +280,21 @@ function requirePositiveInteger(value: unknown, path: string): number {
   return value;
 }
 
+function requireNonnegativeInteger(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new ArtifactSchemaError(path, "expected a nonnegative integer");
+  }
+
+  return value;
+}
+
 const CAPABILITIES: readonly ArtifactCapability[] = [
   "symbols",
   "crates",
   "search",
   "externals",
   "docs",
+  "sources",
 ];
 
 /**
@@ -418,6 +434,17 @@ export function parseManifest(value: unknown): ArtifactManifest {
               sha: requireString(source.sha, `manifest.sources[${index}].sha`),
               crates: requireStringArray(source.crates, `manifest.sources[${index}].crates`),
               primary: requireBoolean(source.primary, `manifest.sources[${index}].primary`),
+              files:
+                source.files === undefined
+                  ? undefined
+                  : requireArray(source.files, `manifest.sources[${index}].files`).map((value, fileIndex) => {
+                      const file = requireObject(value, `manifest.sources[${index}].files[${fileIndex}]`);
+
+                      return {
+                        path: requireString(file.path, `manifest.sources[${index}].files[${fileIndex}].path`),
+                        bytes: requireNonnegativeInteger(file.bytes, `manifest.sources[${index}].files[${fileIndex}].bytes`),
+                      };
+                    }),
             };
           }),
     contents: {

@@ -47,14 +47,22 @@
 
 	const slug = $derived(current?.slug ?? '');
 	const symbols = $derived(slug === 'symbols' || slug.startsWith('symbols/'));
+	const sourceViewer = $derived(slug.startsWith('src/'));
 	const activeSource = $derived(source ?? content.config.framework.root);
 	const availableVersions = $derived(versions ?? docsVersions(content.config));
 	const symbolsIndexHref = $derived(content.symbolHref(activeSource.crate, version.id, '').replace(/\/$/, ''));
+	const sourceHref = $derived(`/docs/${activeSource.crate}/${version.id}/src/`);
 
 	function changeVersion(id: string): void {
 		const target = availableVersions.find((candidate) => candidate.id === id);
 
 		if (!target) {
+			return;
+		}
+
+		if (sourceViewer) {
+			assignLocation(`/docs/${activeSource.crate}/${target.id}/${slug}`);
+
 			return;
 		}
 
@@ -74,8 +82,9 @@
 	repository={activeSource.repository}
 	versions={availableVersions}
 	guidesHref={content.pageHref(version.id, content.config.landingSlug)}
-	symbolsHref={symbolsIndexHref}
-	area={symbols ? 'symbols' : 'guides'}
+		symbolsHref={symbolsIndexHref}
+		{sourceHref}
+		area={sourceViewer ? 'source' : symbols ? 'symbols' : 'guides'}
 	onversionchange={changeVersion}
 	onsearch={() => search?.open()}
 >
@@ -112,8 +121,8 @@
 />
 <Notifications requested={notifications.toaster.requested} />
 
-<div class="layout">
-	<aside class="layout__sidebar">
+<div class:layout--source={sourceViewer} class="layout">
+	<aside class="layout__sidebar" class:layout__sidebar--hidden={sourceViewer}>
 		{#if symbols}
 			<SymbolsSidebar records={symbolRecords} current={slug} indexHref={symbolsIndexHref} state={sidebar} />
 		{:else}
@@ -121,23 +130,27 @@
 		{/if}
 	</aside>
 
-	<main class="layout__main">
-		{#if current}
+	<main class:layout__main--source={sourceViewer} class="layout__main">
+		{#if current && !sourceViewer}
 			<Breadcrumbs {version} section={current.section} title={current.title} />
 		{/if}
 
-		<DocsArticle bind:element={article}>
+		{#if sourceViewer}
 			{@render children()}
-		</DocsArticle>
-
-		{#if current?.reference && slug !== 'symbols'}
-			<ReferenceNote backTo={{ href: content.pageHref(version.id, ''), title: 'Back to the guides' }} />
 		{:else}
+			<DocsArticle bind:element={article}>
+				{@render children()}
+			</DocsArticle>
+		{/if}
+
+		{#if !sourceViewer && current?.reference && slug !== 'symbols'}
+			<ReferenceNote backTo={{ href: content.pageHref(version.id, ''), title: 'Back to the guides' }} />
+		{:else if !sourceViewer}
 			<PageNav {version} {previous} {next} />
 		{/if}
 	</main>
 
-	<aside class="layout__toc">
+	<aside class="layout__toc" class:layout__toc--hidden={sourceViewer}>
 		<TableOfContents {article} key={pathname} />
 	</aside>
 </div>
@@ -147,12 +160,18 @@
 	@media (min-width: 48rem) { .layout { padding: 2rem 1.5rem 4rem; } }
 	.layout__main { min-width: 0; }
 	.layout__sidebar, .layout__toc { display: none; }
+	.layout--source { box-sizing: border-box; height: calc(100dvh - 3.5rem); max-width: none; margin: 0; padding: 0; overflow: hidden; }
+	.layout__main--source { min-height: 0; height: 100%; overflow: hidden; }
 	@media (min-width: 60rem) {
 		.layout { grid-template-columns: 15rem minmax(0, 1fr); }
 		.layout__sidebar { display: block; position: sticky; top: 5rem; align-self: start; max-height: calc(100vh - 7rem); overflow-y: auto; }
+		.layout--source { grid-template-columns: minmax(0, 1fr); padding: 0; }
+		.layout__sidebar--hidden { display: none; }
 	}
 	@media (min-width: 80rem) {
 		.layout { grid-template-columns: 15rem minmax(0, 1fr) 14rem; }
 		.layout__toc { display: block; position: sticky; top: 5rem; align-self: start; max-height: calc(100vh - 7rem); overflow-y: auto; }
+		.layout--source { grid-template-columns: minmax(0, 1fr); padding: 0; }
+		.layout__toc--hidden { display: none; }
 	}
 </style>

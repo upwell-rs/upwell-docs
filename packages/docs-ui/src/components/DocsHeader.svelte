@@ -19,13 +19,14 @@
 		versions: readonly DocsVersion[];
 		guidesHref: string;
 		symbolsHref: string;
-		area: 'guides' | 'symbols';
+		sourceHref?: string;
+		area: 'guides' | 'symbols' | 'source';
 		onversionchange: (id: string) => void;
 		/** The narrow-viewport navigation trigger, which hides itself on wide ones. */
 		nav?: Snippet;
 	}
 
-	let { version, onsearch, name, repository, versions, guidesHref, symbolsHref, area, onversionchange, nav }: Props = $props();
+	let { version, onsearch, name, repository, versions, guidesHref, symbolsHref, sourceHref, area, onversionchange, nav }: Props = $props();
 	let hydrated = $state(false);
 
 	onMount(() => {
@@ -41,6 +42,7 @@
 		<nav class="header__areas" aria-label="Documentation sections">
 			<a href={guidesHref} aria-current={area === 'guides' ? 'page' : undefined}>Guides</a>
 			<a href={symbolsHref} aria-current={area === 'symbols' ? 'page' : undefined}>Symbols</a>
+			{#if sourceHref}<a href={sourceHref} aria-current={area === 'source' ? 'page' : undefined}>Source</a>{/if}
 		</nav>
 
 		<button class="header__search" type="button" onclick={onsearch}>
@@ -71,6 +73,7 @@
 
 <style>
 	.header {
+		box-sizing: border-box;
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -179,6 +182,11 @@
 	}
 
 	@media (max-width: 30rem) {
+		.header__search,
+		.header__nav {
+			display: none;
+		}
+
 		.header__areas a {
 			padding: 0 0.35rem;
 		}
