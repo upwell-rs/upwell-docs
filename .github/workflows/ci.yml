@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# Superseded pull request runs are cancelled; runs on master are left to finish so every commit on
+# the default branch keeps a status of its own.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: bun run lint
+
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+
+      # Runs `svelte-kit sync` first, so the generated types exist without a prior build.
+      - run: bun run check
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+
+      # The `client` vitest project runs component tests in a real Chromium via vitest browser mode.
+      - uses: ./.github/actions/playwright
+
+      - run: bun run test:unit --run
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+
+      # Mirrors the Railpack deployment build: the committed artifacts under artifacts/ are the only
+      # Rustdoc input, so prerendering must succeed without Rust, Cargo, or a framework checkout.
+      - run: bun run build
+
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/playwright
+
+      # `playwright test` directly rather than `bun run test:e2e`: that script prefixes an
+      # unconditional `playwright install`, which downloads Firefox and WebKit this suite never
+      # launches. The config's webServer still builds and previews the site.
+      - run: bunx playwright test
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -1,0 +1,12 @@
+version: 2
+
+updates:
+  # Only the Actions ecosystem. Dependency updates for the workspace stay manual, because a
+  # lockfile bump has to be validated against the committed Rustdoc artifacts by hand.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

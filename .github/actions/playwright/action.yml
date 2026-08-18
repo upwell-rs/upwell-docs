@@ -1,0 +1,21 @@
+name: Playwright browsers
+description: Install the Chromium build Playwright and vitest browser mode both drive.
+
+runs:
+  using: composite
+  steps:
+    # Keyed on the lockfile: Playwright refuses browsers built for another release, so the cache
+    # must be invalidated whenever its version moves.
+    - name: Restore browser cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+    # Only Chromium: playwright.config.ts declares no projects, so the default Chromium project is
+    # the whole e2e matrix, and vite.config.ts pins the vitest browser instance to Chromium too.
+    # `--with-deps` installs the system libraries the runner image lacks, and is a fast no-op once
+    # the browser itself is restored from cache.
+    - name: Install Chromium
+      shell: bash
+      run: bunx playwright install --with-deps chromium

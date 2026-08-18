@@ -1,0 +1,23 @@
+name: Setup
+description: Install the pinned Bun toolchain and the workspace dependencies from the committed lockfile.
+
+runs:
+  using: composite
+  steps:
+    # No version input: setup-bun reads `packageManager` from package.json, so CI always uses the
+    # same Bun as a local checkout.
+    - name: Install Bun
+      uses: oven-sh/setup-bun@v2
+
+    # setup-bun caches only the Bun executable, never the install cache.
+    - name: Restore dependency cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-install-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
