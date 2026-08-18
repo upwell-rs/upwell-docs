@@ -46,11 +46,12 @@
 		<li>
 			{#if node.type === 'group'}
 				{#if node.children.length > 0}
+					{@const open = activeGroups.has(node.id) || isOpen(node.id, node.defaultOpen)}
 					<details
 						class="tree__group"
 						data-group-id={node.id}
 						data-reference={node.kind === 'reference' ? 'true' : undefined}
-						open={activeGroups.has(node.id) || isOpen(node.id, node.defaultOpen)}
+						{open}
 						ontoggle={(event) => onToggle(node.id, event.currentTarget.open)}
 					>
 						<summary class="tree__summary" class:tree__summary--current={node.pageId === current}>
@@ -69,7 +70,18 @@
 								{node.label}
 							{/if}
 						</summary>
-						<NavigationTree nodes={node.children} {current} {activeGroups} {truncate} {isOpen} {onToggle} depth={depth + 1} />
+						<!--
+							A closed group renders nothing.
+
+							`<details>` keeps its contents in the document when closed, which is invisible on a
+							handful of groups and expensive on the reference tree: most of its groups are closed at
+							any moment, and their entries account for the majority of the nodes on the page. Nothing
+							is lost by leaving them out — collapsed content cannot be seen, focused, or found — and
+							they render the moment the group opens.
+						-->
+						{#if open}
+							<NavigationTree nodes={node.children} {current} {activeGroups} {truncate} {isOpen} {onToggle} depth={depth + 1} />
+						{/if}
 					</details>
 				{:else if node.href}
 					<a class="tree__link" href={node.href} title={truncate ? node.label : undefined} aria-current={node.pageId === current ? 'page' : undefined}><code>{node.label}</code></a>

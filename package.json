@@ -28,6 +28,7 @@
     "@sveltejs/adapter-node": "next",
     "@sveltejs/kit": "next",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tanstack/svelte-virtual": "^3.13.35",
     "@types/node": "^22",
     "@vitest/browser-playwright": "^4.1.8",
     "eslint": "^10.4.1",
@@ -49,10 +50,10 @@
     "#lib/*": "./src/lib/*"
   },
   "dependencies": {
-		"@upwell/docs-core": "workspace:*",
-		"@upwell/docs-kit": "workspace:*",
-		"@upwell/docs-ui": "workspace:*",
-		"@upwell/docs-tools": "workspace:*",
+    "@upwell/docs-core": "workspace:*",
+    "@upwell/docs-kit": "workspace:*",
+    "@upwell/docs-ui": "workspace:*",
+    "@upwell/docs-tools": "workspace:*",
     "@upwell/docs-vite": "workspace:*",
     "@tanstack/svelte-hotkeys": "^0.10.0",
     "svelte-sonner": "^1.2.1"

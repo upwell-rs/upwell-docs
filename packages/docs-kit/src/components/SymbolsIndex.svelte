@@ -1,4 +1,19 @@
+<!--
+	The index of every documented symbol in one release.
+
+	The list is virtualized because it is the largest thing the site renders: a release has thousands
+	of symbols, and every one of them as a live list item is tens of thousands of DOM nodes for the
+	dozen a reader can see. Rows are measured rather than assumed, since a summary wraps to one, two,
+	or three lines.
+
+	The consequence worth knowing: only the rendered window exists in the document, so the browser's
+	own find cannot search the whole list. The filter above it is the tool for that, and it searches
+	paths and summaries rather than the visible text alone.
+-->
 <script lang="ts">
+	import { createVirtualizer } from '@tanstack/svelte-virtual';
+	import { get } from 'svelte/store';
+
 	interface Record {
 		readonly path: string;
 		readonly name: string;
@@ -19,12 +34,53 @@
 	let { source, version, records, sources }: Props = $props();
 	let query = $state('');
 	let crate = $state('all');
+	let scroller = $state<HTMLElement>();
+
+	const ROW_ESTIMATE = 84;
 	const crates = $derived([...new Set(records.map((record) => record.crate))].sort());
 	const visible = $derived(records.filter((record) => {
 		const wanted = query.trim().toLowerCase();
 
 		return (crate === 'all' || record.crate === crate) && (!wanted || record.path.toLowerCase().includes(wanted) || record.summary?.toLowerCase().includes(wanted));
 	}));
+
+	const rows = createVirtualizer<HTMLElement, HTMLLIElement>({
+		count: 0,
+		getScrollElement: () => scroller ?? null,
+		estimateSize: () => ROW_ESTIMATE,
+		overscan: 6
+	});
+
+	/**
+	 * Tells the virtualizer how many rows exist, which filtering changes.
+	 *
+	 * `get` rather than `$rows`, and this is the whole reason: `setOptions` writes to the same store,
+	 * so reading it here would make the effect depend on its own write and run until Svelte stops it.
+	 * The count is what this effect is about, and that is the only thing it should follow.
+	 */
+	$effect(() => {
+		get(rows).setOptions({ count: visible.length, getScrollElement: () => scroller ?? null, estimateSize: () => ROW_ESTIMATE, overscan: 6 });
+	});
+
+	// A filter that shortens the list leaves the reader scrolled past the end of it, looking at
+	// nothing. The results start again from the top whenever the query or the crate changes.
+	$effect(() => {
+		void query;
+		void crate;
+
+		scroller?.scrollTo({ top: 0 });
+	});
+
+	/**
+	 * Measures a row, so a two-line summary is not laid out as a one-line one.
+	 *
+	 * The virtualizer tracks rows by their `data-index` and observes them itself, so an action that
+	 * hands over the element is the whole contract — there is nothing to undo when the row scrolls
+	 * out and unmounts.
+	 */
+	function measure(element: HTMLLIElement): void {
+		get(rows).measureElement(element);
+	}
 </script>
 
 <svelte:head>
@@ -64,18 +120,24 @@
 </div>
 
 <p class="count">{visible.length} {visible.length === 1 ? 'symbol' : 'symbols'}</p>
-	<ul class="symbols" aria-label="Symbol results">
-	{#each visible as record (record.path)}
-		<li>
-				<div class="symbol__heading">
-					<a href={record.href}><code>{record.path}</code></a>
-					<span class="kind">{record.kind}</span>
-					{#if record.authored}<span class="authored">curated</span>{/if}
-				</div>
-			{#if record.summary}<p>{record.summary}</p>{/if}
-		</li>
-	{/each}
-</ul>
+
+<div bind:this={scroller} class="results">
+	<ul class="symbols" aria-label="Symbol results" style={`height: ${$rows.getTotalSize()}px`}>
+		{#each $rows.getVirtualItems() as row (visible[row.index]?.path ?? row.key)}
+			{@const record = visible[row.index]}
+			{#if record}
+				<li use:measure data-index={row.index} style={`transform: translateY(${row.start}px)`}>
+					<div class="symbol__heading">
+						<a href={record.href}><code>{record.path}</code></a>
+						<span class="kind">{record.kind}</span>
+						{#if record.authored}<span class="authored">curated</span>{/if}
+					</div>
+					{#if record.summary}<p>{record.summary}</p>{/if}
+				</li>
+			{/if}
+		{/each}
+	</ul>
+</div>
 
 <style>
 	.hero { max-width: 48rem; margin-bottom: 2rem; }
@@ -91,8 +153,18 @@
 	.filters label { display: grid; gap: 0.3rem; color: var(--text-subtle); font-size: 0.75rem; font-weight: 600; }
 	.filters input, .filters select { min-width: 0; padding: 0.6rem 0.7rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); color: var(--text); font: inherit; }
 	.count { color: var(--text-subtle); font-size: 0.8125rem; }
-	.symbols { margin: 0; padding: 0; list-style: none; }
-	.symbols li { padding: 1rem 0; border-top: 1px solid var(--border); }
+
+	/*
+	 * The list scrolls in its own box rather than with the page.
+	 *
+	 * A virtualizer needs one element whose scrolling it can follow, and the page's scroller is not
+	 * that element: the reading pane scrolls on wide viewports while the document scrolls on narrow
+	 * ones. Owning the scroll box also keeps the filters in place while the results move, which is
+	 * the behaviour this list wants anyway.
+	 */
+	.results { max-height: min(70vh, 46rem); overflow: hidden auto; overscroll-behavior: contain; }
+	.symbols { position: relative; margin: 0; padding: 0; list-style: none; }
+	.symbols li { position: absolute; top: 0; left: 0; box-sizing: border-box; width: 100%; padding: 1rem 0; border-top: 1px solid var(--border); }
 	.symbol__heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
 	.symbols a { text-decoration: none; }
 	.symbols code { font-family: var(--font-mono); font-size: 0.875rem; }
