@@ -11,12 +11,14 @@
 
 import { defineEnvVars } from '@sveltejs/kit/env';
 
+import { normalizeSiteOrigin } from './lib/docs/origin.ts';
+
 export const variables = defineEnvVars({
 	SITE_ORIGIN: {
 		public: true,
 		static: true,
-		description: 'Absolute origin this site is served from, used by the sitemap, robots.txt and llms.txt. Defaults to the port `bun start` serves, so a local build produces files that work locally rather than files claiming a domain the build knows nothing about.',
-		schema: (value) => (value ?? 'http://localhost:3000').replace(/\/+$/, '')
+		description: 'Origin this site is served from, used by the sitemap, robots.txt and llms.txt. A bare host such as `${{RAILWAY_PUBLIC_DOMAIN}}` is accepted and read as https. Defaults to the port `bun start` serves, so a local build produces files that work locally rather than files claiming a domain the build knows nothing about.',
+		schema: normalizeSiteOrigin
 	},
 	DOCS_GITHUB_API_ORIGIN: {
 		description: 'Where the source viewer reads repository inventories from. Overridden only by tests, which serve a repository they own rather than depending on GitHub.',

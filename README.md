@@ -144,7 +144,7 @@ These files carry absolute URLs and are prerendered, so the origin is a build in
 SITE_ORIGIN=https://docs.example.com bun run build
 ```
 
-Unset, it falls back to `http://localhost:3000`, which is what a local build should say. Every variable the site reads is declared in `src/env.ts` with its default and whether it is read at build time or at startup.
+A bare host is accepted too, which is what a hosting platform gives you — on Railway, `SITE_ORIGIN=${{RAILWAY_PUBLIC_DOMAIN}}` — and is read as `https`. Unset, it falls back to `http://localhost:3000`, which is what a local build should say. Every variable the site reads is declared in `src/env.ts` with its default and whether it is read at build time or at startup.
 
 ## Commands
 
