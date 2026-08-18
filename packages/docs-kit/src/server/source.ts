@@ -74,12 +74,25 @@ export interface SourceServiceOptions {
 	 * repository, which can serve any path in it.
 	 */
 	readonly fileHref?: (source: string, versionId: string, file: string) => string;
+	/**
+	 * Where repository contents are read from, for a caller that is not talking to GitHub.
+	 *
+	 * The viewer's own tests are the reason this exists: a suite that reads the real repository is a
+	 * suite that fails on a rate limit or an outage, and one that stubs the browser's network never
+	 * reaches this code, because these requests are the server's. Pointing the two origins at a local
+	 * fixture exercises the same fetches against a repository the test owns.
+	 */
+	readonly github?: { readonly api?: string; readonly raw?: string };
 }
+
+const GITHUB_API = 'https://api.github.com';
+const GITHUB_RAW = 'https://raw.githubusercontent.com';
 
 /** GitHub-backed source access pinned to repository revisions recorded in documentation artifacts. */
 export function createSourceService(options: SourceServiceOptions): SourceService {
 	const inventories = new Map<string, Promise<readonly SourceFileEntry[]>>();
 	const files = new Map<string, Promise<string | null>>();
+	const origins = { api: options.github?.api ?? GITHUB_API, raw: options.github?.raw ?? GITHUB_RAW };
 
 	async function resolveSnapshot(source: FrameworkCrateCoordinates, version: DocsVersion) {
 		const artifact = await options.artifacts.getArtifact(source, version);
@@ -100,7 +113,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 			return existing;
 		}
 
-		const loading = fetchGithubTree(snapshot);
+		const loading = fetchGithubTree(snapshot, origins.api);
 		inventories.set(key, loading);
 
 		try {
@@ -136,7 +149,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 
 			if (!entry) {
 				const readme = inventoryFiles.find((candidate) => candidate.path.toLowerCase() === `${file ? `${file}/` : ''}readme.md`.toLowerCase());
-				const readmeContents = readme && readme.bytes <= MAX_SOURCE_BYTES ? await fetchSource(snapshot, readme.path, files) : null;
+				const readmeContents = readme && readme.bytes <= MAX_SOURCE_BYTES ? await fetchSource(snapshot, readme.path, files, origins.raw) : null;
 
 				return {
 					kind: 'directory',
@@ -148,7 +161,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 					githubHref: `${snapshot.repository}/tree/${snapshot.sha}${file ? `/${encodePath(file)}` : ''}`,
 					files: inventoryFiles,
 					targets: [],
-					markdownHtml: await renderSourceMarkdown(readmeContents, markdownLinks(options, snapshot, source, version, readme?.path ?? file)),
+					markdownHtml: await renderSourceMarkdown(readmeContents, markdownLinks(options, snapshot, source, version, readme?.path ?? file, origins.raw)),
 					markdownPath: readme?.path ?? null,
 					sourceHtml: ''
 				};
@@ -158,7 +171,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 				return null;
 			}
 
-			const contents = await fetchSource(snapshot, file, files);
+			const contents = await fetchSource(snapshot, file, files, origins.raw);
 
 			if (contents === null) {
 				return null;
@@ -215,7 +228,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 				githubHref: `${snapshot.repository}/blob/${snapshot.sha}/${encodePath(file)}`,
 				files: inventoryFiles,
 				targets,
-				markdownHtml: file.toLowerCase().endsWith('.md') ? await renderSourceMarkdown(contents, markdownLinks(options, snapshot, source, version, file)) : '',
+				markdownHtml: file.toLowerCase().endsWith('.md') ? await renderSourceMarkdown(contents, markdownLinks(options, snapshot, source, version, file, origins.raw)) : '',
 				markdownPath: file.toLowerCase().endsWith('.md') ? file : null,
 				sourceHtml: await renderSourceCode(contents, language, annotations)
 			};
@@ -477,7 +490,7 @@ function externalAnnotation(symbol: ExternalSymbol, text: string, start: number)
 	};
 }
 
-async function fetchSource(snapshot: ArtifactSource, file: string, cache: Map<string, Promise<string | null>>): Promise<string | null> {
+async function fetchSource(snapshot: ArtifactSource, file: string, cache: Map<string, Promise<string | null>>, rawOrigin: string): Promise<string | null> {
 	const key = `${snapshot.repository}@${snapshot.sha}/${file}`;
 	const existing = cache.get(key);
 
@@ -485,7 +498,7 @@ async function fetchSource(snapshot: ArtifactSource, file: string, cache: Map<st
 		return existing;
 	}
 
-	const loading = fetch(githubRawUrl(snapshot, file), {
+	const loading = fetch(githubRawUrl(snapshot, file, rawOrigin), {
 		headers: { accept: 'text/plain' },
 		signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS)
 	}).then((response) => response.ok ? response.text() : null);
@@ -499,14 +512,14 @@ async function fetchSource(snapshot: ArtifactSource, file: string, cache: Map<st
 	}
 }
 
-async function fetchGithubTree(snapshot: ArtifactSource): Promise<readonly SourceFileEntry[]> {
+async function fetchGithubTree(snapshot: ArtifactSource, apiOrigin: string): Promise<readonly SourceFileEntry[]> {
 	const coordinates = githubCoordinates(snapshot.repository);
 
 	if (!coordinates) {
 		throw new Error(`Source viewer only supports GitHub repositories: ${snapshot.repository}`);
 	}
 
-	const response = await fetch(`https://api.github.com/repos/${coordinates}/git/trees/${snapshot.sha}?recursive=1`, {
+	const response = await fetch(`${apiOrigin}/repos/${coordinates}/git/trees/${snapshot.sha}?recursive=1`, {
 		headers: { accept: 'application/vnd.github+json', 'user-agent': 'upwell-docs-source-viewer' },
 		signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS)
 	});
@@ -527,14 +540,14 @@ async function fetchGithubTree(snapshot: ArtifactSource): Promise<readonly Sourc
 		.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-function githubRawUrl(snapshot: ArtifactSource, file: string): string {
+function githubRawUrl(snapshot: ArtifactSource, file: string, rawOrigin: string): string {
 	const coordinates = githubCoordinates(snapshot.repository);
 
 	if (!coordinates) {
 		throw new Error(`Source viewer only supports GitHub repositories: ${snapshot.repository}`);
 	}
 
-	return `https://raw.githubusercontent.com/${coordinates}/${snapshot.sha}/${encodePath(file)}`;
+	return `${rawOrigin}/${coordinates}/${snapshot.sha}/${encodePath(file)}`;
 }
 
 function githubCoordinates(repository: string): string | null {
@@ -576,7 +589,8 @@ function markdownLinks(
 	snapshot: ArtifactSource,
 	source: FrameworkCrateCoordinates,
 	version: DocsVersion,
-	from: string
+	from: string,
+	rawOrigin: string
 ): SourceMarkdownContext {
 	const directory = from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : '';
 
@@ -599,7 +613,7 @@ function markdownLinks(
 
 			// An image needs the bytes, so it goes to the raw file rather than to the page about it. The
 			// suffix travels with it: an SVG fragment such as `icons.svg#warning` selects what renders.
-			return path ? `${githubRawUrl(snapshot, path)}${target.suffix}` : null;
+			return path ? `${githubRawUrl(snapshot, path, rawOrigin)}${target.suffix}` : null;
 		}
 	};
 }

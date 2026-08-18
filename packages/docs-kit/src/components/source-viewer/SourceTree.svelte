@@ -77,9 +77,25 @@
 
 		const index = rows.findIndex((row) => row.path === current);
 
-		if (index >= 0) {
+		if (index < 0) {
+			return;
+		}
+
+		/*
+		 * The offset comes from the virtualizer; the scroll is ours.
+		 *
+		 * `scrollToIndex` goes through the virtualizer's own scroll function, which is bound to the
+		 * measurements it took of the scroll element — and in a drawer those were taken while the
+		 * element had no layout. It then reports a scroll that never happened: the window of rows moves
+		 * to the active file while the element stays at the top, so the row exists and cannot be seen.
+		 * Asking only for the offset and writing `scrollTop` keeps the measurement knowledge and drops
+		 * the stale plumbing; the virtualizer picks the new position up from the scroll event.
+		 */
+		const [offset] = get(virtualRows).getOffsetForIndex(index, 'start') ?? [];
+
+		if (offset !== undefined) {
 			revealed = current;
-			get(virtualRows).scrollToIndex(index, { align: 'auto' });
+			viewport.scrollTop = offset;
 		}
 	});
 

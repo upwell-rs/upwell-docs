@@ -1,6 +1,7 @@
 /** Server-only application composition for artifact-backed docs services. */
 
 import { building } from '$app/env';
+import { DOCS_GITHUB_API_ORIGIN, DOCS_GITHUB_RAW_ORIGIN } from '$app/env/private';
 import { error } from '@sveltejs/kit';
 import { createArtifactService, createSearchIndexService, createSourceService } from '@upwell/docs-kit/server';
 import { createDocsServerRouteHelpers } from '@upwell/docs-kit/sveltekit/server';
@@ -19,7 +20,15 @@ export const docsArtifacts = createArtifactService({
 export const docsSources = createSourceService({
 	config: docsContent.config,
 	artifacts: docsArtifacts,
-	fileHref: (source, version, file) => `/docs/${source}/${version}/src/${file}`
+	fileHref: (source, version, file) => `/docs/${source}/${version}/src/${file}`,
+	/**
+	 * Repository contents come from GitHub unless the environment names somewhere else.
+	 *
+	 * Read at runtime rather than baked in: the only caller that overrides these is a test harness
+	 * serving a repository it controls, and a value that only a test sets has no business in a
+	 * production bundle.
+	 */
+	github: { api: DOCS_GITHUB_API_ORIGIN, raw: DOCS_GITHUB_RAW_ORIGIN }
 });
 
 const search = createSearchIndexService({

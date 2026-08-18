@@ -67,6 +67,9 @@ test('historical releases expose generated symbols by default', async ({ page })
 	await page.goto('/docs/0.20.0/components');
 	await expect(page.getByRole('heading', { level: 1, name: 'Components and dependency injection' })).toBeVisible();
 
+	// Search is a dialog the client opens, so the page has to be interactive before the click means
+	// anything.
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 	await page.getByRole('button', { name: 'Search' }).click();
 	await page.getByRole('searchbox').fill('release compatibility');
 	await expect(page.locator('.search__result[href="/docs/0.20.0/release-compatibility"]')).toBeVisible();
@@ -129,6 +132,7 @@ test('a symbol without an authored reference links to its generated declaration 
 
 test('hovering a symbol shows its card', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	await page.locator('[data-symbol="upwell::prelude::component"]').first().hover();
 
