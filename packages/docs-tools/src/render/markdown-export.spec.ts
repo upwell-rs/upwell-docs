@@ -123,7 +123,10 @@ describe("markdownFromPageSource", () => {
       "",
       "![diagram](assets/plan.png)",
     ].join("\n");
-    const markdown = markdownFromPageSource(source, { relativeLinkSuffix: ".md" });
+    const markdown = markdownFromPageSource(source, {
+      relativeLinkSuffix: ".md",
+      exports: (destination) => destination === "advanced",
+    });
 
     expect(markdown).toContain("[the advanced guide](advanced.md)");
     expect(markdown).toContain("[one section](advanced.md#lifetimes)");
@@ -136,8 +139,27 @@ describe("markdownFromPageSource", () => {
 
   it("does not rewrite a link written inside a code block", () => {
     const source = ['```md', '[the advanced guide](advanced)', '```'].join("\n");
+    const markdown = markdownFromPageSource(source, { relativeLinkSuffix: ".md", exports: () => true });
 
-    expect(markdownFromPageSource(source, { relativeLinkSuffix: ".md" })).toContain("[the advanced guide](advanced)\n```");
+    expect(markdown).toContain("[the advanced guide](advanced)\n```");
+  });
+
+  it("leaves a relative link alone when it does not name another export", () => {
+    const source = 'Read the [configuration](example.toml) and the [archive](files/sample.zip).';
+    const markdown = markdownFromPageSource(source, {
+      relativeLinkSuffix: ".md",
+      // A relative link is not necessarily a page, and `example.toml.md` is worse than the original.
+      exports: (destination) => destination === "advanced",
+    });
+
+    expect(markdown).toContain("[configuration](example.toml)");
+    expect(markdown).toContain("[archive](files/sample.zip)");
+  });
+
+  it("rewrites nothing without a way to tell which destinations are pages", () => {
+    const markdown = markdownFromPageSource('See [the advanced guide](advanced).', { relativeLinkSuffix: ".md" });
+
+    expect(markdown).toContain("[the advanced guide](advanced)");
   });
 
   it("collapses the blank lines that removing a wrapper leaves behind", () => {

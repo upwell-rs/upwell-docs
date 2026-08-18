@@ -8,6 +8,7 @@
  */
 
 import { docsVersions, latestVersion } from '@upwell/docs-core/config';
+import { directoryOf, resolveRelativePath } from '@upwell/docs-core/paths';
 import { llmsTxt, robotsTxt } from '@upwell/docs-kit/server';
 import { markdownFromPageSource } from '@upwell/docs-tools/render/markdown-export';
 
@@ -137,9 +138,23 @@ export async function guideMarkdown(versionId: string, requested: string): Promi
 	const file = page ? docsContent.pageSource(slug, version.releaseVersion) : undefined;
 	const load = file ? guideSources[file] : undefined;
 
+	if (!load) {
+		return undefined;
+	}
+
 	// The exported copies link each other, so a neighbour's slug has to name the copy rather than the
-	// page: only the `.md` variants are published under `/llms`.
-	return load ? markdownFromPageSource(await load(), { relativeLinkSuffix: '.md' }) : undefined;
+	// page: only the `.md` variants are published under `/llms`. Which destinations are pages at all is
+	// something only this side knows — a guide may just as well link a file — so the exporter asks.
+	const directory = directoryOf(slug);
+
+	return markdownFromPageSource(await load(), {
+		relativeLinkSuffix: '.md',
+		exports: (destination) => {
+			const target = resolveRelativePath(directory, destination);
+
+			return Boolean(target && docsContent.findPage(target, version.releaseVersion));
+		}
+	});
 }
 
 /** Every guide that has a Markdown copy, for prerendering them all. */

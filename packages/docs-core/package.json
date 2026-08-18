@@ -9,6 +9,7 @@
 		"./semver": "./src/semver.ts",
 		"./applicability": "./src/applicability.ts",
 		"./overlay": "./src/overlay.ts",
+		"./paths": "./src/paths.ts",
 		"./content": "./src/content.ts",
 		"./navigation": "./src/navigation.ts",
 		"./topics": "./src/topics.ts",
