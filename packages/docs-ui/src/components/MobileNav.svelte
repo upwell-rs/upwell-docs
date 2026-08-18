@@ -161,11 +161,24 @@
 		color: var(--text);
 	}
 
+	/*
+	 * A column, measured against the viewport rather than against a copy of the bar's height.
+	 *
+	 * The body used to be `100dvh` minus a hardcoded 3.5rem, which was only true while the bar was the
+	 * only thing above it. `display` is set on `[open]` alone: a `display: flex` on the dialog itself
+	 * outranks the user-agent rule that hides a closed one, and the menu would never close.
+	 */
+	.menu[open] {
+		display: flex;
+		flex-direction: column;
+	}
+
 	.menu::backdrop {
 		background: color-mix(in srgb, var(--shadow) 45%, transparent);
 	}
 
 	.menu__bar {
+		flex: 0 0 auto;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -207,6 +220,7 @@
 	}
 
 	.menu__controls {
+		flex: 0 0 auto;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -216,7 +230,8 @@
 	}
 
 	.menu__body {
-		height: calc(100dvh - 3.5rem);
+		flex: 1 1 auto;
+		min-height: 0;
 		padding: 1.25rem;
 		overflow-y: auto;
 		overscroll-behavior: contain;

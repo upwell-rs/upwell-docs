@@ -627,6 +627,12 @@ test('a phone reaches search and release selection through the menu', async ({ p
 	const menu = page.getByRole('dialog', { name: 'Documentation navigation' });
 
 	await expect(menu.getByRole('navigation', { name: 'Release' }).getByRole('combobox')).toBeVisible();
+
+	// The controls sit above a body that scrolls, so adding them cannot push the menu past the
+	// viewport and clip the navigation underneath.
+	expect(await menu.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThan(2);
+	await expect(menu.locator('.menu__body')).toBeVisible();
+
 	await menu.getByRole('button', { name: 'Search' }).click();
 
 	await expect(page.getByRole('searchbox')).toBeVisible();

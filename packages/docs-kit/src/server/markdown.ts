@@ -59,7 +59,21 @@ export interface SourceMarkdownContext {
 	 * cannot be pointed anywhere and should be reduced to its label.
 	 */
 	readonly resolveLink: (url: string) => string | null;
+	/**
+	 * Points an embedded image at bytes a browser can render, which is not the same URL as the link.
+	 *
+	 * A repository page for a file renders markup around it; an `<img>` needs the file itself.
+	 */
+	readonly resolveImage: (url: string) => string | null;
 }
+
+/**
+ * Prefix `rehype-sanitize` puts on every id it keeps, so ids from content cannot clobber the page's.
+ *
+ * Same-page links have to be rewritten to match: a README's `#usage` addresses the heading it wrote,
+ * and after sanitizing that heading is `user-content-usage`.
+ */
+const HEADING_ID_PREFIX = 'user-content-';
 
 /**
  * Renders a repository Markdown file without Rustdoc's heading-level adjustment.
@@ -108,14 +122,26 @@ function normalizeMarkdown(markdown: string, rustdoc: boolean, context?: SourceM
 				node.depth = Math.min(node.depth + 1, 6);
 			}
 
+			if (!rustdoc && node.type === 'image' && node.url && !isSafeStandaloneLink(node.url)) {
+				const resolved = context?.resolveImage(node.url);
+
+				if (resolved) {
+					node.url = resolved;
+				}
+
+				return;
+			}
+
 			if (node.type !== 'link' || !node.url || isSafeStandaloneLink(node.url) || index === undefined || !parent?.children) {
 				return;
 			}
 
 			if (!rustdoc) {
-				// A fragment already addresses the page this Markdown became, and every other relative
-				// URL has a repository file behind it.
+				// A fragment addresses a heading in the page this Markdown became, under the id the
+				// sanitizer will give it.
 				if (node.url.startsWith('#')) {
+					node.url = `#${HEADING_ID_PREFIX}${node.url.slice(1)}`;
+
 					return;
 				}
 

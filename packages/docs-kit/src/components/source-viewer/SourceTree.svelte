@@ -53,11 +53,25 @@
 		get(virtualRows).setOptions(virtualizerOptions(rows.length));
 	});
 
-	// The file being read is the one row that has to be visible, and it can sit anywhere in the list.
+	/**
+	 * Brings the file being read into view, once, when it changes.
+	 *
+	 * The guard is the point: this effect reads the row set, so expanding a directory or typing in the
+	 * filter runs it again, and scrolling on those would drag the reader back to the active file every
+	 * time they went looking somewhere else. A row that is not in the list yet — its ancestors are
+	 * still closed — is retried on the next row change rather than recorded as revealed.
+	 */
+	let revealed = '';
+
 	$effect(() => {
+		if (revealed === current) {
+			return;
+		}
+
 		const index = rows.findIndex((row) => row.path === current);
 
 		if (index >= 0) {
+			revealed = current;
 			get(virtualRows).scrollToIndex(index, { align: 'auto' });
 		}
 	});

@@ -22,6 +22,7 @@ function fixture(symbolPages: DocsConfig['rustdoc']['symbolPages']): { artifact:
 			framework: { crate: 'facade', crates: ['core-crate', 'other-crate'] },
 			capabilities: ['symbols', 'docs'],
 			sourceLinkTemplate: 'https://source/{path}#L{line}',
+			documentation: { releaseVersion: '1.0.0', sourcePackageVersion: '1.0.0' },
 			sources: [{ crate: 'facade', version: '1.0.0', repository: '', sha: 'abc', crates: ['core-crate', 'other-crate'], primary: true }]
 		},
 		index: {
@@ -124,6 +125,43 @@ describe('buildCatalog', () => {
 		expect(catalog.resolve('core_crate::module::Thing')?.destination).toMatchObject({
 			kind: 'generated',
 			href: `/docs/facade/${version.id}/symbols/core_crate/module/Thing`
+		});
+	});
+
+	it('keeps a vendored artifact\'s own symbols on its own release', () => {
+		const { artifact, config } = fixture(true);
+		const aggregateVersion: DocsVersion = { id: versionId('0.20'), releaseVersion: parseExactVersion('0.20.0', 'test'), label: '0.20' };
+		const dependencyVersion: DocsVersion = { id: versionId('1.43'), releaseVersion: parseExactVersion('1.43.0', 'test'), label: '1.43' };
+		const configured = {
+			...config,
+			framework: {
+				...config.framework,
+				root: { ...config.framework.root, versions: [version, aggregateVersion] },
+				crates: [{ crate: 'other', repository: '', versions: [dependencyVersion], latest: dependencyVersion.id, releaseTag: (value: string) => value }]
+			}
+		} satisfies DocsConfig;
+		const aggregate = {
+			...artifact,
+			manifest: {
+				...artifact.manifest,
+				documentation: { releaseVersion: '0.20.0', sourcePackageVersion: '0.20.0' },
+				sources: [
+					{ ...artifact.manifest.sources![0], version: '0.20.0', primary: true },
+					{ crate: 'other', version: '1.43.0', repository: '', sha: 'def', crates: ['other-crate'], primary: false }
+				]
+			}
+		};
+
+		// The artifact was selected for the snapshot it vendors, so the requested release is the
+		// dependency's. Its own symbols still belong to the release it documents.
+		const catalog = buildCatalog(aggregate, configured.framework.root, dependencyVersion, [], configured, false,
+			(source, release, segments) => `/docs/${source}/${release}/symbols/${segments}`);
+
+		expect(catalog.resolve('core_crate::module::Thing')?.destination).toMatchObject({
+			href: '/docs/facade/0.20/symbols/core_crate/module/Thing'
+		});
+		expect(catalog.resolve('other_crate::Other')?.destination).toMatchObject({
+			href: '/docs/other/1.43/symbols/other_crate/Other'
 		});
 	});
 

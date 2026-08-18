@@ -95,13 +95,23 @@ describe('renderSourceMarkdown', () => {
 	// A README is written for its repository, so its links have files behind them. Only Rustdoc's
 	// intra-doc links have nowhere to point.
 	const context = {
-		resolveLink: (url: string) => (url.endsWith('.png') ? null : `/docs/upwell/1.0.0/src/${url.replace(/^\.\//, '')}`)
+		resolveLink: (url: string) => (url.endsWith('.png') ? null : `/docs/upwell/1.0.0/src/${url.replace(/^\.\//, '')}`),
+		resolveImage: (url: string) => `https://raw.githubusercontent.com/upwell-rs/upwell/abc123/${url}`
 	};
 
-	it('keeps a fragment, which already addresses the rendered page', async () => {
-		const html = await renderSourceMarkdown('See [usage](#usage).', context);
+	it('points a fragment at the heading id the sanitizer emits', async () => {
+		const html = await renderSourceMarkdown('## Usage\n\nSee [usage](#usage).', context);
 
-		expect(html).toContain('href="#usage"');
+		// The sanitizer prefixes ids from content, so the link has to name the prefixed one or it leads
+		// nowhere.
+		expect(html).toContain('id="user-content-usage"');
+		expect(html).toContain('href="#user-content-usage"');
+	});
+
+	it('sends an embedded image to the bytes rather than to a page about them', async () => {
+		const html = await renderSourceMarkdown('![logo](assets/logo.png)', context);
+
+		expect(html).toContain('src="https://raw.githubusercontent.com/upwell-rs/upwell/abc123/assets/logo.png"');
 	});
 
 	it('resolves a repository-relative link through the caller', async () => {
@@ -118,7 +128,7 @@ describe('renderSourceMarkdown', () => {
 	});
 
 	it('leaves absolute links alone with or without a caller', async () => {
-		const html = await renderSourceMarkdown('[Home](https://example.com) and [mail](mailto:a@example.com).');
+		const html = await renderSourceMarkdown('[Home](https://example.com) and [mail](mailto:a@example.com).', context);
 
 		expect(html).toContain('href="https://example.com"');
 		expect(html).toContain('href="mailto:a@example.com"');
