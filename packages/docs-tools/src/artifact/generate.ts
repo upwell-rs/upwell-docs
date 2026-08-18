@@ -56,16 +56,24 @@ const LAYOUT = {
 export interface GenerateOptions {
   /** Path to the framework checkout. */
   readonly checkout: string;
+  /** Additional repositories whose public crates belong in the same documentation surface. */
+  readonly externalCheckouts?: readonly string[];
   /** Directory the artifact is written to. Replaced if it already exists. */
   readonly outputDir: string;
   /** How the artifact is being produced. Release artifacts additionally reject a dirty checkout. */
   readonly origin: ArtifactOrigin;
   /** Display name of the framework, e.g. `Framework`. */
   readonly frameworkName: string;
+  /** Facade package at the root of the primary checkout. */
+  readonly rootCrate: string;
+  /** Registered repository workspaces, identified by each workspace's root Cargo package. */
+  readonly registeredSources: readonly {
+    readonly crate: string;
+    readonly repository: string;
+    readonly versions: readonly string[];
+  }[];
   /** Public docs release the artifact represents; intentionally independent of Cargo package versions. */
   readonly releaseVersion: string;
-  /** Release tag prefix, e.g. `framework-v`. Used to recognise the tag the checkout sits on. */
-  readonly tagPrefix: string;
   /** Skip running rustdoc and use whatever is already in `target/doc`. */
   readonly reuseRustdoc?: boolean;
   /** Crates from rust-docs-json whose full API data enriches external symbols. */
@@ -97,26 +105,43 @@ export async function generateArtifact(
   options: GenerateOptions,
 ): Promise<GenerateResult> {
   const checkout = path.resolve(options.checkout);
+  const externalCheckouts = (options.externalCheckouts ?? []).map((entry) => path.resolve(entry));
   const report = options.onProgress ?? (() => {});
 
-  const workspace = await readWorkspace(checkout);
-  const git = await readGit(checkout, options.tagPrefix);
+  const sources = await Promise.all([checkout, ...externalCheckouts].map(async (sourceCheckout, index) => {
+    const [workspace, git] = await Promise.all([
+      readWorkspace(sourceCheckout),
+      readGit(sourceCheckout, ""),
+    ]);
 
-  if (options.origin === "release" && git.dirty) {
+    return { checkout: sourceCheckout, workspace, git, primary: index === 0 };
+  }));
+  const primary = sources[0];
+  const workspace = primary.workspace;
+  const git = primary.git;
+
+  const dirty = sources.find((source) => source.git.dirty);
+
+  if (options.origin === "release" && dirty) {
     throw new GenerateError(
-      `Refusing to build a release artifact from a dirty checkout (${checkout}). Commit or stash the changes, or generate with origin "local".`,
+      `Refusing to build a release artifact from a dirty checkout (${dirty.checkout}). Commit or stash the changes, or generate with origin "local".`,
     );
   }
+
+  assertUniqueCrates(sources);
+  const sourcesByRoot = assertRegisteredSources(sources, options.registeredSources);
 
   if (!options.reuseRustdoc) {
     report(
-      "running rustdoc (nightly, all features) — this takes a while on a cold target directory",
+      `running rustdoc for ${sources.length} ${sources.length === 1 ? "repository" : "repositories"} in parallel (nightly, all features)`,
     );
 
-    await runRustdoc(checkout);
+    await Promise.all(sources.map((source) => runRustdoc(source.checkout)));
   }
 
-  const inputs = await readRustdocOutput(checkout, workspace.crates);
+  const inputs = (await Promise.all(
+    sources.map((source) => readRustdocOutput(source.checkout, source.workspace.crates)),
+  )).flat();
 
   if (inputs.length === 0) {
     throw new GenerateError(
@@ -124,7 +149,7 @@ export async function generateArtifact(
     );
   }
 
-  report(`indexing ${inputs.length} crates`);
+  report(`indexing ${inputs.length} crates from ${sources.length} repositories`);
 
   const directDependencies =
     options.directDependencyCrates === "workspace"
@@ -137,7 +162,7 @@ export async function generateArtifact(
     directDependencies,
     // Every workspace member, not just the ones rustdoc produced output for: an unpublished crate
     // is still ours, and a new crate must not need this file edited.
-    workspaceCrates: workspace.crates.map((crate) => crate.name),
+    workspaceCrates: sources.flatMap((source) => source.workspace.crates.map((crate) => crate.name)),
   });
 
   // The standard library's own documentation, when the toolchain has it. Optional by design: a
@@ -170,7 +195,38 @@ export async function generateArtifact(
   };
 
   const toolchain = await readToolchain(checkout);
-  const repository = workspace.repository.replace(/\/+$/, "");
+  const registrations = new Map(options.registeredSources.map((source) => [source.crate, source]));
+  const rootRegistration = registrations.get(options.rootCrate);
+
+  if (!rootRegistration) {
+    throw new GenerateError(`Root Cargo crate "${options.rootCrate}" is not registered in framework.root.`);
+  }
+
+  const repository = rootRegistration.repository.replace(/\/+$/, "");
+  const rootTag = workspace.version;
+  const sourceLinkTemplates = Object.fromEntries(
+    sources.flatMap((source) => {
+      const registration = sourcesByRoot.get(source.workspace.facadeCrate)!;
+
+      return source.workspace.crates.filter((crate) => crate.published).map((crate) => {
+        const sourceRepository = registration.repository.replace(/\/+$/, "");
+
+        return [crate.name, `${sourceRepository}/blob/${source.git.sha}/{path}#L{line}`];
+      });
+    }),
+  );
+  const artifactSources = sources.map((source) => {
+    const registration = sourcesByRoot.get(source.workspace.facadeCrate)!;
+
+    return {
+      crate: registration.crate,
+      version: source.workspace.version,
+      repository: registration.repository.replace(/\/+$/, ""),
+      sha: source.git.sha,
+      crates: source.workspace.crates.filter((crate) => crate.published).map((crate) => crate.name),
+      primary: source.primary,
+    };
+  });
   const capabilities: ArtifactCapability[] = [
     "symbols",
     "crates",
@@ -183,15 +239,15 @@ export async function generateArtifact(
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     framework: {
       name: options.frameworkName,
-      crate: workspace.facadeCrate,
+      crate: options.rootCrate,
       version: workspace.version,
-      crates: workspace.crates.map((crate) => crate.name),
+      crates: sources.flatMap((source) => source.workspace.crates.map((crate) => crate.name)),
     },
     documentation: {
       releaseVersion: options.releaseVersion,
       sourcePackageVersion: workspace.version,
     },
-    git: { sha: git.sha, tag: git.tag, repository, dirty: git.dirty },
+    git: { sha: git.sha, tag: rootTag, repository, dirty: git.dirty },
     generatedAt: new Date().toISOString(),
     generator: {
       name: GENERATOR.name,
@@ -204,6 +260,8 @@ export async function generateArtifact(
     // Pinned to the exact commit rather than a branch, so a link from released documentation
     // keeps pointing at the code that documentation was built from.
     sourceLinkTemplate: `${repository}/blob/${git.sha}/{path}#L{line}`,
+    sourceLinkTemplates,
+    sources: artifactSources,
     contents: {
       symbols: LAYOUT.symbols,
       crates: LAYOUT.crates,
@@ -247,7 +305,7 @@ export async function generateArtifact(
 
   await writeJson(path.join(options.outputDir, LAYOUT.crates), {
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
-    crates: workspace.crates,
+    crates: sources.flatMap((source) => source.workspace.crates),
   });
 
   await writeJson(path.join(options.outputDir, LAYOUT.manifest), manifest);
@@ -259,6 +317,68 @@ export async function generateArtifact(
     symbolCount: index.symbols.length,
     aliasCount: Object.keys(index.paths).length - index.symbols.length,
   };
+}
+
+function assertUniqueCrates(
+  sources: readonly { readonly checkout: string; readonly workspace: { readonly crates: readonly CrateInfo[] } }[],
+): void {
+  const owners = new Map<string, string>();
+
+  for (const source of sources) {
+    for (const crate of source.workspace.crates.filter((entry) => entry.published)) {
+      const owner = owners.get(crate.name);
+
+      if (owner) {
+        throw new GenerateError(
+          `Cargo crate "${crate.name}" is present in more than one documentation source.\n\n  ${owner}\n  ${source.checkout}\n\nEach crate must have exactly one owning repository.`,
+        );
+      }
+
+      owners.set(crate.name, source.checkout);
+    }
+  }
+}
+
+function assertRegisteredSources(
+  sources: readonly { readonly checkout: string; readonly workspace: { readonly crates: readonly CrateInfo[] } }[],
+  registrations: GenerateOptions["registeredSources"],
+): ReadonlyMap<string, GenerateOptions["registeredSources"][number]> {
+  const registered = new Map(registrations.map((source) => [source.crate, source]));
+  const discovered = new Set<string>();
+
+  for (const source of sources) {
+    const root = source.workspace.crates.find((crate) => crate.path === ".");
+
+    if (!root) {
+      throw new GenerateError(`Could not identify the root Cargo package in ${source.checkout}.`);
+    }
+
+    discovered.add(root.name);
+
+    const registration = registered.get(root.name);
+
+    if (!registration) {
+      throw new GenerateError(
+        `Cargo metadata identified workspace "${root.name}" in ${source.checkout}, but it is not registered as framework.root or in framework.crates.`,
+      );
+    }
+
+    if (!registration.versions.includes(root.version)) {
+      throw new GenerateError(
+        `Workspace root crate "${root.name}" version ${root.version} is not configured.\n\n  Configured: ${registration.versions.join(", ")}\n  Source:     ${source.checkout}`,
+      );
+    }
+  }
+
+  const missing = registrations.filter((crate) => !discovered.has(crate.crate));
+
+  if (missing.length > 0) {
+    throw new GenerateError(
+      `Registered framework repositories were not found in the supplied checkouts:\n\n${missing.map((source) => `  ${source.crate}`).join("\n")}\n\nSupply their workspaces with repeated --external <path> arguments.`,
+    );
+  }
+
+  return registered;
 }
 
 /**

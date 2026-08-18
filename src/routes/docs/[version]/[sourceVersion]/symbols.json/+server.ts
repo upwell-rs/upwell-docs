@@ -6,11 +6,10 @@ import { docsConfig } from 'virtual:docs-config';
 import type { EntryGenerator, RequestHandler } from './$types';
 
 export const prerender = resolvePrerender(docsConfig, 'symbols', dev);
-
-export const entries: EntryGenerator = () => [...docsServerRoutes.symbolIndexEntries()];
+export const entries: EntryGenerator = () => docsServerRoutes.symbolIndexEntries().map(({ source, version }) => ({ version: source, sourceVersion: version }));
 
 export const GET: RequestHandler = async ({ params }) => {
-	const data = await docsServerRoutes.loadSymbolsIndex(params.version);
+	const data = await docsServerRoutes.loadSymbolsIndex(params.version, params.sourceVersion);
 
 	return json(data.records);
 };

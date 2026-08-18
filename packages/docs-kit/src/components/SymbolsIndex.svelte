@@ -10,11 +10,13 @@
 	}
 
 	interface Props {
+		source: { readonly crate: string };
 		version: { readonly label: string };
 		records: readonly Record[];
+		sources: readonly { readonly name: string; readonly version: string; readonly href: string }[];
 	}
 
-	let { version, records }: Props = $props();
+	let { source, version, records, sources }: Props = $props();
 	let query = $state('');
 	let crate = $state('all');
 	const crates = $derived([...new Set(records.map((record) => record.crate))].sort());
@@ -26,15 +28,26 @@
 </script>
 
 <svelte:head>
-		<title>Symbols · {version.label}</title>
+		<title>{source.crate} {version.label} Symbols</title>
 		<meta name="description" content="Documented framework symbols for {version.label}." />
 </svelte:head>
 
 <header class="hero">
 	<p class="eyebrow">Reference</p>
-	<h1>Symbols</h1>
+	<h1>{source.crate}</h1>
 	<p class="lede">Look up one known framework symbol. Each page focuses on its declaration, syntax, usage, and generated API facts.</p>
 </header>
+
+{#if sources.length > 1}
+	<nav class="sources" aria-label="Symbol repositories">
+		{#each sources as item (item.name)}
+			<a href={item.href} aria-current={item.name === source.crate ? 'page' : undefined}>
+				<code>{item.name}</code>
+				<span>{item.version}</span>
+			</a>
+		{/each}
+	</nav>
+{/if}
 
 <div class="filters">
 	<label>
@@ -69,6 +82,11 @@
 	.eyebrow { margin: 0 0 0.45rem; color: var(--accent); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; }
 	.hero h1 { margin: 0; }
 	.lede { margin: 0.75rem 0 0; color: var(--text-muted); font-size: 1.0625rem; line-height: 1.65; }
+	.sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.5rem; margin-bottom: 2rem; }
+	.sources a { display: flex; justify-content: space-between; gap: 1rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); text-decoration: none; }
+	.sources a:hover, .sources a[aria-current='page'] { border-color: var(--accent); }
+	.sources code { color: var(--text); font-size: 0.8125rem; }
+	.sources span { color: var(--text-subtle); font-size: 0.75rem; }
 	.filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem); gap: 0.75rem; margin: 1.5rem 0 0.75rem; }
 	.filters label { display: grid; gap: 0.3rem; color: var(--text-subtle); font-size: 0.75rem; font-weight: 600; }
 	.filters input, .filters select { min-width: 0; padding: 0.6rem 0.7rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); color: var(--text); font: inherit; }

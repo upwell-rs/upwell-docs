@@ -25,8 +25,10 @@
 </script>
 
 <DocsShell
-	content={docsContent}
-	version={data.version}
+		content={docsContent}
+		version={data.version}
+		source={data.source}
+		versions={data.versions}
 	pathname={page.url.pathname}
 	{chrome}
 	{previous}

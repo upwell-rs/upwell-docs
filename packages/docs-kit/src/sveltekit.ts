@@ -1,4 +1,4 @@
-import type { DocsVersion } from '@upwell/docs-core/config';
+import { docsVersions, resolveVersion as resolveConfiguredVersion, type DocsVersion } from '@upwell/docs-core/config';
 
 import type { DocsContent } from './content.ts';
 
@@ -33,11 +33,10 @@ export function createDocsRouteHelpers(options: DocsRouteHelpersOptions): {
 	const notFound = (body: RouteError): never => error(404, body);
 
 	function resolveVersion(id: string): DocsVersion {
-		const wanted = id === 'latest' ? content.config.latest : id;
-		const version = content.config.versions.find((candidate) => candidate.id === wanted);
+		const version = resolveConfiguredVersion(content.config, id);
 
 		if (!version) {
-			return notFound({ message: `There is no documentation for version "${id}". Documented releases: ${content.config.versions.map((entry) => entry.id).join(', ')}.` });
+			return notFound({ message: `There is no documentation for version "${id}". Documented releases: ${docsVersions(content.config).map((entry) => entry.id).join(', ')}.` });
 		}
 
 		return version;
@@ -46,7 +45,7 @@ export function createDocsRouteHelpers(options: DocsRouteHelpersOptions): {
 	return {
 		resolveVersion,
 		layout: (id) => ({ version: resolveVersion(id) }),
-		guideEntries: () => content.config.versions.flatMap((version) => [
+		guideEntries: () => docsVersions(content.config).flatMap((version) => [
 			{ version: version.id, slug: '' },
 			...content.pagesFor(version.releaseVersion).map((page) => ({ version: version.id, slug: page.slug }))
 		]),
@@ -73,7 +72,7 @@ export function createDocsRouteHelpers(options: DocsRouteHelpersOptions): {
 			};
 		},
 		latestEntries: () => {
-			const version = resolveVersion(content.config.latest);
+			const version = resolveVersion(content.config.framework.root.latest);
 
 			return [
 				{ slug: '' },
@@ -83,10 +82,10 @@ export function createDocsRouteHelpers(options: DocsRouteHelpersOptions): {
 			];
 		},
 		latestTarget(slug) {
-			const version = resolveVersion(content.config.latest);
+			const version = resolveVersion(content.config.framework.root.latest);
 
 			return content.pageHref(version.id, slug || content.config.landingSlug);
 		},
-		searchEntries: () => content.config.versions.map((version) => ({ version: version.id }))
+		searchEntries: () => docsVersions(content.config).map((version) => ({ version: version.id }))
 	};
 }

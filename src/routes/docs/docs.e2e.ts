@@ -60,7 +60,7 @@ test('versioned guide visibility uses normalized routes without a root Guides gr
 });
 
 test('0.20 guides stay guide-only when the preserved cache has different symbol provenance', async ({ page }) => {
-	const symbol = await page.goto('/docs/0.20.0/symbols/upwell_macros/component');
+	const symbol = await page.goto('/docs/upwell/0.20.0/symbols/upwell_macros/component');
 	expect(symbol?.status()).toBe(404);
 
 	await page.goto('/docs/0.20.0/components');
@@ -112,9 +112,9 @@ test('clicking a documented code symbol navigates to its canonical authored refe
 
 	// The facade path resolves to the macro's canonical authored page. The markup is compiled once and
 	// rendered for every release it applies to, so the version remains the one the reader selected.
-	await expect(linked).toHaveAttribute('href', `/docs/${VERSION}/symbols/upwell_macros/component`);
+	await expect(linked).toHaveAttribute('href', `/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
 	await linked.click();
-	await expect(page).toHaveURL(`/docs/${VERSION}/symbols/upwell_macros/component`);
+	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
 });
 
 test('a symbol without an authored reference links to its generated declaration page', async ({ page }) => {
@@ -124,7 +124,7 @@ test('a symbol without an authored reference links to its generated declaration 
 
 	await expect(annotated).toBeVisible();
 	await expect(annotated).toHaveJSProperty('tagName', 'A');
-	await expect(annotated).toHaveAttribute('href', `/docs/${VERSION}/symbols/upwell_axum/App`);
+	await expect(annotated).toHaveAttribute('href', `/docs/upwell/${VERSION}/symbols/upwell_axum/App`);
 });
 
 test('hovering a symbol shows its card', async ({ page }) => {
@@ -149,7 +149,7 @@ test('the card survives the pointer moving into it, so its links can be used', a
 	await expect(page.getByRole('tooltip')).toBeVisible();
 
 	await link.click();
-	await expect(page).toHaveURL(`/docs/${VERSION}/symbols/upwell_macros/component`);
+	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
 });
 
 test('a symbol referenced in prose gets the same treatment as one in code', async ({ page }) => {
@@ -171,9 +171,9 @@ test('clicking a documented inline symbol navigates to its authored reference', 
 
 	const linked = page.locator('code.symbol-ref a[data-symbol="upwell::prelude::component"]').first();
 
-	await expect(linked).toHaveAttribute('href', `/docs/${VERSION}/symbols/upwell_macros/component`);
+	await expect(linked).toHaveAttribute('href', `/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
 	await linked.click();
-	await expect(page).toHaveURL(`/docs/${VERSION}/symbols/upwell_macros/component`);
+	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
 });
 
 test('a documented symbol card keeps View source on GitHub', async ({ page }) => {
@@ -255,17 +255,17 @@ test('guides and symbols have explicit, independent navigation', async ({ page }
 
 	await expect(guideSidebar.getByRole('link', { name: 'API index' })).toHaveCount(0);
 	await page.getByRole('navigation', { name: 'Documentation sections' }).getByRole('link', { name: 'Symbols' }).click();
-	await expect(page).toHaveURL(`/docs/${VERSION}/symbols`);
+	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols`);
 
 	const sidebar = page.getByRole('navigation', { name: 'Symbols' });
 
 	await expect(sidebar.getByRole('link', { name: 'All symbols' })).toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.locator('details[data-group-id="symbols:upwell_axum"]')).toHaveAttribute('open', '');
-	await expect(sidebar.locator(`a[href="/docs/${VERSION}/symbols/upwell_axum/config/AxumConfig"]`)).toHaveCount(1);
+	await expect(sidebar.locator(`a[href="/docs/upwell/${VERSION}/symbols/upwell_axum/config/AxumConfig"]`)).toHaveCount(1);
 });
 
 test('a symbol page shows hand-written prose alongside generated facts', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/symbols/upwell_macros/component`);
+	await page.goto(`/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
 
 	// Prose the author wrote.
 	await expect(page.getByRole('heading', { level: 2, name: 'Generated Behavior' })).toBeVisible();
@@ -276,7 +276,7 @@ test('a symbol page shows hand-written prose alongside generated facts', async (
 });
 
 test('generated symbol and member signatures are syntax highlighted', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/symbols/cargo_upwell/build/BuildError`);
+	await page.goto(`/docs/upwell/${VERSION}/symbols/cargo_upwell/build/BuildError`);
 
 	const signature = page.locator('.signature');
 	const memberSignature = page.locator('.member__signature').first();
@@ -288,7 +288,7 @@ test('generated symbol and member signatures are syntax highlighted', async ({ p
 });
 
 test('client navigation replaces every generated symbol fact', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/symbols/cargo_upwell/build/BuildError`);
+	await page.goto(`/docs/upwell/${VERSION}/symbols/cargo_upwell/build/BuildError`);
 
 	const symbols = page.getByRole('navigation', { name: 'Symbols' });
 	const target = symbols.locator('.tree__link:visible:not([aria-current="page"])').first();
@@ -307,7 +307,7 @@ test('client navigation replaces every generated symbol fact', async ({ page }) 
 });
 
 test('a symbol with no hand-written page answers with a 404', async ({ page }) => {
-	const response = await page.goto(`/docs/${VERSION}/symbols/upwell/Singleton`);
+	const response = await page.goto(`/docs/upwell/${VERSION}/symbols/upwell/Singleton`);
 
 	// Most symbols have no page and are not meant to. They are still annotated in code blocks.
 	expect(response?.status()).toBe(404);
@@ -392,7 +392,7 @@ test('a documented symbol appears once, under its own kind, linking to its page'
 
 	// One record, not two: the symbol is reachable at several paths but is one thing, and the
 	// hand-written page is where it should lead — not at a path with no page behind it.
-	const result = page.locator(`.search__result[href="/docs/${VERSION}/symbols/upwell_macros/component"]`);
+	const result = page.locator(`.search__result[href="/docs/upwell/${VERSION}/symbols/upwell_macros/component"]`);
 
 	await expect(result).toHaveCount(1);
 	await expect(result).toContainText('component');
@@ -564,7 +564,7 @@ test('a page placing the same component twice does not collide on anchors', asyn
 
 	page.on('pageerror', (error) => errors.push(error.message));
 
-	await page.goto(`/docs/${VERSION}/symbols/upwell_axum/config/AxumConfig`);
+	await page.goto(`/docs/upwell/${VERSION}/symbols/upwell_axum/config/AxumConfig`);
 
 	// Two `<SymbolMembers>` sections both claimed `id="members"`, which the table of contents keys
 	// on — a duplicate key throws during hydration and took the whole page down.
@@ -579,7 +579,7 @@ test('a page placing the same component twice does not collide on anchors', asyn
 });
 
 test('a symbol page lists the members the build knows about', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/symbols/upwell_axum/config/AxumConfig`);
+	await page.goto(`/docs/upwell/${VERSION}/symbols/upwell_axum/config/AxumConfig`);
 
 	// Nobody typed these into the page: the names, signatures and summaries come from the release.
 	const port = page.locator('#members-server-settings-bind');
@@ -589,7 +589,7 @@ test('a symbol page lists the members the build knows about', async ({ page }) =
 });
 
 test('a trait page lists its implementors, which is the useful direction', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/symbols/upwell_axum/messaging/TopicParam`);
+	await page.goto(`/docs/upwell/${VERSION}/symbols/upwell_axum/messaging/TopicParam`);
 
 	await expect(page.locator('.impls__title', { hasText: 'Implementors' })).toBeVisible();
 });
@@ -684,7 +684,7 @@ test('a let binding takes the type of the expression that produced it', async ({
 });
 
 test('a builder method resolves through the facade App type', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/symbols/upwell_axum/plugin/AxumAppBuilder`);
+	await page.goto(`/docs/upwell/${VERSION}/symbols/upwell_axum/plugin/AxumAppBuilder`);
 
 	const builder = page.locator('[data-symbol="upwell_app::app::App::builder"]').first();
 

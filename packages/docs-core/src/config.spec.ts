@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	frameworkCrateVersion,
+	frameworkCrates,
 	resolvePrerender,
 	resolveSymbolPagesConfig,
 	type DocsConfig,
@@ -8,15 +10,37 @@ import {
 } from './config.ts';
 
 const config = (prerender?: DocsConfig['prerender']): DocsConfig => ({
-	framework: { crate: 'test', name: 'Test', repository: '', releaseTag: (version) => version },
-	versions: [],
-	latest: '' as DocsConfig['latest'],
+	framework: {
+		name: 'Test',
+		root: { crate: 'test', repository: '', versions: [], latest: '' as DocsConfig['framework']['root']['latest'], releaseTag: (version) => version },
+		crates: []
+	},
 	cacheDir: '.cache',
-	symbolEnrichmentVersions: [],
 	landingSlug: 'index',
 	topics: [],
 	rustdoc: { directDependencyCrates: [], standardLibraryCrates: [] },
 	...(prerender === undefined ? {} : { prerender })
+});
+
+describe('frameworkCrates', () => {
+	it('treats config entries as repository workspaces with independent release versions', () => {
+		const configured = config();
+		const external = {
+			crate: 'test-axum',
+			repository: 'https://github.com/test/test-axum',
+			versions: [{ id: '1.43.0' as never, releaseVersion: { raw: '1.43.0', major: 1, minor: 43, patch: 0, prerelease: [] }, label: '1.43.0' }],
+			latest: '1.43.0' as never,
+			releaseTag: (version: string) => `v${version}`
+		};
+		const withExternal = {
+			...configured,
+			framework: { ...configured.framework, crates: [external] }
+		};
+
+		expect(frameworkCrates(withExternal)).toEqual([configured.framework.root, external]);
+		expect(frameworkCrateVersion(external, '1.43.0')?.releaseVersion.raw).toBe('1.43.0');
+		expect(frameworkCrateVersion(external, '0.20.0')).toBeUndefined();
+	});
 });
 
 const rustdoc = (symbolPages?: RustdocEnrichmentConfig['symbolPages']): RustdocEnrichmentConfig => ({

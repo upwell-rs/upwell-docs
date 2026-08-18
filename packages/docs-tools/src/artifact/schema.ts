@@ -49,8 +49,8 @@ export interface ArtifactManifest {
     readonly crate: string;
     /** Cargo package version of the source facade crate. */
     readonly version: string;
-    /** Every workspace crate the index covers. */
-    readonly crates: readonly string[];
+  /** Every crate the aggregate index covers, across the facade and extension repositories. */
+  readonly crates: readonly string[];
   };
   /** Public documentation release and the separate source identity it was generated from. */
   readonly documentation: {
@@ -87,6 +87,10 @@ export interface ArtifactManifest {
    * from being hardcoded across components, and pins every link to the documented commit.
    */
   readonly sourceLinkTemplate: string;
+  /** Per-crate templates for crates indexed from repositories outside the facade workspace. */
+  readonly sourceLinkTemplates?: Readonly<Record<string, string>>;
+  /** Repository snapshots contained in this artifact, including vendored fallback documentation. */
+  readonly sources?: readonly ArtifactSource[];
   /** Artifact-relative locations of each tier. */
   readonly contents: {
     /** Directory holding `index.json` and the per-crate shards. */
@@ -102,6 +106,16 @@ export interface ArtifactManifest {
      */
     readonly externals?: string;
   };
+}
+
+export interface ArtifactSource {
+  /** Root Cargo package identifying the repository. */
+  readonly crate: string;
+  readonly version: string;
+  readonly repository: string;
+  readonly sha: string;
+  readonly crates: readonly string[];
+  readonly primary: boolean;
 }
 
 /** One workspace crate and its Cargo features. */
@@ -374,6 +388,38 @@ export function parseManifest(value: unknown): ArtifactManifest {
       root.sourceLinkTemplate,
       "manifest.sourceLinkTemplate",
     ),
+    sourceLinkTemplates:
+      root.sourceLinkTemplates === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(
+              requireObject(
+                root.sourceLinkTemplates,
+                "manifest.sourceLinkTemplates",
+              ),
+            ).map(([crate, template]) => [
+              crate,
+              requireString(
+                template,
+                `manifest.sourceLinkTemplates.${crate}`,
+              ),
+            ]),
+          ),
+    sources:
+      root.sources === undefined
+        ? undefined
+        : requireArray(root.sources, "manifest.sources").map((value, index) => {
+            const source = requireObject(value, `manifest.sources[${index}]`);
+
+            return {
+              crate: requireString(source.crate, `manifest.sources[${index}].crate`),
+              version: requireString(source.version, `manifest.sources[${index}].version`),
+              repository: requireString(source.repository, `manifest.sources[${index}].repository`),
+              sha: requireString(source.sha, `manifest.sources[${index}].sha`),
+              crates: requireStringArray(source.crates, `manifest.sources[${index}].crates`),
+              primary: requireBoolean(source.primary, `manifest.sources[${index}].primary`),
+            };
+          }),
     contents: {
       symbols: requireString(contents.symbols, "manifest.contents.symbols"),
       crates:
@@ -492,8 +538,13 @@ export function sourceLink(
   manifest: ArtifactManifest,
   file: string,
   line?: number,
+  crate?: string,
 ): string {
-  return manifest.sourceLinkTemplate
+  const template =
+    (crate ? manifest.sourceLinkTemplates?.[crate] : undefined) ??
+    manifest.sourceLinkTemplate;
+
+  return template
     .replaceAll("{path}", file)
     .replaceAll("{line}", String(line ?? 1));
 }

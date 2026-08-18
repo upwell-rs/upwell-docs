@@ -1,16 +1,12 @@
-/**
- * Fetches the compiled markup for a symbol page.
- *
- * The facts about the symbol come from the server load beside this, which reads the artifact; the
- * component is a client-side chunk of its own, so it is imported here rather than in the component
- * file. Doing it in `load` means the page is resolved before it renders, which is what prerendering
- * needs — a component awaited during render would prerender as empty.
- */
-
-import { docsContent } from '#lib/docs/runtime';
+import { dev } from '$app/env';
+import { redirect } from '@sveltejs/kit';
+import { resolvePrerender } from '@upwell/docs-core/config';
+import { docsConfig } from 'virtual:docs-config';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async ({ data }) => ({
-	...data,
-	component: data.kind === 'authored' ? await docsContent.loadSymbolPage(data.page.segments, data.version.releaseVersion) : undefined
-});
+export const prerender = resolvePrerender(docsConfig, 'redirects', dev);
+
+export const load: PageLoad = ({ params }) => redirect(
+	308,
+	`/docs/${docsConfig.framework.root.crate}/${params.version}/symbols/${params.path}`
+);

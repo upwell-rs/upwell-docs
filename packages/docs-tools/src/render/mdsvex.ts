@@ -70,6 +70,7 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
     const root = artifactDir(
       options.projectRoot,
       options.config.cacheDir,
+      options.config.framework.root.crate,
       artifactVersion,
     );
 
@@ -131,6 +132,7 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
               artifact.manifest,
               symbol.source.file,
               symbol.source.line,
+              symbol.crate,
             )
           : null,
     };

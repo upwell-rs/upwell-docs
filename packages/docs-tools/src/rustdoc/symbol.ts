@@ -49,7 +49,7 @@ export const MEMBER_SYMBOL_KINDS: ReadonlySet<SymbolKind> = new Set<SymbolKind>(
 );
 
 export interface SymbolSource {
-  /** Path relative to the framework repository root. */
+  /** Path relative to the owning crate's repository root. */
   readonly file: string;
   readonly line: number;
 }

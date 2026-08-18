@@ -3,34 +3,35 @@ import { parseVersion, versionId } from "@upwell/docs-core/semver";
 
 export const docsConfig: DocsConfig = {
   framework: {
-    crate: "upwell",
     name: "Upwell",
-    repository: "https://github.com/upwell-rs/upwell",
-    releaseTag: (version) => `v${version}`,
+    root: {
+      crate: "upwell",
+      repository: "https://github.com/upwell-rs/upwell",
+      versions: [
+        {
+          id: versionId("1.0.0"),
+          releaseVersion: parseVersion("1.0.0", "upwell release 1.0.0"),
+          label: "1.0.0",
+        },
+        {
+          id: versionId("0.20.0"),
+          releaseVersion: parseVersion("0.20.0", "upwell release 0.20.0"),
+          label: "0.20.0",
+        },
+      ],
+      latest: versionId("1.0.0"),
+      releaseTag: (version) => `v${version}`,
+    },
+    // One registration per external Git repository. Cargo workspace members are inferred.
+    crates: [],
   },
 
-  // Newest first. Only explicit public releases belong in the picker.
-  versions: [
-    {
-      id: versionId("1.0.0"),
-      releaseVersion: parseVersion("1.0.0", "docsConfig release 1.0.0"),
-      label: "1.0.0",
-    },
-    {
-      id: versionId("0.20.0"),
-      releaseVersion: parseVersion("0.20.0", "docsConfig release 0.20.0"),
-      label: "0.20.0",
-    },
-  ],
-
-  latest: versionId("1.0.0"),
   cacheDir: ".cache/upwell-docs",
-  symbolEnrichmentVersions: [versionId("1.0.0"), versionId("0.20.0")],
   landingSlug: "getting-started",
   prerender: {
     routes: {
       // Serve cached symbols dynamically in dev; emit known symbol routes in production.
-      symbols: { development: false, production: "auto" },
+      symbols: { development: false, production: false },
     },
   },
   topics: [

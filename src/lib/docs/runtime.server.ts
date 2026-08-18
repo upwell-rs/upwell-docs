@@ -18,7 +18,7 @@ export const docsArtifacts = createArtifactService({
 const search = createSearchIndexService({
 	content: docsContent,
 	documents: indexedDocuments,
-	getCatalog: docsArtifacts.getCatalog
+	getCatalog: (version) => docsArtifacts.getCatalog(docsContent.config.framework.root, version)
 });
 
 export const docsServerRoutes = createDocsServerRouteHelpers({

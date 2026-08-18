@@ -14,7 +14,7 @@
 	const version = $derived(page.params.version ?? latestVersion(docsConfig).id);
 
 	function href(symbol: string): string {
-		return `/docs/${version}/symbols/${symbol.replaceAll('::', '/')}`;
+		return `/docs/${docsConfig.framework.root.crate}/${version}/symbols/${symbol.replaceAll('::', '/')}`;
 	}
 </script>
 

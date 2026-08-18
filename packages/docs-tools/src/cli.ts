@@ -5,6 +5,7 @@
  *
  * ```sh
  * bun run docs:prepare --local ../framework      # generate from a local checkout
+ * bun run docs:prepare --local ../framework --external ../framework-axum
  * bun run docs:prepare --local ../framework --pack   # ...and also produce the release tarball
  * ```
  *
@@ -20,17 +21,19 @@ import process from "node:process";
 
 import {
   isArtifactReadOnly,
-  resolveVersion,
+  frameworkCrateVersion,
+  frameworkCrates,
   type DocsConfig,
 } from "@upwell/docs-core/config";
 import { generateArtifact, GenerateError } from "./artifact/generate.ts";
 import { artifactDir } from "./artifact/load.ts";
 import { packArtifact } from "./artifact/pack.ts";
-import { CheckoutError } from "./artifact/workspace.ts";
+import { CheckoutError, readWorkspace } from "./artifact/workspace.ts";
 
 interface Arguments {
   readonly config: string | null;
   readonly checkout: string | null;
+  readonly externalCheckouts: readonly string[];
   readonly version: string | null;
   readonly pack: boolean;
   readonly reuseRustdoc: boolean;
@@ -40,6 +43,7 @@ interface Arguments {
 function parseArguments(argv: readonly string[]): Arguments {
   let config: string | null = null;
   let checkout: string | null = null;
+  const externalCheckouts: string[] = [];
   let version: string | null = null;
   let pack = false;
   let reuseRustdoc = false;
@@ -69,6 +73,19 @@ function parseArguments(argv: readonly string[]): Arguments {
       continue;
     }
 
+    if (argument === "--external") {
+      const external = argv[index + 1];
+
+      if (!external) {
+        throw new Error('Missing path after "--external".');
+      }
+
+      externalCheckouts.push(external);
+      index += 1;
+
+      continue;
+    }
+
     if (argument === "--pack") {
       pack = true;
 
@@ -90,7 +107,7 @@ function parseArguments(argv: readonly string[]): Arguments {
     throw new Error(`Unknown argument "${argument}". Run with --help.`);
   }
 
-  return { config, checkout, version, pack, reuseRustdoc, help };
+  return { config, checkout, externalCheckouts, version, pack, reuseRustdoc, help };
 }
 
 const USAGE = `
@@ -99,6 +116,7 @@ docs:prepare — prepare a framework documentation artifact.
   --config <file>     Site config module that exports docsConfig.
   --local <path>     Generate an artifact from a framework checkout.
                      Defaults to $FRAMEWORK_CHECKOUT when set.
+	--external <path>  Add every public crate from another repository. Repeatable.
 	  --version <ver>    Documentation release identity to prepare. Defaults to the
                      configured as latest in docs.config.ts.
   --pack             Also write dist/<name>-docs-<version>.tar.zst.
@@ -158,22 +176,33 @@ async function main(): Promise<number> {
   }
 
   const projectRoot = process.cwd();
-  const requested =
-    args.version ??
-    resolveVersion(docsConfig, docsConfig.latest)?.releaseVersion.raw ??
-    null;
+  const workspace = await readWorkspace(path.resolve(checkout));
+  const source = frameworkCrates(docsConfig).find((candidate) => candidate.crate === workspace.facadeCrate);
+  const requested = args.version ?? source?.latest ?? null;
 
-  if (!requested) {
+  if (!source || !requested) {
     process.stderr.write(
-      "docsConfig.latest does not resolve to a configured version.\n",
+      `Workspace ${workspace.facadeCrate} is not registered in docsConfig.framework.\n`,
     );
 
     return 1;
   }
 
-  const output = artifactDir(projectRoot, docsConfig.cacheDir, requested);
+  const selected = frameworkCrateVersion(source, requested);
 
-  if (isArtifactReadOnly(docsConfig, requested)) {
+  if (!selected) {
+    throw new GenerateError(`Repository ${source.crate} has no configured release "${requested}".`);
+  }
+
+  const releaseVersion = selected.releaseVersion.raw;
+  const output = artifactDir(projectRoot, docsConfig.cacheDir, source.crate, releaseVersion);
+  const registeredSources = frameworkCrates(docsConfig).map((crate) => ({
+      crate: crate.crate,
+      repository: crate.repository,
+      versions: crate.versions.map((version) => version.releaseVersion.raw),
+    }));
+
+  if (isArtifactReadOnly(docsConfig, releaseVersion)) {
     process.stderr.write(
       `The ${requested} artifact is a read-only historical record and will not be regenerated.\n\n  Cache: ${path.relative(projectRoot, output)}\n\nOnly prepare a release not listed in docsConfig.readOnlyArtifactVersions.\n`,
     );
@@ -187,11 +216,13 @@ async function main(): Promise<number> {
 
   const result = await generateArtifact({
     checkout,
+    externalCheckouts: args.externalCheckouts,
     outputDir: output,
     origin: "local",
     frameworkName: docsConfig.framework.name,
-    releaseVersion: requested,
-    tagPrefix: `${docsConfig.framework.crate}-v`,
+    rootCrate: source.crate,
+    registeredSources,
+    releaseVersion,
     reuseRustdoc: args.reuseRustdoc,
     directDependencyCrates: docsConfig.rustdoc.directDependencyCrates,
     standardLibraryCrates: docsConfig.rustdoc.standardLibraryCrates,
@@ -215,7 +246,7 @@ async function main(): Promise<number> {
     const archive = await packArtifact(
       output,
       distDir,
-      docsConfig.framework.crate,
+      source.crate,
       result.manifest.documentation.releaseVersion,
     );
 

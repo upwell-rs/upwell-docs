@@ -8,11 +8,46 @@ export interface DocsVersion {
   readonly label: string;
 }
 
-export interface FrameworkCoordinates {
+export interface FrameworkCrateCoordinates {
+  /** Root Cargo package used to identify this repository/workspace. */
   readonly crate: string;
-  readonly name: string;
   readonly repository: string;
+  /** Independent public releases for this repository. */
+  readonly versions: readonly DocsVersion[];
+  readonly latest: VersionId;
   readonly releaseTag: (version: string) => string;
+}
+
+export interface FrameworkCoordinates {
+  readonly name: string;
+  /** Primary facade repository. Every Cargo workspace member is discovered automatically. */
+  readonly root: FrameworkCrateCoordinates;
+  /** Additional repositories. One entry per Git repository, not per Cargo workspace member. */
+  readonly crates: readonly FrameworkCrateCoordinates[];
+}
+
+export function frameworkCrates(config: DocsConfig): readonly FrameworkCrateCoordinates[] {
+  return [config.framework.root, ...config.framework.crates];
+}
+
+export function frameworkCrate(
+  config: DocsConfig,
+  source: string,
+): FrameworkCrateCoordinates | undefined {
+  return frameworkCrates(config).find((crate) => crate.crate === source);
+}
+
+export function frameworkCrateVersion(
+  crate: FrameworkCrateCoordinates,
+  id: string,
+): DocsVersion | undefined {
+  const wanted = id === "latest" ? crate.latest : id;
+
+  return crate.versions.find((version) => version.id === wanted);
+}
+
+export function docsVersions(config: DocsConfig): readonly DocsVersion[] {
+  return config.framework.root.versions;
 }
 
 export interface DocsTopic {
@@ -73,11 +108,8 @@ export type DocsPrerenderConfig =
 
 export interface DocsConfig {
   readonly framework: FrameworkCoordinates;
-  readonly versions: readonly DocsVersion[];
-  readonly latest: VersionId;
   readonly cacheDir: string;
   readonly readOnlyArtifactVersions?: readonly VersionId[];
-  readonly symbolEnrichmentVersions: readonly VersionId[];
   readonly landingSlug: string;
   readonly topics: readonly DocsTopic[];
   readonly rustdoc: RustdocEnrichmentConfig;
@@ -125,9 +157,7 @@ export function resolveVersion(
   config: DocsConfig,
   id: string,
 ): DocsVersion | undefined {
-  const wanted = id === "latest" ? config.latest : id;
-
-  return config.versions.find((version) => version.id === wanted);
+  return frameworkCrateVersion(config.framework.root, id);
 }
 
 export function documentedVersion(version: DocsVersion): SemVer {
@@ -141,15 +171,6 @@ export function isArtifactReadOnly(
   return config.readOnlyArtifactVersions?.some(
     (version) => version === releaseVersion,
   ) ?? false;
-}
-
-export function isSymbolEnrichmentEligible(
-  config: DocsConfig,
-  version: DocsVersion,
-): boolean {
-  return config.symbolEnrichmentVersions.some(
-    (eligible) => eligible === version.id,
-  );
 }
 
 /** Resolves generated symbol-page activation and crate scope without reading an artifact. */
@@ -183,11 +204,11 @@ export function resolveSymbolPagesConfig(
 }
 
 export function latestVersion(config: DocsConfig): DocsVersion {
-  const version = resolveVersion(config, config.latest);
+  const version = frameworkCrateVersion(config.framework.root, config.framework.root.latest);
 
   if (!version) {
     throw new Error(
-      `docsConfig.latest is "${config.latest}", which is not present in docsConfig.versions.`,
+      `framework.root.latest is "${config.framework.root.latest}", which is not present in framework.root.versions.`,
     );
   }
 

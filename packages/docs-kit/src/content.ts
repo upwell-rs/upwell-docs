@@ -79,7 +79,7 @@ export interface DocsContent {
 	loadSymbolPage(segments: string, releaseVersion: DocsVersion['releaseVersion']): Promise<Component | undefined>;
 	navigationFor(version: DocsVersion): readonly NavigationGroup[];
 	pageHref(versionId: string, slug: string): string;
-	symbolHref(versionId: string, segments: string): string;
+	symbolHref(source: string, versionId: string, segments: string): string;
 }
 
 function path(basePath: string, ...segments: string[]): string {
@@ -94,7 +94,7 @@ export function createDocsContent(options: DocsContentOptions): DocsContent {
 	const symbolVariants = buildSymbolVariants(manifest.symbols, topics);
 
 	const pageHref = (versionId: string, slug: string): string => path(basePath, versionId, slug);
-	const symbolHref = (versionId: string, segments: string): string => path(basePath, versionId, 'symbols', segments);
+	const symbolHref = (source: string, versionId: string, segments: string): string => path(basePath, source, versionId, 'symbols', segments);
 
 	function guideVariant(slug: string, releaseVersion: DocsVersion['releaseVersion']): GuideVariant | undefined {
 		const variants = guideVariants.get(slug);

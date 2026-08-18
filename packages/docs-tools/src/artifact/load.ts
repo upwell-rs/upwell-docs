@@ -62,9 +62,10 @@ export interface LoadedArtifact {
 export function artifactDir(
   projectRoot: string,
   cacheDir: string,
+  source: string,
   releaseVersion: string,
 ): string {
-  return path.resolve(projectRoot, cacheDir, releaseVersion);
+  return path.resolve(projectRoot, cacheDir, source, releaseVersion);
 }
 
 /**
@@ -211,7 +212,7 @@ export function suggestSymbols(
     .map((entry) => entry.path);
 }
 
-/** Repository URL for a symbol's definition, or null when it has no recorded source location. */
+/** Owning repository URL for a symbol's definition, or null without a source location. */
 export function symbolSourceLink(
   artifact: LoadedArtifact,
   symbol: Symbol,
@@ -220,5 +221,10 @@ export function symbolSourceLink(
     return null;
   }
 
-  return sourceLink(artifact.manifest, symbol.source.file, symbol.source.line);
+  return sourceLink(
+    artifact.manifest,
+    symbol.source.file,
+    symbol.source.line,
+    symbol.crate,
+  );
 }

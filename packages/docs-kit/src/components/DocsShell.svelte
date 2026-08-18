@@ -4,7 +4,7 @@
 	import { setDocsNotifier, setDocsVersion } from '@upwell/docs-ui/context';
 	import type { SearchIndex } from '@upwell/docs-ui/search';
 	import { Breadcrumbs, DocsArticle, DocsHeader, MobileNav, Notifications, PageNav, ReferenceNote, Search, Shortcuts, TableOfContents } from '@upwell/docs-ui';
-	import type { DocsVersion } from '@upwell/docs-core/config';
+	import type { DocsVersion, FrameworkCrateCoordinates } from '@upwell/docs-core/config';
 	import type { DocSummary, PageChrome } from '@upwell/docs-core/content';
 
 	import type { DocsContent } from '../content.ts';
@@ -13,10 +13,13 @@
 	import DocsSidebar from './DocsSidebar.svelte';
 	import SymbolsSidebar from './SymbolsSidebar.svelte';
 	import type { SymbolRecord } from '../sveltekit-server.ts';
+	import { docsVersions } from '@upwell/docs-core/config';
 
 	interface Props {
 		content: DocsContent;
 		version: DocsVersion;
+		source?: FrameworkCrateCoordinates;
+		versions?: readonly DocsVersion[];
 		pathname: string;
 		chrome?: PageChrome;
 		previous?: DocSummary;
@@ -30,7 +33,7 @@
 		children: Snippet;
 	}
 
-	let { content, version, pathname, chrome: current, previous, next, symbolRecords = [], searchIndex, sidebar, notifications, navigate, assignLocation, children }: Props = $props();
+	let { content, version, source, versions, pathname, chrome: current, previous, next, symbolRecords = [], searchIndex, sidebar, notifications, navigate, assignLocation, children }: Props = $props();
 
 	let article = $state<HTMLElement>();
 	let search = $state<ReturnType<typeof Search>>();
@@ -38,35 +41,40 @@
 	setDocsVersion(() => version);
 	setDocsNotifier((() => notifications.notifier)() as DocsNotifier);
 	setDocsAuthoringContext({
-		defaultCrate: (() => content.config.framework.crate)(),
+		defaultCrate: (() => content.config.framework.root.crate)(),
 		version: () => version
 	});
 
 	const slug = $derived(current?.slug ?? '');
 	const symbols = $derived(slug === 'symbols' || slug.startsWith('symbols/'));
+	const activeSource = $derived(source ?? content.config.framework.root);
+	const availableVersions = $derived(versions ?? docsVersions(content.config));
+	const symbolsIndexHref = $derived(content.symbolHref(activeSource.crate, version.id, '').replace(/\/$/, ''));
 
 	function changeVersion(id: string): void {
-		const target = content.config.versions.find((candidate) => candidate.id === id);
+		const target = availableVersions.find((candidate) => candidate.id === id);
 
 		if (!target) {
 			return;
 		}
 
 		const available = slug === 'symbols' ? true : slug.startsWith('symbols/')
-			? Boolean(content.findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
+			? activeSource !== content.config.framework.root || Boolean(content.findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
 			: Boolean(content.findPage(slug, target.releaseVersion));
 
-		assignLocation(content.pageHref(target.id, available ? slug : content.config.landingSlug));
+		assignLocation(symbols
+			? content.symbolHref(activeSource.crate, target.id, available && slug.startsWith('symbols/') ? slug.slice('symbols/'.length) : '')
+			: content.pageHref(target.id, available ? slug : content.config.landingSlug));
 	}
 </script>
 
 <DocsHeader
 	{version}
 	name={content.config.framework.name}
-	repository={content.config.framework.repository}
-	versions={content.config.versions}
+	repository={activeSource.repository}
+	versions={availableVersions}
 	guidesHref={content.pageHref(version.id, content.config.landingSlug)}
-	symbolsHref={content.pageHref(version.id, 'symbols')}
+	symbolsHref={symbolsIndexHref}
 	area={symbols ? 'symbols' : 'guides'}
 	onversionchange={changeVersion}
 	onsearch={() => search?.open()}
@@ -75,7 +83,7 @@
 		<MobileNav title={version.label} {pathname}>
 			{#snippet navigation()}
 				{#if symbols}
-					<SymbolsSidebar records={symbolRecords} current={slug} indexHref={content.pageHref(version.id, 'symbols')} state={sidebar} />
+					<SymbolsSidebar records={symbolRecords} current={slug} indexHref={symbolsIndexHref} state={sidebar} />
 				{:else}
 					<DocsSidebar {content} {version} current={slug} state={sidebar} />
 				{/if}
@@ -107,7 +115,7 @@
 <div class="layout">
 	<aside class="layout__sidebar">
 		{#if symbols}
-			<SymbolsSidebar records={symbolRecords} current={slug} indexHref={content.pageHref(version.id, 'symbols')} state={sidebar} />
+			<SymbolsSidebar records={symbolRecords} current={slug} indexHref={symbolsIndexHref} state={sidebar} />
 		{:else}
 			<DocsSidebar {content} {version} current={slug} state={sidebar} />
 		{/if}

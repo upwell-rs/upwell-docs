@@ -94,5 +94,5 @@ export function createSearchIndexService(options: SearchIndexServiceOptions): { 
 }
 
 function fromPage(content: DocsContent, version: DocsVersion, page: { readonly segments: string; readonly title: string; readonly symbol: string }, document: IndexedDocument | undefined): SearchRecord {
-	return { href: content.symbolHref(version.id, page.segments), title: page.title, kind: 'symbol-page', detail: page.symbol, text: document?.text, headings: document?.headings };
+	return { href: content.symbolHref(content.config.framework.root.crate, version.id, page.segments), title: page.title, kind: 'symbol-page', detail: page.symbol, text: document?.text, headings: document?.headings };
 }

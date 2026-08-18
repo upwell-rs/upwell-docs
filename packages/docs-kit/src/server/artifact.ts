@@ -1,6 +1,6 @@
 import process from 'node:process';
 
-import { isSymbolEnrichmentEligible, resolveSymbolPagesConfig, type DocsConfig, type DocsVersion } from '@upwell/docs-core/config';
+import { frameworkCrate, frameworkCrates, resolveSymbolPagesConfig, type DocsConfig, type DocsVersion, type FrameworkCrateCoordinates } from '@upwell/docs-core/config';
 import type { SymbolPageSummary } from '@upwell/docs-core/content';
 import {
 	artifactDir,
@@ -17,7 +17,7 @@ import { renderRustdocMarkdown } from './markdown.ts';
 export interface ArtifactServiceOptions {
 	readonly config: DocsConfig;
 	readonly symbolPagesFor: (releaseVersion: DocsVersion['releaseVersion']) => readonly SymbolPageSummary[];
-	readonly symbolHref: (versionId: string, segments: string) => string;
+	readonly symbolHref: (source: string, versionId: string, segments: string) => string;
 	readonly building: boolean;
 	readonly projectRoot?: string;
 }
@@ -28,6 +28,7 @@ export type SymbolDestination =
 	| { readonly kind: 'source'; readonly href: string | null };
 
 export interface SymbolCatalogRecord {
+	readonly source: string;
 	readonly canonical: string;
 	readonly path: string;
 	readonly name: string;
@@ -47,11 +48,10 @@ export interface SymbolCatalog {
 }
 
 export interface ArtifactService {
-	artifactVersion(version: DocsVersion): string;
-	getArtifact(version: DocsVersion): Promise<LoadedArtifact | null>;
-	getCatalog(version: DocsVersion): Promise<SymbolCatalog | null>;
-	getSymbolInfo(version: DocsVersion, symbolPath: string): Promise<SymbolInfo | undefined>;
-	getSymbolDocs(version: DocsVersion, symbolPath: string): Promise<string>;
+	getArtifact(source: FrameworkCrateCoordinates, version: DocsVersion): Promise<LoadedArtifact | null>;
+	getCatalog(source: FrameworkCrateCoordinates, version: DocsVersion): Promise<SymbolCatalog | null>;
+	getSymbolInfo(source: FrameworkCrateCoordinates, version: DocsVersion, symbolPath: string): Promise<SymbolInfo | undefined>;
+	getSymbolDocs(source: FrameworkCrateCoordinates, version: DocsVersion, symbolPath: string): Promise<string>;
 }
 
 /** Server-only artifact access and the canonical destination catalog shared by all consumers. */
@@ -60,39 +60,60 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 	const artifacts = new Map<string, Promise<LoadedArtifact | null>>();
 	const catalogs = new Map<string, Promise<SymbolCatalog | null>>();
 
-	function artifactVersion(version: DocsVersion): string {
-		return version.releaseVersion.raw;
-	}
-
-	function getArtifact(version: DocsVersion): Promise<LoadedArtifact | null> {
-		if (!isSymbolEnrichmentEligible(config, version)) {
-			return Promise.resolve(null);
-		}
-
-		const key = artifactVersion(version);
+	function getArtifact(source: FrameworkCrateCoordinates, version: DocsVersion): Promise<LoadedArtifact | null> {
+		const key = `${source.crate}/${version.releaseVersion.raw}`;
 		const existing = artifacts.get(key);
 
 		if (existing) {
 			return existing;
 		}
 
-		const loading = loadArtifact(artifactDir(projectRoot, config.cacheDir, key), key).catch(() => null);
+		const loading = loadArtifact(artifactDir(projectRoot, config.cacheDir, source.crate, version.releaseVersion.raw), version.releaseVersion.raw)
+			.catch(() => source === config.framework.root
+				? loadArtifact(legacyArtifactDir(projectRoot, config.cacheDir, version.releaseVersion.raw), version.releaseVersion.raw).catch(() => findVendoredArtifact(source, version))
+				: findVendoredArtifact(source, version));
 
 		artifacts.set(key, loading);
 
 		return loading;
 	}
 
-	function getCatalog(version: DocsVersion): Promise<SymbolCatalog | null> {
-		const key = version.id;
+	async function findVendoredArtifact(source: FrameworkCrateCoordinates, version: DocsVersion): Promise<LoadedArtifact | null> {
+		for (const owner of frameworkCrates(config)) {
+			for (const ownerVersion of owner.versions) {
+				const candidate = await loadArtifact(
+					artifactDir(projectRoot, config.cacheDir, owner.crate, ownerVersion.releaseVersion.raw),
+					ownerVersion.releaseVersion.raw
+				).catch(() => null);
+				const snapshot = candidate?.manifest.sources?.find((entry) => entry.crate === source.crate && entry.version === version.releaseVersion.raw);
+
+				if (candidate && snapshot) {
+					return candidate;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	function getCatalog(source: FrameworkCrateCoordinates, version: DocsVersion): Promise<SymbolCatalog | null> {
+		const key = `${source.crate}/${version.id}`;
 		const existing = catalogs.get(key);
 
 		if (existing) {
 			return existing;
 		}
 
-		const loading = getArtifact(version).then((artifact) =>
-			artifact ? buildCatalog(artifact, version, symbolPagesFor(version.releaseVersion), config, building, symbolHref) : null
+		const loading = getArtifact(source, version).then((artifact) =>
+			artifact ? buildCatalog(
+				artifact,
+				source,
+				version,
+				source === config.framework.root ? symbolPagesFor(version.releaseVersion) : [],
+				config,
+				building,
+				symbolHref
+			) : null
 		);
 
 		catalogs.set(key, loading);
@@ -100,8 +121,8 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 		return loading;
 	}
 
-	async function getSymbolInfo(version: DocsVersion, symbolPath: string): Promise<SymbolInfo | undefined> {
-		const catalog = await getCatalog(version);
+	async function getSymbolInfo(source: FrameworkCrateCoordinates, version: DocsVersion, symbolPath: string): Promise<SymbolInfo | undefined> {
+		const catalog = await getCatalog(source, version);
 		const symbol = catalog ? findSymbol(catalog.artifact, symbolPath) : undefined;
 
 		if (!catalog || !symbol) {
@@ -127,22 +148,27 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 		};
 	}
 
-	async function getSymbolDocs(version: DocsVersion, symbolPath: string): Promise<string> {
-		const artifact = await getArtifact(version);
+	async function getSymbolDocs(source: FrameworkCrateCoordinates, version: DocsVersion, symbolPath: string): Promise<string> {
+		const artifact = await getArtifact(source, version);
 
 		return renderRustdocMarkdown(artifact ? (findSymbol(artifact, symbolPath)?.docs ?? null) : null);
 	}
 
-	return { artifactVersion, getArtifact, getCatalog, getSymbolInfo, getSymbolDocs };
+	return { getArtifact, getCatalog, getSymbolInfo, getSymbolDocs };
+}
+
+function legacyArtifactDir(projectRoot: string, cacheDir: string, version: string): string {
+	return `${projectRoot}/${cacheDir}/${version}`.replaceAll('//', '/');
 }
 
 export function buildCatalog(
 	artifact: LoadedArtifact,
+	source: FrameworkCrateCoordinates,
 	version: DocsVersion,
 	pages: readonly SymbolPageSummary[],
 	config: DocsConfig,
 	building: boolean,
-	symbolHref: (versionId: string, segments: string) => string
+	symbolHref: (source: string, versionId: string, segments: string) => string
 ): SymbolCatalog {
 	const policy = resolveSymbolPagesConfig(config.rustdoc, artifact.manifest.framework.crates, building);
 
@@ -154,22 +180,31 @@ export function buildCatalog(
 	}
 
 	const symbols = new Map(artifact.index.symbols.map((symbol) => [symbol.path, symbol]));
+	const sourceByCargoCrate = new Map(
+		(artifact.manifest.sources ?? []).flatMap((entry) => entry.crates.map((crate) => [crate, entry] as const))
+	);
 	const aliases = aliasesByCanonical(artifact);
 	const authored = authoredOverrides(artifact, pages);
 	const records: SymbolCatalogRecord[] = [];
 	const byCanonical = new Map<string, SymbolCatalogRecord>();
-
 	for (const symbol of artifact.index.symbols) {
-		const page = authored.get(symbol.path);
-		const inScope = policy.crates === null || policy.crates.has(symbol.crate);
-
 		const declarationSegments = symbol.path.replaceAll('::', '/');
+		const owner = sourceByCargoCrate.get(symbol.crate);
+		const ownerConfig = owner ? frameworkCrate(config, owner.crate) : undefined;
+		const ownerVersion = ownerConfig?.versions.find((candidate) => candidate.releaseVersion.raw === owner?.version);
+		const page = authored.get(symbol.path);
+		const inScope = ownerConfig !== undefined || policy.crates === null || policy.crates.has(symbol.crate);
 		const destination: SymbolDestination = page
-			? { kind: 'authored', href: symbolHref(version.id, page.segments), page }
+			? { kind: 'authored', href: symbolHref(source.crate, version.id, page.segments), page }
 			: policy.enabled && inScope
-				? { kind: 'generated', href: symbolHref(version.id, declarationSegments), segments: declarationSegments }
+					? {
+						kind: 'generated',
+						href: symbolHref(owner?.crate ?? source.crate, ownerVersion?.id ?? owner?.version ?? version.id, declarationSegments),
+						segments: declarationSegments
+					}
 				: { kind: 'source', href: symbolSourceLink(artifact, symbol) };
 		const record: SymbolCatalogRecord = {
+			source: owner?.crate ?? source.crate,
 			canonical: symbol.path,
 			path: preferredPath(aliases.get(symbol.path) ?? [symbol.path], symbol.path),
 			name: symbol.name,
