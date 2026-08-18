@@ -144,6 +144,22 @@ describe("markdownFromPageSource", () => {
     expect(markdown).toContain("[the advanced guide](advanced)\n```");
   });
 
+  it("keeps a query and a fragment outside the name it rewrites", () => {
+    const asked: string[] = [];
+    const markdown = markdownFromPageSource("See [advanced](advanced?view=full#lifetimes).", {
+      relativeLinkSuffix: ".md",
+      exports: (destination) => {
+        asked.push(destination);
+
+        return destination === "advanced";
+      },
+    });
+
+    expect(markdown).toContain("[advanced](advanced.md?view=full#lifetimes)");
+    // The caller is asked about the page, not about what was said of it.
+    expect(asked).toEqual(["advanced"]);
+  });
+
   it("leaves a relative link alone when it does not name another export", () => {
     const source = 'Read the [configuration](example.toml) and the [archive](files/sample.zip).';
     const markdown = markdownFromPageSource(source, {

@@ -16,6 +16,8 @@
  * would delete the very thing the page is about, silently, in the one output that promises to keep it.
  */
 
+import { splitLocation } from '@upwell/docs-core/paths';
+
 /** Components whose content is the page's content, so only their tags come out. */
 const CONTENT_TAGS = ['Example', 'Steps', 'Tabs', 'Callout', 'Badge', 'PackageInstall', 'ReferenceNote'];
 
@@ -112,20 +114,24 @@ function outsideCode(source: string, transform: (text: string) => string): strin
 	return output.join('\n');
 }
 
-/** Points a relative link at the exported copy, keeping any fragment and title it carried. */
+/** Points a relative link at the exported copy, keeping whatever it said about the destination. */
 function relinked(match: string, label: string, target: string, title: string, options: MarkdownExportOptions): string {
 	const suffix = options.relativeLinkSuffix;
 	const absolute = target.startsWith('/') || target.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(target);
 
-	if (!suffix || !options.exports || absolute || target.endsWith(suffix) || target.includes(`${suffix}#`)) {
+	if (!suffix || !options.exports || absolute) {
 		return match;
 	}
 
-	const hash = target.indexOf('#');
-	const path = hash === -1 ? target : target.slice(0, hash);
-	const fragment = hash === -1 ? '' : target.slice(hash);
+	// The query and fragment are said about the page rather than being part of its name, so the
+	// suffix goes before them and the caller is asked about the path alone.
+	const { path, suffix: said } = splitLocation(target);
 
-	return options.exports(path) ? `[${label}](${path}${suffix}${fragment}${title})` : match;
+	if (path === '' || path.endsWith(suffix) || !options.exports(path)) {
+		return match;
+	}
+
+	return `[${label}](${path}${suffix}${said}${title})`;
 }
 
 /**

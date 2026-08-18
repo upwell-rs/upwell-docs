@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { directoryOf, resolveRelativePath } from './paths.ts';
+import { directoryOf, resolveRelativePath, splitLocation } from './paths.ts';
 
 describe('resolveRelativePath', () => {
 	it.each([
@@ -32,5 +32,17 @@ describe('directoryOf', () => {
 		['getting-started', '']
 	])('takes the directory of %s', (path, expected) => {
 		expect(directoryOf(path)).toBe(expected);
+	});
+});
+
+describe('splitLocation', () => {
+	it.each([
+		['guide.md', 'guide.md', ''],
+		['guide.md#usage', 'guide.md', '#usage'],
+		['guide.md?plain=1', 'guide.md', '?plain=1'],
+		['guide.md?plain=1#L4', 'guide.md', '?plain=1#L4'],
+		['#usage', '', '#usage']
+	])('splits %s', (reference, path, suffix) => {
+		expect(splitLocation(reference)).toEqual({ path, suffix });
 	});
 });

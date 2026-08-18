@@ -40,3 +40,15 @@ export function resolveRelativePath(directory: string, reference: string): strin
 export function directoryOf(path: string): string {
 	return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 }
+
+/**
+ * Separates a reference's path from the query and fragment that follow it.
+ *
+ * Neither belongs to the name: `guide.md?plain=1#usage` is one file with two things said about how to
+ * show it, and treating the whole string as a path invents a file that does not exist.
+ */
+export function splitLocation(reference: string): { readonly path: string; readonly suffix: string } {
+	const boundary = reference.search(/[?#]/);
+
+	return boundary === -1 ? { path: reference, suffix: '' } : { path: reference.slice(0, boundary), suffix: reference.slice(boundary) };
+}
