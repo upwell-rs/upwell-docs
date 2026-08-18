@@ -56,15 +56,22 @@
 	/**
 	 * Brings the file being read into view, once, when it changes.
 	 *
-	 * The guard is the point: this effect reads the row set, so expanding a directory or typing in the
-	 * filter runs it again, and scrolling on those would drag the reader back to the active file every
-	 * time they went looking somewhere else. A row that is not in the list yet — its ancestors are
-	 * still closed — is retried on the next row change rather than recorded as revealed.
+	 * Two things have to be true before that counts as done, and both are guards here. The row has to
+	 * exist — its ancestors may still be closed — and the tree has to be on screen: on a narrow viewport
+	 * it is a drawer with no layout at all until opened, and scrolling a box of zero height reveals
+	 * nothing while looking like success. Reading `mobileOpen` is what brings the effect back when the
+	 * drawer opens.
+	 *
+	 * Everything else about the row set is deliberately not a trigger. This effect reads `rows`, so
+	 * expanding a directory or typing in the filter runs it again, and scrolling then would drag the
+	 * reader back to the active file every time they went looking somewhere else.
 	 */
 	let revealed = '';
 
 	$effect(() => {
-		if (revealed === current) {
+		void mobileOpen;
+
+		if (revealed === current || !viewport?.clientHeight) {
 			return;
 		}
 

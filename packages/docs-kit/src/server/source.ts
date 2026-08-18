@@ -597,8 +597,9 @@ function markdownLinks(
 			const target = splitUrl(url);
 			const path = resolveRepositoryPath(directory, target.path);
 
-			// An image needs the bytes, so it goes to the raw file rather than to the page about it.
-			return path ? githubRawUrl(snapshot, path) : null;
+			// An image needs the bytes, so it goes to the raw file rather than to the page about it. The
+			// suffix travels with it: an SVG fragment such as `icons.svg#warning` selects what renders.
+			return path ? `${githubRawUrl(snapshot, path)}${target.suffix}` : null;
 		}
 	};
 }
