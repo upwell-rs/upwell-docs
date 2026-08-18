@@ -26,6 +26,16 @@ export interface FrameworkCoordinates {
   readonly crates: readonly FrameworkCrateCoordinates[];
 }
 
+/** Repository identity safe to return from SvelteKit load functions. */
+export interface DocsSource {
+  readonly crate: string;
+  readonly repository: string;
+}
+
+export function docsSource(crate: FrameworkCrateCoordinates): DocsSource {
+  return { crate: crate.crate, repository: crate.repository };
+}
+
 export function frameworkCrates(config: DocsConfig): readonly FrameworkCrateCoordinates[] {
   return [config.framework.root, ...config.framework.crates];
 }

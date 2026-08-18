@@ -13,13 +13,12 @@ The site is immediately usable without a Rust framework checkout. One version di
 
 Before publishing, update the placeholder values in `src/lib/docs/config.ts`:
 
-- `framework.crate`: the public facade crate, or the crate users import most often
-- `framework.name`: the display name shown in the header
-- `framework.repository`: the repository URL used by the header and source links
-- `framework.releaseTag`: the tag convention for your releases
-- `versions`: explicit public releases; `releaseVersion` is the public URL, picker, content-gate, and cache identity
-- `symbolEnrichmentVersions`: releases whose artifact provenance matches the current framework identity and may provide symbol facts and links
-- `latest`: the explicit release id that the `/docs/latest` redirect alias targets
+- `framework.root`: the facade repository and its independently versioned releases
+- `framework.crates`: external repositories, each with its own releases and latest version
+- `framework.*.crate`: the repository's root Cargo package; workspace members are inferred
+- `framework.*.repository`: the repository URL used by the header and source links
+- `framework.*.versions`: explicit public releases for that repository
+- `framework.*.latest`: the repository-specific latest release
 - `topics`: optional sidebar filters and the framework crates they classify
 - `rustdoc.directDependencyCrates`: external crates considered plausible imports in ambiguous snippets; use `workspace` or an explicit list
 - `rustdoc.standardLibraryCrates`: first-tier external crates to enrich from `rust-docs-json`
@@ -32,7 +31,15 @@ Prepare an artifact from a local checkout when you want framework-aware code exa
 bun run docs:prepare --local ../framework
 ```
 
-`docs:prepare --version <release>` runs nightly rustdoc JSON over the workspace and writes the resulting artifact to `.cache/upwell-docs/<release>/`. The manifest records the requested public documentation release and the source package provenance. Releases listed in `docsConfig.readOnlyArtifactVersions` are historical records and the command refuses to replace their cache directories; the bundled `0.20.0` artifact is read-only. Its preserved provenance is not eligible to enrich current Upwell symbols, so 0.20 remains guide-only: authored pages, routes, and search work, while Rust fences are highlighted without symbol facts, links, or API pages. Only releases in `docsConfig.symbolEnrichmentVersions` may provide code-lens data and symbol search records.
+`docs:prepare --version <release>` runs nightly rustdoc JSON over the workspace and writes the resulting artifact to `artifacts/upwell-docs/<source>/<release>/`. These compact artifacts are committed with the documentation site, making Railpack builds deterministic without cloning Rust repositories or running rustdoc. The manifest records the exact Git commit, whether that commit has a tag, and every vendored repository snapshot. Untagged prereleases therefore work without special deployment behavior: prepare from the intended commit and commit the resulting artifact. Releases listed in `docsConfig.readOnlyArtifactVersions` cannot be regenerated accidentally.
+
+Additional repository checkouts can contribute vendored rustdoc snapshots:
+
+```sh
+bun run docs:prepare --local ../upwell --external ../upwell-axum
+```
+
+Do not hand-edit files under `artifacts/upwell-docs`. Regenerate the owning source release, inspect the manifest and diff, then commit the complete artifact directory.
 
 Set `FRAMEWORK_CHECKOUT` to avoid repeating `--local`:
 
@@ -114,4 +121,8 @@ Use `SymbolMeta`, `SymbolSignature`, `SymbolMembers`, and `SymbolImpls` inside t
 | `bun run lint` | Run eslint |
 | `bun run test:unit` | Run unit tests |
 | `bun run test:e2e` | Run Playwright tests |
-| `bun run docs:prepare` | Generate the optional Rustdoc artifact |
+| `bun run docs:prepare` | Generate a source-scoped Rustdoc artifact for review and commit |
+
+## Railway
+
+The committed `railpack.json` uses Railpack's Node application provider and starts the adapter-node output with Bun. Bun is pinned by `packageManager` in `package.json`, so install, build, and runtime use the same JavaScript runtime. Railway only needs to run the normal install and `bun run build`; Rust, Cargo, Git checkouts, release discovery, and artifact downloads are not part of deployment.

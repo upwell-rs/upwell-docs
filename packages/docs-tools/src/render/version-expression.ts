@@ -88,8 +88,8 @@ export function versionExpressionPreprocessor(
  * contain the sentinel in its own code is untouched.
  */
 export function applyVersionExpression(html: string): string {
-  return html.replaceAll(
-    `/docs/${VERSION_SENTINEL}/symbols/`,
-    `/docs/${VERSION_EXPRESSION}/symbols/`,
+  return html.replace(
+    new RegExp(`(/docs/[^/]+/)${VERSION_SENTINEL}(/symbols/)`, "g"),
+    `$1${VERSION_EXPRESSION}$2`,
   );
 }

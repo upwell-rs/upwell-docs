@@ -203,7 +203,6 @@ export async function generateArtifact(
   }
 
   const repository = rootRegistration.repository.replace(/\/+$/, "");
-  const rootTag = workspace.version;
   const sourceLinkTemplates = Object.fromEntries(
     sources.flatMap((source) => {
       const registration = sourcesByRoot.get(source.workspace.facadeCrate)!;
@@ -247,7 +246,7 @@ export async function generateArtifact(
       releaseVersion: options.releaseVersion,
       sourcePackageVersion: workspace.version,
     },
-    git: { sha: git.sha, tag: rootTag, repository, dirty: git.dirty },
+    git: { sha: git.sha, tag: git.tag, repository, dirty: git.dirty },
     generatedAt: new Date().toISOString(),
     generator: {
       name: GENERATOR.name,

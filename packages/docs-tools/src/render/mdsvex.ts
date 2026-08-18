@@ -112,7 +112,7 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
 
         if (page) {
           return {
-            href: `/docs/${VERSION_SENTINEL}/symbols/${page.segments}`,
+            href: `/docs/${options.config.framework.root.crate}/${VERSION_SENTINEL}/symbols/${page.segments}`,
             title: page.symbol.split("::").pop() ?? page.symbol,
           };
         }
@@ -121,7 +121,7 @@ export function docsRenderer(options: DocsRenderOptions): DocsRenderer {
 
         return symbol && policy.enabled && (policy.crates === null || policy.crates.has(symbol.crate))
           ? {
-              href: `/docs/${VERSION_SENTINEL}/symbols/${canonical.replaceAll("::", "/")}`,
+              href: `/docs/${options.config.framework.root.crate}/${VERSION_SENTINEL}/symbols/${canonical.replaceAll("::", "/")}`,
               title: symbol.name,
             }
           : undefined;

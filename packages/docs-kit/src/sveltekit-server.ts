@@ -1,5 +1,5 @@
 import type { DocsVersion } from '@upwell/docs-core/config';
-import { docsVersions, frameworkCrate, frameworkCrateVersion, resolveVersion as resolveConfiguredVersion, type FrameworkCrateCoordinates } from '@upwell/docs-core/config';
+import { docsSource, docsVersions, frameworkCrate, frameworkCrateVersion, resolveVersion as resolveConfiguredVersion, type DocsSource, type FrameworkCrateCoordinates } from '@upwell/docs-core/config';
 import type { SymbolPageSummary } from '@upwell/docs-core/content';
 import type { SearchIndexResponse } from '@upwell/docs-core/search';
 import { suggestSymbols } from '@upwell/docs-tools/artifact/load';
@@ -34,7 +34,7 @@ export interface DocsServerRouteHelpersOptions {
 export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOptions): {
 	symbolEntries(): Promise<{ readonly source: string; readonly version: string; readonly path: string }[]>;
 	loadSymbol(params: { readonly source: string; readonly version: string; readonly path: string }): Promise<{
-		readonly source: FrameworkCrateCoordinates;
+		readonly source: DocsSource;
 		readonly version: DocsVersion;
 		readonly versions: readonly DocsVersion[];
 		readonly kind: 'authored' | 'generated';
@@ -44,7 +44,7 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 		readonly chrome: { readonly slug: string; readonly title: string; readonly section: string; readonly reference: true };
 	}>;
 	loadSymbolsIndex(sourceId: string, versionId: string): Promise<{
-		readonly source: FrameworkCrateCoordinates;
+		readonly source: DocsSource;
 		readonly version: DocsVersion;
 		readonly versions: readonly DocsVersion[];
 		readonly records: readonly SymbolRecord[];
@@ -163,7 +163,7 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 			}
 
 			return {
-				source,
+				source: docsSource(source),
 				version,
 				versions: source.versions,
 				kind: authored ? 'authored' : 'generated',
@@ -186,7 +186,7 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 				};
 			});
 
-			return { source, version, versions: source.versions, records, sources, chrome: { slug: 'symbols', title: 'Symbols', section: 'Symbols', reference: true } };
+			return { source: docsSource(source), version, versions: source.versions, records, sources, chrome: { slug: 'symbols', title: 'Symbols', section: 'Symbols', reference: true } };
 		},
 		async loadSearch(versionId) {
 			return buildSearchIndex(resolveVersion(versionId));

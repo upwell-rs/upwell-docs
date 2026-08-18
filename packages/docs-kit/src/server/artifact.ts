@@ -192,6 +192,7 @@ export function buildCatalog(
 		const owner = sourceByCargoCrate.get(symbol.crate);
 		const ownerConfig = owner ? frameworkCrate(config, owner.crate) : undefined;
 		const ownerVersion = ownerConfig?.versions.find((candidate) => candidate.releaseVersion.raw === owner?.version);
+		const destinationVersion = owner?.primary ? version.id : ownerVersion?.id ?? owner?.version ?? version.id;
 		const page = authored.get(symbol.path);
 		const inScope = ownerConfig !== undefined || policy.crates === null || policy.crates.has(symbol.crate);
 		const destination: SymbolDestination = page
@@ -199,7 +200,7 @@ export function buildCatalog(
 			: policy.enabled && inScope
 					? {
 						kind: 'generated',
-						href: symbolHref(owner?.crate ?? source.crate, ownerVersion?.id ?? owner?.version ?? version.id, declarationSegments),
+						href: symbolHref(owner?.crate ?? source.crate, destinationVersion, declarationSegments),
 						segments: declarationSegments
 					}
 				: { kind: 'source', href: symbolSourceLink(artifact, symbol) };

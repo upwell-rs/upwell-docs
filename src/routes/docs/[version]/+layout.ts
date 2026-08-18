@@ -11,7 +11,7 @@
 
 import { dev } from '$app/env';
 import { resolvePrerender } from '@upwell/docs-core/config';
-import { frameworkCrate, frameworkCrateVersion } from '@upwell/docs-core/config';
+import { docsSource, frameworkCrate, frameworkCrateVersion } from '@upwell/docs-core/config';
 import { docsRoutes } from '#lib/docs/runtime';
 import { docsConfig } from 'virtual:docs-config';
 import type { LayoutLoad } from './$types';
@@ -26,7 +26,7 @@ export const load: LayoutLoad = ({ params }) => {
 		const version = source ? frameworkCrateVersion(source, sourceVersion) : undefined;
 
 		if (source && version) {
-			return { source, version, versions: source.versions };
+			return { source: docsSource(source), version, versions: source.versions };
 		}
 	}
 

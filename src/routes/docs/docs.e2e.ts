@@ -59,13 +59,13 @@ test('versioned guide visibility uses normalized routes without a root Guides gr
 	await expect(page.getByRole('navigation', { name: 'Documentation' }).locator('details[data-group-id="guides"]')).toHaveCount(0);
 });
 
-test('0.20 guides stay guide-only when the preserved cache has different symbol provenance', async ({ page }) => {
+test('historical releases expose generated symbols by default', async ({ page }) => {
 	const symbol = await page.goto('/docs/upwell/0.20.0/symbols/upwell_macros/component');
-	expect(symbol?.status()).toBe(404);
+	expect(symbol?.status()).toBe(200);
+	await expect(page.getByRole('heading', { level: 1, name: 'component' })).toBeVisible();
 
 	await page.goto('/docs/0.20.0/components');
 	await expect(page.getByRole('heading', { level: 1, name: 'Components and dependency injection' })).toBeVisible();
-	await expect(page.locator('[data-symbol]')).toHaveCount(0);
 
 	await page.getByRole('button', { name: 'Search' }).click();
 	await page.getByRole('searchbox').fill('release compatibility');
@@ -306,10 +306,9 @@ test('client navigation replaces every generated symbol fact', async ({ page }) 
 	await expect(page.locator('.member__name', { hasText: 'AmbiguousExecutable' })).toHaveCount(0);
 });
 
-test('a symbol with no hand-written page answers with a 404', async ({ page }) => {
-	const response = await page.goto(`/docs/upwell/${VERSION}/symbols/upwell/Singleton`);
+test('an unknown symbol answers with a 404', async ({ page }) => {
+	const response = await page.goto(`/docs/upwell/${VERSION}/symbols/upwell/DefinitelyNotASymbol`);
 
-	// Most symbols have no page and are not meant to. They are still annotated in code blocks.
 	expect(response?.status()).toBe(404);
 	await expect(page.getByRole('heading', { level: 1, name: 'Not found' })).toBeVisible();
 });
@@ -319,7 +318,7 @@ test('letter shortcuts move between adjacent path-derived pages', async ({ page 
 
 	// Shortcuts are registered on mount, so the page has to be interactive before a key means
 	// anything. Waiting on a hydration-dependent element is more honest than a fixed delay.
-	await expect(page.getByRole('navigation', { name: 'Documentation' })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 	await page.locator('body').click({ position: { x: 5, y: 5 } });
 
 	// Letters, not brackets: `[` and `]` need AltGr on Nordic layouts, so they cannot be pressed
@@ -332,7 +331,7 @@ test('letter shortcuts move between adjacent path-derived pages', async ({ page 
 test('Alt+arrow moves between pages too', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 
-	await expect(page.getByRole('navigation', { name: 'Documentation' })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 	await page.locator('body').click({ position: { x: 5, y: 5 } });
 
 	await page.keyboard.press('Alt+ArrowRight');
@@ -447,7 +446,7 @@ test('arrowing through results keeps the highlighted one in view', async ({ page
 
 test('search opens with a keyboard shortcut and navigates with Enter', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
-	await expect(page.getByRole('navigation', { name: 'Documentation' })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 	await page.locator('body').click({ position: { x: 5, y: 5 } });
 
 	await page.keyboard.press('/');
@@ -514,7 +513,7 @@ test('narrow viewports get navigation, which the sidebar cannot provide', async 
 
 	// Below 60rem the sidebar is not laid out at all, so without this the site is readable but not
 	// navigable — there is no way to reach another page.
-	await expect(page.getByRole('navigation', { name: 'Documentation' })).toBeHidden();
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeHidden();
 
 	await page.getByRole('button', { name: 'Menu' }).click();
 
@@ -530,7 +529,7 @@ test('narrow viewports get navigation, which the sidebar cannot provide', async 
 
 test('copying a code block confirms it, and the toaster loads only then', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
-	await expect(page.getByRole('navigation', { name: 'Documentation' })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 
 	// The toast library is a chunk of its own, fetched on the first notification rather than shipped
 	// to every reader for a feature only interaction triggers.
@@ -659,7 +658,7 @@ test('the external table never reaches the browser', async ({ page }) => {
 	});
 
 	await page.goto(`/docs/${VERSION}/di/components`);
-	await expect(page.getByRole('navigation', { name: 'Documentation' })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 
 	// Annotation happens at build time, so what a reader downloads is finished markup — never the
 	// 1.1 MB table of 5,132 external symbols that produced it.

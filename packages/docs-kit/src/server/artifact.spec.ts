@@ -109,6 +109,24 @@ describe('buildCatalog', () => {
 		});
 	});
 
+	it('keeps primary symbols on the selected documentation release', () => {
+		const { artifact, config } = fixture(true);
+		const mismatchedPackage = {
+			...artifact,
+			manifest: {
+				...artifact.manifest,
+				sources: [{ ...artifact.manifest.sources![0], version: '0.20.0', primary: true }]
+			}
+		};
+		const catalog = buildCatalog(mismatchedPackage, config.framework.root, version, [], config, false,
+			(source, release, segments) => `/docs/${source}/${release}/symbols/${segments}`);
+
+		expect(catalog.resolve('core_crate::module::Thing')?.destination).toMatchObject({
+			kind: 'generated',
+			href: `/docs/facade/${version.id}/symbols/core_crate/module/Thing`
+		});
+	});
+
 	it('rejects an old artifact when generated pages require full docs', () => {
 		const { artifact, config } = fixture(true);
 		const oldArtifact = { ...artifact, manifest: { ...artifact.manifest, capabilities: ['symbols'] } } as LoadedArtifact;

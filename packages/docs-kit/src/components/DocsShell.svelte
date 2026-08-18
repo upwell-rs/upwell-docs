@@ -4,7 +4,7 @@
 	import { setDocsNotifier, setDocsVersion } from '@upwell/docs-ui/context';
 	import type { SearchIndex } from '@upwell/docs-ui/search';
 	import { Breadcrumbs, DocsArticle, DocsHeader, MobileNav, Notifications, PageNav, ReferenceNote, Search, Shortcuts, TableOfContents } from '@upwell/docs-ui';
-	import type { DocsVersion, FrameworkCrateCoordinates } from '@upwell/docs-core/config';
+	import type { DocsSource, DocsVersion } from '@upwell/docs-core/config';
 	import type { DocSummary, PageChrome } from '@upwell/docs-core/content';
 
 	import type { DocsContent } from '../content.ts';
@@ -18,7 +18,7 @@
 	interface Props {
 		content: DocsContent;
 		version: DocsVersion;
-		source?: FrameworkCrateCoordinates;
+		source?: DocsSource;
 		versions?: readonly DocsVersion[];
 		pathname: string;
 		chrome?: PageChrome;
@@ -59,7 +59,7 @@
 		}
 
 		const available = slug === 'symbols' ? true : slug.startsWith('symbols/')
-			? activeSource !== content.config.framework.root || Boolean(content.findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
+			? activeSource.crate !== content.config.framework.root.crate || Boolean(content.findSymbolPage(slug.slice('symbols/'.length), target.releaseVersion))
 			: Boolean(content.findPage(slug, target.releaseVersion));
 
 		assignLocation(symbols

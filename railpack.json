@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "deploy": {
+    "startCommand": "bun ./build/index.js",
+    "variables": {
+      "NODE_ENV": "production",
+      "TZ": "UTC",
+      "LANG": "en_US.UTF-8"
+    }
+  }
+}

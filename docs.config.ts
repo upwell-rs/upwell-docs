@@ -26,12 +26,12 @@ export const docsConfig: DocsConfig = {
     crates: [],
   },
 
-  cacheDir: ".cache/upwell-docs",
+  cacheDir: "artifacts/upwell-docs",
   landingSlug: "getting-started",
   prerender: {
     routes: {
       // Serve cached symbols dynamically in dev; emit known symbol routes in production.
-      symbols: { development: false, production: false },
+      symbols: { development: false, production: "auto" },
     },
   },
   topics: [

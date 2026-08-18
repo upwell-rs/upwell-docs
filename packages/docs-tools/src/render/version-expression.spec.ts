@@ -22,10 +22,10 @@ const MODULE_SCRIPT =
 
 describe("applyVersionExpression", () => {
   it("turns a sentinel symbol link into a Svelte expression", () => {
-    const html = `<a href="/docs/${VERSION_SENTINEL}/symbols/upwell/prelude/component">`;
+    const html = `<a href="/docs/upwell/${VERSION_SENTINEL}/symbols/upwell/prelude/component">`;
 
     expect(applyVersionExpression(html)).toBe(
-      '<a href="/docs/{__docsVersion}/symbols/upwell/prelude/component">',
+      '<a href="/docs/upwell/{__docsVersion}/symbols/upwell/prelude/component">',
     );
   });
 
@@ -38,7 +38,7 @@ describe("applyVersionExpression", () => {
   });
 
   it("replaces every symbol link on a page", () => {
-    const html = `<a href="/docs/${VERSION_SENTINEL}/symbols/a"><a href="/docs/${VERSION_SENTINEL}/symbols/b">`;
+    const html = `<a href="/docs/upwell/${VERSION_SENTINEL}/symbols/a"><a href="/docs/upwell/${VERSION_SENTINEL}/symbols/b">`;
 
     expect(applyVersionExpression(html)).not.toContain(VERSION_SENTINEL);
   });
