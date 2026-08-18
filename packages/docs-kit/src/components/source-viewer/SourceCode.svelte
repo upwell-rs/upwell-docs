@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { SymbolCard, type SymbolCardData } from '@upwell/docs-ui';
+	import type { SourceCandidate } from '../../server/source.ts';
+	import SourceCandidates from './SourceCandidates.svelte';
 
 	interface Props {
 		html: string;
@@ -8,10 +10,25 @@
 
 	let { html, oninspect }: Props = $props();
 	let active = $state<{ data: SymbolCardData; anchor: HTMLElement }>();
+	let ambiguous = $state<{ candidates: readonly SourceCandidate[]; anchor: HTMLElement }>();
 	let card = $state<HTMLElement>();
 	let closing: ReturnType<typeof setTimeout> | undefined;
 
 	function choose(event: MouseEvent): void {
+		const ambiguousTarget = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-candidates]');
+
+		if (ambiguousTarget?.dataset.candidates) {
+			event.preventDefault();
+
+			try {
+				ambiguous = { candidates: JSON.parse(ambiguousTarget.dataset.candidates) as SourceCandidate[], anchor: ambiguousTarget };
+			} catch {
+				ambiguous = undefined;
+			}
+
+			return;
+		}
+
 		if (!event.metaKey && !event.ctrlKey) return;
 		const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-symbol]:not([data-external])');
 
@@ -98,6 +115,10 @@
 	<SymbolCard bind:element={card} data={active.data} anchor={active.anchor} />
 {/if}
 
+{#if ambiguous}
+	<SourceCandidates candidates={ambiguous.candidates} anchor={ambiguous.anchor} onclose={() => { ambiguous = undefined; }} />
+{/if}
+
 <style>
 	.code { min-height: 0; overflow: auto; background: var(--surface-sunken); }
 	.code :global(pre) { min-width: max-content; min-height: 100%; margin: 0; padding: 0.75rem 0; font-family: var(--font-mono); font-size: 0.78rem; line-height: normal; tab-size: 2; }
@@ -114,5 +135,6 @@
 	.code :global(.symbol[data-lens='field']) { color: inherit !important; }
 	.code :global(.symbol:hover) { border-bottom-style: solid; }
 	.code :global(.external) { border-bottom: 1px dotted color-mix(in srgb, currentColor 45%, transparent); text-decoration: none; }
+	.code :global(.ambiguous) { border-bottom: 1px dashed var(--tone-warning); color: var(--tone-warning) !important; cursor: help; text-decoration: none; }
 	@media (prefers-color-scheme: dark) { .code :global(:where(code, span)) { color: var(--shiki-dark); } }
 </style>

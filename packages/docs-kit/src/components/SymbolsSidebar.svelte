@@ -38,6 +38,7 @@
 		{nodes}
 		{current}
 		{activeGroups}
+		truncate
 		isOpen={(id, fallback) => sidebarState.groups.isOpen(id, fallback)}
 		onToggle={(id, open) => sidebarState.groups.set(id, open)}
 	/>
@@ -45,6 +46,7 @@
 
 <style>
 	.sidebar {
+		min-width: 0;
 		font-size: 0.875rem;
 	}
 

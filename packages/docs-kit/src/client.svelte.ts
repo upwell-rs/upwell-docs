@@ -5,6 +5,22 @@ import { SearchIndex, type SearchStatus } from '@upwell/docs-ui/search';
 
 export type { SearchStatus };
 
+/**
+ * Which navigation a remembered sidebar width belongs to.
+ *
+ * The two are stored separately because they hold different things. A guide title is prose a few
+ * words long; a symbol label is a Rust identifier at the bottom of a nested module path. A width
+ * that suits one is the wrong width for the other, so widening the reference navigation does not
+ * then push the guide navigation out with it.
+ */
+export type SidebarArea = 'guides' | 'symbols';
+
+/** Narrower than this hides the tree; wider takes space the article needs. */
+export const SIDEBAR_MIN_WIDTH = 190;
+export const SIDEBAR_MAX_WIDTH = 560;
+
+export const SIDEBAR_DEFAULT_WIDTH: Record<SidebarArea, number> = { guides: 240, symbols: 300 };
+
 export interface SidebarState {
 	readonly groups: {
 		isOpen(id: string, fallback: boolean): boolean;
@@ -17,15 +33,29 @@ export interface SidebarState {
 		clear(): void;
 		admits(topics: readonly string[]): boolean;
 	};
+	readonly width: {
+		/** Remembered width in pixels, already clamped to the resizable range. */
+		get(area: SidebarArea): number;
+		set(area: SidebarArea, pixels: number): void;
+	};
 }
 
 export function createSidebarState(storagePrefix = 'docs'): SidebarState {
 	const collapsedKey = `${storagePrefix}:collapsed-groups`;
 	const expandedKey = `${storagePrefix}:expanded-groups`;
 	const topicsKey = `${storagePrefix}:topics`;
+	const widthKey = (area: SidebarArea): string => `${storagePrefix}:sidebar-width:${area}`;
 	const collapsed = new SvelteSet<string>(read(collapsedKey));
 	const expanded = new SvelteSet<string>(read(expandedKey));
 	const selected = new SvelteSet<string>(read(topicsKey));
+	const widthWrites: Partial<Record<SidebarArea, ReturnType<typeof setTimeout>>> = {};
+
+	// Clamped on the way in as well as on the way out: a stored width predates any change to the
+	// bounds, and a value from another viewport should not be able to leave the article unreadable.
+	const widths = $state<Record<SidebarArea, number>>({
+		guides: clampWidth(readNumber(widthKey('guides')) ?? SIDEBAR_DEFAULT_WIDTH.guides),
+		symbols: clampWidth(readNumber(widthKey('symbols')) ?? SIDEBAR_DEFAULT_WIDTH.symbols)
+	});
 
 	return {
 		groups: {
@@ -66,8 +96,30 @@ export function createSidebarState(storagePrefix = 'docs'): SidebarState {
 			admits(pageTopics) {
 				return selected.size === 0 || pageTopics.length === 0 || pageTopics.some((topic) => selected.has(topic));
 			}
+		},
+		width: {
+			get: (area) => widths[area],
+			set(area, pixels) {
+				const next = clampWidth(pixels);
+
+				if (next === widths[area]) {
+					return;
+				}
+
+				widths[area] = next;
+				clearTimeout(widthWrites[area]);
+				widthWrites[area] = setTimeout(() => writeNumber(widthKey(area), next), 150);
+			}
 		}
 	};
+}
+
+function clampWidth(pixels: number): number {
+	if (!Number.isFinite(pixels)) {
+		return SIDEBAR_DEFAULT_WIDTH.guides;
+	}
+
+	return Math.round(Math.min(Math.max(pixels, SIDEBAR_MIN_WIDTH), SIDEBAR_MAX_WIDTH));
 }
 
 export function createSearchIndex(): SearchIndex {
@@ -152,6 +204,32 @@ function write(key: string, values: ReadonlySet<string>): void {
 
 	try {
 		localStorage.setItem(key, JSON.stringify([...values]));
+	} catch {
+		// Storage can be unavailable without invalidating in-memory interaction state.
+	}
+}
+
+function readNumber(key: string): number | undefined {
+	if (typeof localStorage === 'undefined') {
+		return undefined;
+	}
+
+	try {
+		const stored = Number(localStorage.getItem(key));
+
+		return Number.isFinite(stored) && stored > 0 ? stored : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function writeNumber(key: string, value: number): void {
+	if (typeof localStorage === 'undefined') {
+		return;
+	}
+
+	try {
+		localStorage.setItem(key, String(value));
 	} catch {
 		// Storage can be unavailable without invalidating in-memory interaction state.
 	}

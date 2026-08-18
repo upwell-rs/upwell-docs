@@ -89,7 +89,7 @@ export function versionExpressionPreprocessor(
  */
 export function applyVersionExpression(html: string): string {
   return html.replace(
-    new RegExp(`(/docs/[^/]+/)${VERSION_SENTINEL}(/symbols/)`, "g"),
+    new RegExp(`(/docs/(?:[^/]+/)?)${VERSION_SENTINEL}(/symbols/)`, "g"),
     `$1${VERSION_EXPRESSION}$2`,
   );
 }

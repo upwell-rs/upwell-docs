@@ -267,6 +267,22 @@ describe("resolveMembers", () => {
       });
     });
 
+    it("resolves a method through a dyn trait annotation", () => {
+      expect(
+        members("fn register(item: dyn Component) { item.configure(); }"),
+      ).toMatchObject({
+        configure: "upwell_di::descriptors::Component::configure",
+      });
+    });
+
+    it("resolves a method through a borrowed dyn trait annotation", () => {
+      expect(
+        members("fn register(item: &dyn Component) { item.configure(); }"),
+      ).toMatchObject({
+        configure: "upwell_di::descriptors::Component::configure",
+      });
+    });
+
     it("reads through the generic arguments of a returned type", () => {
       // `build()` returns `Result<App<D>, …>`; both the Result and the type parameter have to be
       // seen past for `serve` to be found on `App`.

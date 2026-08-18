@@ -72,7 +72,13 @@ export function tokenizeSource(
 		if (!isIdentifier(text) || tokens[index].target) continue;
 		const name = text.replace(/!$/, '');
 		const candidates = targets.filter((target) => target.name === name);
-		const declaration = unique(candidates.filter((target) => target.path === location.file && target.line === location.line));
+		const declarationKind = expectedDeclarationKind(line, text);
+		const declarations = candidates.filter((target) => target.path === location.file && target.line === location.line);
+		const exactDeclarations = declarationKind ? declarations.filter((target) => target.kind === declarationKind) : declarations;
+		// Rust declares procedural macros with `fn` syntax, while rustdoc correctly classifies the
+		// exported item as a macro. When source location leaves only one candidate, its semantic kind
+		// is stronger evidence than the declaration keyword alone.
+		const declaration = unique(exactDeclarations) ?? unique(declarations);
 		const macro = macroTarget(tokens, index, candidates, location.imports ?? []);
 		const type = /^[A-Z]/.test(text) ? unique(scoped(candidates.filter((target) => target.lens === 'type'), location.imports ?? [])) : undefined;
 		const target = declaration ?? macro ?? type;
@@ -81,6 +87,18 @@ export function tokenizeSource(
 	}
 
 	return tokens;
+}
+
+function expectedDeclarationKind(line: string, name: string): string | undefined {
+	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const item = new RegExp(`\\b(struct|enum|trait|union|type|const|mod|fn)\\s+${escaped}\\b`).exec(line)?.[1];
+
+	if (!item) return undefined;
+	if (item === 'type') return 'type_alias';
+	if (item === 'const') return 'constant';
+	if (item === 'fn') return 'function';
+
+	return item;
 }
 
 function scoped(candidates: readonly SourceTokenTarget[], imports: readonly string[]): readonly SourceTokenTarget[] {

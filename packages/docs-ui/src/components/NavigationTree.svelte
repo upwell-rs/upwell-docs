@@ -7,14 +7,22 @@
 		current: string;
 		activeGroups: ReadonlySet<string>;
 		depth?: number;
+		/**
+		 * Clips labels to one line instead of wrapping them.
+		 *
+		 * For the reference tree, whose labels are Rust identifiers: a wrapped identifier is harder to
+		 * scan than a clipped one, and identifiers are long enough that wrapping every entry turns the
+		 * tree into a wall. Guide titles are prose and wrap, which is why this is not the default.
+		 */
+		truncate?: boolean;
 		isOpen: (id: string, fallback: boolean) => boolean;
 		onToggle: (id: string, open: boolean) => void;
 	}
 
-	let { nodes, current, activeGroups, depth = 0, isOpen, onToggle }: Props = $props();
+	let { nodes, current, activeGroups, depth = 0, truncate = false, isOpen, onToggle }: Props = $props();
 </script>
 
-<ul class="tree" data-depth={depth}>
+<ul class="tree" data-depth={depth} data-truncate={truncate ? 'true' : undefined}>
 	{#each nodes as node (node.id)}
 		<li>
 			{#if node.type === 'group'}
@@ -33,15 +41,16 @@
 								{node.label}
 							{/if}
 						</summary>
-						<NavigationTree nodes={node.children} {current} {activeGroups} {isOpen} {onToggle} depth={depth + 1} />
+						<NavigationTree nodes={node.children} {current} {activeGroups} {truncate} {isOpen} {onToggle} depth={depth + 1} />
 					</details>
 				{:else if node.href}
-					<a class="tree__link" href={node.href} aria-current={node.pageId === current ? 'page' : undefined}><code>{node.label}</code></a>
+					<a class="tree__link" href={node.href} title={truncate ? node.label : undefined} aria-current={node.pageId === current ? 'page' : undefined}><code>{node.label}</code></a>
 				{/if}
 			{:else}
 				<a
 					class="tree__link"
 					href={node.href}
+					title={truncate ? node.title : undefined}
 					aria-current={node.id === current ? 'page' : undefined}
 				>
 					{#if node.reference}<code>{node.title}</code>{:else}{node.title}{/if}
@@ -55,7 +64,33 @@
 	.tree {
 		margin: 0;
 		padding: 0;
+		min-width: 0;
 		list-style: none;
+	}
+
+	/*
+	 * Clipping needs the whole chain, not just the link: a `min-width: 0` on every box between the
+	 * sidebar and the text, or the intrinsic width of a long identifier wins and the tree scrolls
+	 * sideways instead of ellipsing.
+	 */
+	.tree[data-truncate] li {
+		min-width: 0;
+	}
+
+	.tree[data-truncate] .tree__link {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.tree[data-truncate] .tree__summary {
+		min-width: 0;
+	}
+
+	.tree[data-truncate] .tree__summary a {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.tree[data-depth='0'] > li + li {

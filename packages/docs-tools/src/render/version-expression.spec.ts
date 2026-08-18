@@ -29,6 +29,14 @@ describe("applyVersionExpression", () => {
     );
   });
 
+  it("replaces the version in a root documentation symbol route", () => {
+    expect(
+      applyVersionExpression(
+        '<a href="/docs/__DOCS_VERSION__/symbols/upwell/App">App</a>',
+      ),
+    ).toContain('/docs/{__docsVersion}/symbols/upwell/App');
+  });
+
   it("leaves a bare sentinel alone, so page content cannot be rewritten by accident", () => {
     // The token is replaced only as part of a symbol-link path; a page that happens to contain it
     // in its own code must survive untouched.

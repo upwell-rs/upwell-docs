@@ -11,6 +11,7 @@ export { default as NavigationTree } from './components/NavigationTree.svelte';
 export { default as Notifications } from './components/Notifications.svelte';
 export { default as PackageInstall } from './components/PackageInstall.svelte';
 export { default as PageNav } from './components/PageNav.svelte';
+export { default as PaneResizer } from './components/PaneResizer.svelte';
 export { default as ReferenceNote } from './components/ReferenceNote.svelte';
 export { default as Steps } from './components/Steps.svelte';
 export { default as SymbolCard } from './components/SymbolCard.svelte';
