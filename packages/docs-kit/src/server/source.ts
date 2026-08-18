@@ -1,4 +1,5 @@
 import type { DocsConfig, DocsVersion, FrameworkCrateCoordinates } from '@upwell/docs-core/config';
+import { directoryOf, resolveRelativePath } from '@upwell/docs-core/paths';
 import type { SymbolInfo } from '@upwell/docs-ui/types';
 import type { ArtifactSource } from '@upwell/docs-tools/artifact/schema';
 import { renderSourceCode, type SourceCodeAnnotation } from '@upwell/docs-tools/render/highlight';
@@ -592,12 +593,12 @@ function markdownLinks(
 	from: string,
 	rawOrigin: string
 ): SourceMarkdownContext {
-	const directory = from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : '';
+	const directory = directoryOf(from);
 
 	return {
 		resolveLink(url) {
 			const target = splitUrl(url);
-			const path = resolveRepositoryPath(directory, target.path);
+			const path = resolveRelativePath(directory, target.path);
 
 			if (!path) {
 				return null;
@@ -609,7 +610,7 @@ function markdownLinks(
 		},
 		resolveImage(url) {
 			const target = splitUrl(url);
-			const path = resolveRepositoryPath(directory, target.path);
+			const path = resolveRelativePath(directory, target.path);
 
 			// An image needs the bytes, so it goes to the raw file rather than to the page about it. The
 			// suffix travels with it: an SVG fragment such as `icons.svg#warning` selects what renders.
@@ -629,35 +630,6 @@ function splitUrl(url: string): { readonly path: string; readonly suffix: string
 	const boundary = url.search(/[?#]/);
 
 	return boundary === -1 ? { path: url, suffix: '' } : { path: url.slice(0, boundary), suffix: url.slice(boundary) };
-}
-
-/** Resolves a repository-relative URL against the directory of the file that wrote it. */
-function resolveRepositoryPath(directory: string, url: string): string | null {
-	if (url === '' || url.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(url)) {
-		return null;
-	}
-
-	const segments = url.startsWith('/') || directory === '' ? [] : directory.split('/');
-
-	for (const segment of url.replace(/^\//, '').split('/')) {
-		if (segment === '' || segment === '.') {
-			continue;
-		}
-
-		if (segment === '..') {
-			if (segments.length === 0) {
-				return null;
-			}
-
-			segments.pop();
-
-			continue;
-		}
-
-		segments.push(segment);
-	}
-
-	return segments.length > 0 ? segments.join('/') : null;
 }
 
 function encodePath(file: string): string {

@@ -38,6 +38,15 @@ export interface MarkdownExportOptions {
 	 * the suffix the link lands on a path only the site serves.
 	 */
 	readonly relativeLinkSuffix?: string;
+	/**
+	 * Whether a relative destination names another exported page, which only the caller can know.
+	 *
+	 * Required for any rewriting to happen, because a relative link is not necessarily a page: a guide
+	 * may link a configuration file or an archive, and `example.toml.md` is worse than the original.
+	 * Asking instead of guessing also leaves a link to a page that does not exist exactly as written,
+	 * which is the honest rendering of a mistake.
+	 */
+	readonly exports?: (destination: string) => boolean;
 }
 
 /** Renders one page's source as plain Markdown, with its Svelte layer removed. */
@@ -49,7 +58,7 @@ export function markdownFromPageSource(source: string, options: MarkdownExportOp
 			.replace(SYMBOL_TAG, (_match, attributes: string) => symbolText(attributes))
 			.replace(tags, '')
 			.replace(SNIPPET_BLOCK, '')
-			.replace(LINK, (match, label: string, target: string, title: string) => relinked(match, label, target, title, options.relativeLinkSuffix))
+			.replace(LINK, (match, label: string, target: string, title: string) => relinked(match, label, target, title, options))
 			.replace(EXTRA_BLANK_LINES, '\n\n');
 
 	return `${outsideCode(source.replace(FRONTMATTER, ''), prose).trim()}\n`;
@@ -104,10 +113,11 @@ function outsideCode(source: string, transform: (text: string) => string): strin
 }
 
 /** Points a relative link at the exported copy, keeping any fragment and title it carried. */
-function relinked(match: string, label: string, target: string, title: string, suffix: string | undefined): string {
+function relinked(match: string, label: string, target: string, title: string, options: MarkdownExportOptions): string {
+	const suffix = options.relativeLinkSuffix;
 	const absolute = target.startsWith('/') || target.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(target);
 
-	if (!suffix || absolute || target.endsWith(suffix) || target.includes(suffix + '#')) {
+	if (!suffix || !options.exports || absolute || target.endsWith(suffix) || target.includes(`${suffix}#`)) {
 		return match;
 	}
 
@@ -115,7 +125,7 @@ function relinked(match: string, label: string, target: string, title: string, s
 	const path = hash === -1 ? target : target.slice(0, hash);
 	const fragment = hash === -1 ? '' : target.slice(hash);
 
-	return `[${label}](${path}${suffix}${fragment}${title})`;
+	return options.exports(path) ? `[${label}](${path}${suffix}${fragment}${title})` : match;
 }
 
 /**
