@@ -1,5 +1,5 @@
 import type { DocsConfig, DocsVersion, FrameworkCrateCoordinates } from '@upwell/docs-core/config';
-import { directoryOf, resolveRelativePath } from '@upwell/docs-core/paths';
+import { directoryOf, resolveRelativePath, splitLocation } from '@upwell/docs-core/paths';
 import type { SymbolInfo } from '@upwell/docs-ui/types';
 import type { ArtifactSource } from '@upwell/docs-tools/artifact/schema';
 import { renderSourceCode, type SourceCodeAnnotation } from '@upwell/docs-tools/render/highlight';
@@ -597,7 +597,7 @@ function markdownLinks(
 
 	return {
 		resolveLink(url) {
-			const target = splitUrl(url);
+			const target = splitLocation(url);
 			const path = resolveRelativePath(directory, target.path);
 
 			if (!path) {
@@ -609,7 +609,7 @@ function markdownLinks(
 				: `${snapshot.repository}/blob/${snapshot.sha}/${encodePath(path)}${target.suffix}`;
 		},
 		resolveImage(url) {
-			const target = splitUrl(url);
+			const target = splitLocation(url);
 			const path = resolveRelativePath(directory, target.path);
 
 			// An image needs the bytes, so it goes to the raw file rather than to the page about it. The
@@ -617,19 +617,6 @@ function markdownLinks(
 			return path ? `${githubRawUrl(snapshot, path, rawOrigin)}${target.suffix}` : null;
 		}
 	};
-}
-
-/**
- * Separates a URL's path from the query and fragment that follow it.
- *
- * Both belong to the URL, not to the filename: `guide.md?plain=1#usage` is one repository file with
- * two things said about how to display it, and resolving the whole string as a path invents a file
- * that does not exist.
- */
-function splitUrl(url: string): { readonly path: string; readonly suffix: string } {
-	const boundary = url.search(/[?#]/);
-
-	return boundary === -1 ? { path: url, suffix: '' } : { path: url.slice(0, boundary), suffix: url.slice(boundary) };
 }
 
 function encodePath(file: string): string {
