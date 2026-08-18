@@ -75,4 +75,6 @@ export interface SymbolInfo {
 export interface DocsNotifier {
 	copied(what: string): void;
 	copyFailed(): void;
+	noPage(path: string, sourceHref?: string | null): void;
+	failed(message: string, description?: string): void;
 }

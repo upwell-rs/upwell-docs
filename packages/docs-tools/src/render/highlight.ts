@@ -238,6 +238,114 @@ export async function highlightInline(
   });
 }
 
+export interface SourceCodeAnnotation {
+  readonly start: number;
+  readonly end: number;
+  readonly href: string;
+  readonly symbol: string;
+  readonly kind: string;
+  readonly lens: string;
+  readonly procMacro: string | null;
+  readonly title: string;
+  readonly metadata?: Readonly<Record<string, string | null | undefined>>;
+}
+
+/** Highlights a runtime source file and applies only source-resolver-approved symbol links. */
+export async function renderSourceCode(
+  code: string,
+  language: string,
+  annotations: readonly SourceCodeAnnotation[],
+): Promise<string> {
+  const normalised = normaliseLanguage(language);
+  const shiki = await getHighlighter();
+  const ordered = [...annotations].sort((left, right) => left.start - right.start);
+
+  return shiki.codeToHtml(code.replace(/\n$/, ""), {
+    lang: normalised === "text" ? "text" : normalised,
+    themes: THEMES,
+    defaultColor: false,
+    cssVariablePrefix: "--shiki-",
+    transformers: [
+      {
+        name: "framework:source-lines",
+        line(node, line) {
+          node.properties.id = `L${line}`;
+          node.properties["data-line"] = String(line);
+        },
+        pre(node) {
+          node.properties.role = "region";
+          node.properties["aria-label"] = "Source code";
+        },
+      },
+      {
+        name: "framework:source-symbols",
+        span(node, _line, _column, _lineElement, token) {
+          const [child] = node.children;
+
+          if (node.children.length !== 1 || !child || child.type !== "text") {
+            return;
+          }
+
+          const tokenStart = token.offset;
+          const tokenEnd = tokenStart + child.value.length;
+          const matches = ordered.filter(
+            (annotation) => annotation.start >= tokenStart && annotation.end <= tokenEnd,
+          );
+
+          if (matches.length === 0) {
+            return;
+          }
+
+          const children: TokenChild[] = [];
+          let consumed = 0;
+
+          for (const annotation of matches) {
+            const start = annotation.start - tokenStart;
+            const end = annotation.end - tokenStart;
+
+            if (start > consumed) {
+              children.push({ type: "text", value: child.value.slice(consumed, start) });
+            }
+
+            const properties: Record<string, string> = {
+              class: "symbol",
+              href: annotation.href,
+              "data-symbol": annotation.symbol,
+              "data-symbol-kind": annotation.kind,
+              "data-lens": annotation.lens,
+              title: annotation.title,
+            };
+
+            if (annotation.procMacro) {
+              properties["data-proc-macro"] = annotation.procMacro;
+            }
+
+            for (const [name, value] of Object.entries(annotation.metadata ?? {})) {
+              if (value != null) {
+                properties[name] = value;
+              }
+            }
+
+            children.push({
+              type: "element",
+              tagName: "a",
+              properties,
+              children: [{ type: "text", value: child.value.slice(start, end) }],
+            });
+            consumed = end;
+          }
+
+          if (consumed < child.value.length) {
+            children.push({ type: "text", value: child.value.slice(consumed) });
+          }
+
+          node.children = children;
+        },
+      },
+    ],
+  });
+}
+
 function normaliseLanguage(language: string | null | undefined): Language {
   const candidate = (language ?? "text").toLowerCase();
   const aliases: Record<string, Language> = {
