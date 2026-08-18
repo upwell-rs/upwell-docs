@@ -5,6 +5,16 @@ import { directSourceChildren, sourceBreadcrumbs, sourceTreeRows, tokenizeSource
 const paths = ['Cargo.toml', 'crates/app/Cargo.toml', 'crates/app/src/lib.rs', 'crates/core/src/lib.rs'];
 
 describe('sourceTreeRows', () => {
+	it('keeps every match, however large the repository', () => {
+		// A cut-off list makes the files past it unreachable: there is no page two of a file tree. The
+		// rendered window is bounded by the viewer instead.
+		const many = Array.from({ length: 2_500 }, (_, index) => `crates/app/src/module${index}.rs`);
+		const rows = sourceTreeRows(many, 'crates/app/src/module0.rs', 'module', new Set());
+
+		expect(rows.filter((row) => row.kind === 'file')).toHaveLength(2_500);
+		expect(rows.at(-1)?.path).toBe('crates/app/src/module999.rs');
+	});
+
 	it('opens only the active ancestry by default', () => {
 		expect(sourceTreeRows(paths, 'crates/app/src/lib.rs', '', new Set()).map((row) => row.path)).toEqual([
 			'crates',

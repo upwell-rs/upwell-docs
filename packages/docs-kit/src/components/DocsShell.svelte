@@ -3,7 +3,7 @@
 
 	import { setDocsNotifier, setDocsVersion } from '@upwell/docs-ui/context';
 	import type { SearchIndex } from '@upwell/docs-ui/search';
-	import { Breadcrumbs, DocsArticle, DocsHeader, MobileNav, Notifications, PageNav, PaneResizer, ReferenceNote, Search, Shortcuts, TableOfContents } from '@upwell/docs-ui';
+	import { Breadcrumbs, DocsArticle, DocsHeader, MobileNav, Notifications, PageNav, PaneResizer, ReferenceNote, ReleaseSelect, Search, Shortcuts, TableOfContents } from '@upwell/docs-ui';
 	import type { DocsSource, DocsVersion } from '@upwell/docs-core/config';
 	import type { DocSummary, PageChrome } from '@upwell/docs-core/content';
 
@@ -153,6 +153,17 @@
 	>
 		{#snippet nav()}
 			<MobileNav title={version.label} {pathname}>
+				{#snippet controls(close)}
+					<button
+						class="menu-search"
+						type="button"
+						onclick={() => {
+							close();
+							search?.open();
+						}}
+					>Search</button>
+					<ReleaseSelect id="docs-version-menu" {version} versions={availableVersions} onversionchange={changeVersion} />
+				{/snippet}
 				{#snippet navigation()}
 					{#if symbols}
 						<SymbolsSidebar records={symbolRecords} current={slug} indexHref={symbolsIndexHref} state={sidebar} />
@@ -235,6 +246,17 @@
 <Notifications requested={notifications.toaster.requested} />
 
 <style>
+	.menu-search {
+		padding: 0.35rem 0.75rem;
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) - 2px);
+		background: var(--surface-raised);
+		color: var(--text);
+		cursor: pointer;
+		font: inherit;
+		font-size: 0.875rem;
+	}
+
 	/*
 	 * Narrow viewports keep the document scrolling.
 	 *

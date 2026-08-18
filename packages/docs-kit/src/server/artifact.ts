@@ -30,6 +30,8 @@ export type SymbolDestination =
 
 export interface SymbolCatalogRecord {
 	readonly source: string;
+	/** Version id of `source`, which is not the requesting repository's id when they differ. */
+	readonly version: string;
 	readonly canonical: string;
 	readonly path: string;
 	readonly name: string;
@@ -96,7 +98,11 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 				).catch(() => null);
 				const snapshot = candidate?.manifest.sources?.find((entry) => entry.crate === source.crate && entry.version === version.releaseVersion.raw);
 
-				if (candidate && snapshot && candidate.manifest.documentation.releaseVersion === version.releaseVersion.raw) {
+				// The snapshot is the whole test: it says this artifact carries that crate at that release.
+				// The owner's own documentation release is a different repository's number and normally
+				// differs — an aggregate at 0.20.0 may well vendor a dependency at 1.43.0 — so comparing
+				// them rejects exactly the artifacts this lookup exists to find.
+				if (candidate && snapshot) {
 					return candidate;
 				}
 			}
@@ -138,6 +144,21 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 			return undefined;
 		}
 
+		/**
+		 * Where "View source" goes, for this symbol and everything declared inside it.
+		 *
+		 * The owning repository decides both halves of the URL. Its version id is its own — two
+		 * independently released repositories rarely share one — so taking the id from whichever
+		 * repository was asked produces a link into a release that does not exist. Members resolve
+		 * through the same function as their owner, or a page ends up offering an internal link for a
+		 * type beside external links for its variants.
+		 */
+		const owner = catalog.resolve(symbolPath);
+		const sourceLink = (target: Symbol): string | null =>
+			target.source && sourceHref
+				? sourceHref(owner?.source ?? source.crate, owner?.version ?? version.id, target.source.file, target.source.line)
+				: symbolSourceLink(catalog.artifact, target);
+
 			return {
 			path: symbolPath,
 			canonicalPath: symbol.path,
@@ -149,11 +170,11 @@ export function createArtifactService(options: ArtifactServiceOptions): Artifact
 			doc: symbol.doc,
 			feature: symbol.feature,
 			deprecation: symbol.deprecation,
-				sourceHref: symbol.source && sourceHref ? sourceHref(catalog.resolve(symbolPath)?.source ?? source.crate, version.id, symbol.source.file, symbol.source.line) : symbolSourceLink(catalog.artifact, symbol),
+			sourceHref: sourceLink(symbol),
 			source: symbol.source,
 			implementations: symbol.implementations,
 			implementors: symbol.implementors.map((canonical) => toLink(catalog, canonical)),
-			members: collectMembers(catalog.artifact, symbol)
+			members: collectMembers(catalog.artifact, symbol, sourceLink)
 		};
 	}
 
@@ -215,6 +236,7 @@ export function buildCatalog(
 				: { kind: 'source', href: symbolSourceLink(artifact, symbol) };
 		const record: SymbolCatalogRecord = {
 			source: owner?.crate ?? source.crate,
+			version: destinationVersion,
 			canonical: symbol.path,
 			path: preferredPath(aliases.get(symbol.path) ?? [symbol.path], symbol.path),
 			name: symbol.name,
@@ -322,7 +344,7 @@ function toLink(catalog: SymbolCatalog, canonical: string): SymbolLink {
 
 const MEMBER_ORDER: readonly string[] = ['assoc_type', 'assoc_const', 'struct_field', 'variant', 'assoc_fn', 'method'];
 
-function collectMembers(artifact: LoadedArtifact, owner: Symbol): SymbolMember[] {
+function collectMembers(artifact: LoadedArtifact, owner: Symbol, sourceLink: (symbol: Symbol) => string | null): SymbolMember[] {
 	const prefix = `${owner.path}::`;
 	const members: { readonly member: SymbolMember; readonly rank: number }[] = [];
 
@@ -339,7 +361,7 @@ function collectMembers(artifact: LoadedArtifact, owner: Symbol): SymbolMember[]
 				signature: symbol.signature,
 				doc: symbol.doc,
 				deprecated: symbol.deprecation !== null,
-				sourceHref: symbolSourceLink(artifact, symbol)
+				sourceHref: sourceLink(symbol)
 			}
 		});
 	}

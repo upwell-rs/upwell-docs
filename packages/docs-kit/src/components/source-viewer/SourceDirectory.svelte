@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { SourceFileEntry } from '../../server/source.ts';
-	import { directSourceChildren } from './model.ts';
+	import { directSourceChildren, encodeSourcePath } from './model.ts';
 	import SourceMarkdown from './SourceMarkdown.svelte';
 
 	interface Props {
@@ -17,7 +17,7 @@
 
 <div class="directory">
 	{#each entries as entry (entry.path)}
-		<a href={`${baseHref}${entry.path}`}>
+		<a href={`${baseHref}${encodeSourcePath(entry.path)}`}>
 			<span class:folder={entry.kind === 'directory'} aria-hidden="true"></span>
 			<strong>{entry.name}</strong>
 			<small>{entry.kind}</small>
@@ -26,7 +26,7 @@
 
 	{#if markdownHtml && markdownPath}
 		<section class="readme">
-			<header><span>README preview</span><a href={`${baseHref}${markdownPath}`}>Open file</a></header>
+			<header><span>README preview</span><a href={`${baseHref}${encodeSourcePath(markdownPath)}`}>Open file</a></header>
 			<SourceMarkdown html={markdownHtml} label={`Preview of ${markdownPath}`} />
 		</section>
 	{/if}

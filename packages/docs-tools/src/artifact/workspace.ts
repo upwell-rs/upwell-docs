@@ -228,8 +228,18 @@ export async function readGit(
   return { sha, tag, dirty: status.trim().length > 0 };
 }
 
+/**
+ * Runs one Git command in a checkout and returns its trimmed output.
+ *
+ * The buffer is raised because these commands describe whole repositories: `ls-tree -r` prints a
+ * line per tracked file, which passes Node's 1 MiB default only for small ones and then fails
+ * artifact generation on exactly the repositories a source inventory matters for.
+ */
 async function git(checkout: string, args: readonly string[]): Promise<string> {
-  const result = await run("git", [...args], { cwd: checkout }).catch(
+  const result = await run("git", [...args], {
+    cwd: checkout,
+    maxBuffer: 64 * 1024 * 1024,
+  }).catch(
     (cause: unknown) => {
       throw new CheckoutError(
         checkout,

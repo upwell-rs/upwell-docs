@@ -18,7 +18,8 @@ export const docsArtifacts = createArtifactService({
 
 export const docsSources = createSourceService({
 	config: docsContent.config,
-	artifacts: docsArtifacts
+	artifacts: docsArtifacts,
+	fileHref: (source, version, file) => `/docs/${source}/${version}/src/${file}`
 });
 
 const search = createSearchIndexService({

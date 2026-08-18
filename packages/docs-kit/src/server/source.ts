@@ -7,7 +7,7 @@ import type { ExternalSymbol } from '@upwell/docs-tools/rustdoc/symbols';
 
 import { tokenizeSource } from '../components/source-viewer/model.ts';
 import type { ArtifactService } from './artifact.ts';
-import { renderSourceMarkdown } from './markdown.ts';
+import { renderSourceMarkdown, type SourceMarkdownContext } from './markdown.ts';
 
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const SOURCE_TIMEOUT_MS = 8_000;
@@ -67,6 +67,13 @@ export interface SourceService {
 export interface SourceServiceOptions {
 	readonly config: DocsConfig;
 	readonly artifacts: ArtifactService;
+	/**
+	 * The application's URL for one repository file, used to point a README's own links at the viewer.
+	 *
+	 * Optional, and the fallback is not a broken link: without it a relative link goes to the
+	 * repository, which can serve any path in it.
+	 */
+	readonly fileHref?: (source: string, versionId: string, file: string) => string;
 }
 
 /** GitHub-backed source access pinned to repository revisions recorded in documentation artifacts. */
@@ -141,7 +148,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 					githubHref: `${snapshot.repository}/tree/${snapshot.sha}${file ? `/${encodePath(file)}` : ''}`,
 					files: inventoryFiles,
 					targets: [],
-					markdownHtml: await renderSourceMarkdown(readmeContents),
+					markdownHtml: await renderSourceMarkdown(readmeContents, markdownLinks(options, snapshot, source, version, readme?.path ?? file)),
 					markdownPath: readme?.path ?? null,
 					sourceHtml: ''
 				};
@@ -208,7 +215,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 				githubHref: `${snapshot.repository}/blob/${snapshot.sha}/${encodePath(file)}`,
 				files: inventoryFiles,
 				targets,
-				markdownHtml: file.toLowerCase().endsWith('.md') ? await renderSourceMarkdown(contents) : '',
+				markdownHtml: file.toLowerCase().endsWith('.md') ? await renderSourceMarkdown(contents, markdownLinks(options, snapshot, source, version, file)) : '',
 				markdownPath: file.toLowerCase().endsWith('.md') ? file : null,
 				sourceHtml: await renderSourceCode(contents, language, annotations)
 			};
@@ -554,6 +561,69 @@ function safeSourcePath(value: string, allowRoot = false): string | null {
 	const segments = decoded.split('/');
 
 	return (allowRoot && decoded === '') || (decoded !== '' && !decoded.includes('\\') && !decoded.includes('\0') && segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')) ? decoded : null;
+}
+
+/**
+ * Resolves the links a repository Markdown file writes, relative to that file.
+ *
+ * Anything the viewer can display becomes a viewer URL so the reader stays in the site; everything
+ * else — an image, a binary, a path outside the tree — goes to the repository at the same revision,
+ * which can always serve it. A link that resolves nowhere is left to the renderer to reduce to its
+ * label.
+ */
+function markdownLinks(
+	options: SourceServiceOptions,
+	snapshot: ArtifactSource,
+	source: FrameworkCrateCoordinates,
+	version: DocsVersion,
+	from: string
+): SourceMarkdownContext {
+	const directory = from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : '';
+
+	return {
+		resolveLink(url) {
+			const hash = url.indexOf('#');
+			const fragment = hash === -1 ? '' : url.slice(hash);
+			const path = resolveRepositoryPath(directory, hash === -1 ? url : url.slice(0, hash));
+
+			if (!path) {
+				return null;
+			}
+
+			return isTextSource(path) && options.fileHref
+				? `${options.fileHref(source.crate, version.id, encodePath(path))}${fragment}`
+				: `${snapshot.repository}/blob/${snapshot.sha}/${encodePath(path)}${fragment}`;
+		}
+	};
+}
+
+/** Resolves a repository-relative URL against the directory of the file that wrote it. */
+function resolveRepositoryPath(directory: string, url: string): string | null {
+	if (url === '' || url.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(url)) {
+		return null;
+	}
+
+	const segments = url.startsWith('/') || directory === '' ? [] : directory.split('/');
+
+	for (const segment of url.replace(/^\//, '').split('/')) {
+		if (segment === '' || segment === '.') {
+			continue;
+		}
+
+		if (segment === '..') {
+			if (segments.length === 0) {
+				return null;
+			}
+
+			segments.pop();
+
+			continue;
+		}
+
+		segments.push(segment);
+	}
+
+	return segments.length > 0 ? segments.join('/') : null;
 }
 
 function encodePath(file: string): string {

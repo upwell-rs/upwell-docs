@@ -13,6 +13,7 @@ export { default as PackageInstall } from './components/PackageInstall.svelte';
 export { default as PageNav } from './components/PageNav.svelte';
 export { default as PaneResizer } from './components/PaneResizer.svelte';
 export { default as ReferenceNote } from './components/ReferenceNote.svelte';
+export { default as ReleaseSelect } from './components/ReleaseSelect.svelte';
 export { default as Steps } from './components/Steps.svelte';
 export { default as SymbolCard } from './components/SymbolCard.svelte';
 export { default as SymbolImpls } from './components/SymbolImpls.svelte';

@@ -178,7 +178,7 @@ export function sourceTreeRows(paths: readonly string[], current: string, query:
 
 	visit('', 0);
 
-	return rows.slice(0, 800);
+	return rows;
 }
 
 export function directSourceChildren(files: readonly SourceFileEntry[], directory: string): SourceTreeRow[] {

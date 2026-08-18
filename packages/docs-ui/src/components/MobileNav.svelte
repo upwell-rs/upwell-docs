@@ -25,10 +25,17 @@
 		/** The rendered article, so the contents list can read its headings. */
 		navigation: Snippet;
 		toc: Snippet;
+		/**
+		 * Header controls a narrow header has no room for, given the menu's own close function.
+		 *
+		 * Search and release selection are function, not decoration: without them here a phone can read
+		 * the documentation but cannot search it or leave the release it landed on.
+		 */
+		controls?: Snippet<[() => void]>;
 		pathname: string;
 	}
 
-	let { title, navigation, toc, pathname }: Props = $props();
+	let { title, navigation, toc, controls, pathname }: Props = $props();
 
 	let dialog = $state<HTMLDialogElement>();
 	let open = $state(false);
@@ -83,6 +90,10 @@
 			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
 		</button>
 	</div>
+
+	{#if open && controls}
+		<div class="menu__controls">{@render controls(close)}</div>
+	{/if}
 
 	<div class="menu__body">
 		<!--
@@ -193,6 +204,15 @@
 		stroke: currentColor;
 		stroke-width: 1.5;
 		stroke-linecap: round;
+	}
+
+	.menu__controls {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid var(--border);
 	}
 
 	.menu__body {

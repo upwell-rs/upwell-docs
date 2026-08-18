@@ -17,6 +17,15 @@
 	let { source, version, file }: Props = $props();
 	let inspector = $state<SymbolInfo>();
 	let inspectorLoading = $state(false);
+
+	/**
+	 * The inspection in flight, if any.
+	 *
+	 * An answer is only about the symbol that was asked for. Two clicks in a row, or a click followed
+	 * by opening another file, otherwise race: whichever response is slower wins and the panel ends up
+	 * describing a symbol the reader is no longer looking at.
+	 */
+	let inspection: AbortController | undefined;
 	let showMarkdown = $state(true);
 	let treeOpen = $state(false);
 	const notifier = getDocsNotifier();
@@ -25,16 +34,25 @@
 
 	$effect(() => {
 		void file.path;
+
+		inspection?.abort();
+		inspection = undefined;
 		showMarkdown = true;
 		inspector = undefined;
+		inspectorLoading = false;
 		treeOpen = false;
 	});
 
 	async function inspect(path: string): Promise<void> {
+		inspection?.abort();
+
+		const request = new AbortController();
+
+		inspection = request;
 		inspectorLoading = true;
 
 		try {
-			const response = await fetch(`${apiBase}/symbol?path=${encodeURIComponent(path)}`);
+			const response = await fetch(`${apiBase}/symbol?path=${encodeURIComponent(path)}`, { signal: request.signal });
 
 			if (!response.ok) {
 				throw new Error(`Request failed with ${response.status}.`);
@@ -42,10 +60,19 @@
 
 			inspector = await response.json() as SymbolInfo;
 		} catch (cause) {
+			// A superseded request is not a failure: the reader asked for something else, and that
+			// request owns the panel now.
+			if (request.signal.aborted) {
+				return;
+			}
+
 			inspector = undefined;
 			notifier?.failed('Could not load symbol documentation', cause instanceof Error ? cause.message : undefined);
 		} finally {
-			inspectorLoading = false;
+			if (inspection === request) {
+				inspection = undefined;
+				inspectorLoading = false;
+			}
 		}
 	}
 </script>
