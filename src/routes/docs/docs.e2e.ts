@@ -473,6 +473,9 @@ test('guides and symbols have explicit, independent navigation', async ({ page }
 	await expect(entry).toHaveCount(0);
 	await sidebar.locator('details[data-group-id="symbols:upwell_axum/config"] > summary').press('Enter');
 	await expect(entry).toHaveCount(1);
+	await entry.click();
+	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols/upwell_axum/config/AxumConfig`);
+	await expect(sidebar.getByRole('link', { name: 'AxumConfig', exact: true })).toHaveAttribute('aria-current', 'page');
 });
 
 test('client navigation retains the docs frame while route-group areas exchange', async ({ page }) => {
@@ -538,6 +541,15 @@ test('a symbol page shows hand-written prose alongside generated facts', async (
 	await expect(page.getByRole('article').getByText('upwell-macros', { exact: true })).toBeVisible();
 	await expect(page.getByRole('link', { name: /crates\/macros\/src\/lib\.rs:\d+/ })).toBeVisible();
 	await expect(page.getByRole('navigation', { name: 'Symbols' }).getByRole('link', { name: 'component', exact: true }).first()).toHaveAttribute('aria-current', 'page');
+});
+
+test('a cold canonical symbol detail load renders its current navigation tree entry', async ({ page }) => {
+	await page.goto(`/docs/upwell/${VERSION}/symbols/cargo_upwell/build/BuildError`);
+
+	const current = page.getByRole('navigation', { name: 'Symbols' }).getByRole('link', { name: 'BuildError', exact: true });
+
+	await expect(current).toHaveAttribute('aria-current', 'page');
+	await expect(current).toHaveAttribute('href', `/docs/upwell/${VERSION}/symbols/cargo_upwell/build/BuildError`);
 });
 
 test('generated symbol and member signatures are syntax highlighted', async ({ page }) => {

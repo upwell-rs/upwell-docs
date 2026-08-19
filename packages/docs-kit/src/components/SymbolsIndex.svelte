@@ -141,7 +141,7 @@
 	 * ones. Owning the scroll box also keeps the filters in place while the results move, which is
 	 * the behaviour this list wants anyway.
 	 */
-	.results { max-height: min(70vh, 46rem); overflow: hidden auto; overscroll-behavior: contain; }
+	.results { max-height: min(70vh, 46rem); overflow: hidden auto; overscroll-behavior-y: contain; }
 	.symbols { position: relative; margin: 0; padding: 0; list-style: none; }
 	.symbols li { position: absolute; top: 0; left: 0; box-sizing: border-box; width: 100%; padding: 1rem 0; border-top: 1px solid var(--border); }
 </style>

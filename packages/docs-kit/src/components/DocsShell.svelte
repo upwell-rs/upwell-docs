@@ -327,9 +327,9 @@
 		 */
 		.shell { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; overflow: hidden; }
 		.layout { box-sizing: border-box; grid-template-columns: var(--sidebar-width) 0.5rem minmax(0, 1fr); gap: 0; width: 100%; height: 100%; min-height: 0; max-width: none; margin: 0; padding: 0; overflow: hidden; }
-		.layout__sidebar { box-sizing: border-box; display: block; min-width: 0; min-height: 0; height: 100%; padding: 1.5rem 1rem 3rem; overflow: hidden auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+		.layout__sidebar { box-sizing: border-box; display: block; min-width: 0; min-height: 0; height: 100%; padding: 1.5rem 1rem 3rem; overflow: hidden auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
 		.layout__resizer { display: block; height: 100%; }
-		.layout__main { min-height: 0; height: 100%; overflow: hidden auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+		.layout__main { min-height: 0; height: 100%; overflow: hidden auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
 		.layout__reading { max-width: 54rem; margin: 0 auto; padding: 1.75rem 2rem 4rem; }
 		.layout--source { grid-template-columns: minmax(0, 1fr); }
 		.layout__sidebar--hidden { display: none; }
@@ -337,7 +337,7 @@
 
 	@media (min-width: 80rem) {
 		.layout { grid-template-columns: var(--sidebar-width) 0.5rem minmax(0, 1fr) 14rem; }
-		.layout__toc { box-sizing: border-box; display: block; min-height: 0; height: 100%; padding: 1.75rem 1rem 3rem; overflow: hidden auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+		.layout__toc { box-sizing: border-box; display: block; min-height: 0; height: 100%; padding: 1.75rem 1rem 3rem; overflow: hidden auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
 		.layout--source { grid-template-columns: minmax(0, 1fr); }
 		.layout__toc--hidden { display: none; }
 	}

@@ -33,7 +33,7 @@ export interface DocsServerRouteHelpersOptions {
 /** Server-route algorithms that keep artifact reads and search construction out of the application tree. */
 export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOptions): {
 	symbolEntries(): Promise<{ readonly source: string; readonly version: string; readonly path: string }[]>;
-	loadSymbol(params: { readonly source: string; readonly version: string; readonly path: string }): Promise<{
+	loadSymbol(params: { readonly source: DocsSource; readonly version: DocsVersion; readonly path: string }): Promise<{
 		readonly source: DocsSource;
 		readonly version: DocsVersion;
 		readonly versions: readonly DocsVersion[];
@@ -43,6 +43,10 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 		readonly docsHtml: string;
 		readonly chrome: { readonly slug: string; readonly title: string; readonly section: string; readonly reference: true };
 	}>;
+	loadSymbolRecords(source: DocsSource, version: DocsVersion): Promise<readonly SymbolRecord[]>;
+	loadSymbolSources(): {
+		readonly sources: readonly { readonly name: string; readonly version: string; readonly href: string }[];
+	};
 	loadSymbolsIndex(sourceId: string, versionId: string): Promise<{
 		readonly source: DocsSource;
 		readonly version: DocsVersion;
@@ -103,8 +107,35 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 		})) : []);
 
 		recordsByVersion.set(key, loading);
+		void loading.catch(() => {
+			if (recordsByVersion.get(key) === loading) {
+				recordsByVersion.delete(key);
+			}
+		});
 
 		return loading;
+	}
+
+	function sourceCoordinates(source: DocsSource): FrameworkCrateCoordinates {
+		const coordinates = frameworkCrate(content.config, source.crate);
+
+		if (!coordinates) {
+			throw new Error(`Validated source "${source.crate}" is not configured.`);
+		}
+
+		return coordinates;
+	}
+
+	function symbolSources(): readonly { readonly name: string; readonly version: string; readonly href: string }[] {
+		return [content.config.framework.root, ...content.config.framework.crates].map((entry) => {
+			const latest = frameworkCrateVersion(entry, entry.latest)!;
+
+			return {
+				name: entry.crate,
+				version: latest.label,
+				href: content.symbolHref(entry.crate, latest.id, '').replace(/\/$/, '')
+			};
+		});
 	}
 
 	return {
@@ -136,7 +167,8 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 			return entries;
 		},
 		async loadSymbol(params) {
-			const { source, version } = resolveSourceVersion(params.source, params.version);
+			const source = sourceCoordinates(params.source);
+			const { version } = params;
 			const requested = params.path.replaceAll('/', '::');
 			const catalog = await artifacts.getCatalog(source, version);
 			const record = catalog?.resolve(requested);
@@ -163,7 +195,7 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 			}
 
 			return {
-				source: docsSource(source),
+				source: params.source,
 				version,
 				versions: source.versions,
 				kind: authored ? 'authored' : 'generated',
@@ -173,20 +205,20 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 				chrome: { slug: `symbols/${page.segments}`, title: page.title, section: 'Symbols', reference: true }
 			};
 		},
+		loadSymbolRecords: (source, version) => symbolRecords(sourceCoordinates(source), version),
+		loadSymbolSources: () => ({ sources: symbolSources() }),
 		async loadSymbolsIndex(sourceId, versionId) {
 			const { source, version } = resolveSourceVersion(sourceId, versionId);
 			const records = await symbolRecords(source, version);
-			const sources = [content.config.framework.root, ...content.config.framework.crates].map((entry) => {
-				const latest = frameworkCrateVersion(entry, entry.latest)!;
 
-				return {
-					name: entry.crate,
-					version: latest.label,
-					href: content.symbolHref(entry.crate, latest.id, '').replace(/\/$/, '')
-				};
-			});
-
-			return { source: docsSource(source), version, versions: source.versions, records, sources, chrome: { slug: 'symbols', title: 'Symbols', section: 'Symbols', reference: true } };
+			return {
+				source: docsSource(source),
+				version,
+				versions: source.versions,
+				records,
+				sources: symbolSources(),
+				chrome: { slug: 'symbols', title: 'Symbols', section: 'Symbols', reference: true }
+			};
 		},
 		async loadSearch(versionId) {
 			return buildSearchIndex(resolveVersion(versionId));

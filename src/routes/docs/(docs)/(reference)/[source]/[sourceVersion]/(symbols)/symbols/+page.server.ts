@@ -8,14 +8,15 @@ import type { EntryGenerator, PageServerLoad } from './$types';
 export const prerender = resolvePrerender(docsConfig, 'symbols', dev);
 export const entries: EntryGenerator = () => [...docsServerRoutes.symbolIndexEntries()].map(({ source, version }) => ({ source, sourceVersion: version }));
 
-export const load: PageServerLoad = async ({ params, url }) => {
-	const data = await docsServerRoutes.loadSymbolsIndex(params.source, params.sourceVersion);
+export const load: PageServerLoad = async ({ parent, url }) => {
+	const { source, version } = await parent();
+	const { sources } = docsServerRoutes.loadSymbolSources();
 	const metadata: PageMetadata = {
-		title: `${data.source.crate} symbols`,
-		description: `Browse documented symbols for ${data.source.crate} ${data.version.label}.`,
+		title: `${source.crate} symbols`,
+		description: `Browse documented symbols for ${source.crate} ${version.label}.`,
 		path: url.pathname,
-		version: data.version.label
+		version: version.label
 	};
 
-	return { ...data, metadata };
+	return { sources, chrome: { slug: 'symbols' as const, title: 'Symbols', section: 'Symbols', reference: true as const }, metadata };
 };
