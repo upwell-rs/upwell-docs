@@ -6,7 +6,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # Application model
@@ -99,4 +99,4 @@ app! {
 
 </Example>
 
-`app!` and `App::<P>::builder` are complementary: choose the macro for generated startup, CLI, lifecycle, and Cargo Upwell tooling support; choose the builder for embedding or manually owned process behavior. See [the `app!` guide](app-macro) for a host-focused workflow and the [canonical `app!` reference](/docs/latest/symbols/upwell_macros/app) for every macro option.
+`app!` and `App::<P>::builder` are complementary: choose the macro for generated startup, CLI, lifecycle, and Cargo Upwell tooling support; choose the builder for embedding or manually owned process behavior. See [the `app!` guide](app-macro) for a host-focused workflow and the <SymbolRef path="upwell_macros/app">canonical `app!` reference</SymbolRef> for every macro option.

@@ -6,7 +6,7 @@ topics: ['jobs']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # Scheduled jobs
@@ -122,5 +122,5 @@ Schedule strings are validated when the scheduler starts. Keep jobs in a separat
 
 The canonical references list every schedule option, method constraint, and runtime interaction:
 
-- [`#[jobs]`](/docs/latest/symbols/upwell_jobs_macros/jobs)
-- [`#[job]`](/docs/latest/symbols/upwell_jobs_macros/job)
+- <SymbolRef path="upwell_jobs_macros/jobs"><code>#[jobs]</code></SymbolRef>
+- <SymbolRef path="upwell_jobs_macros/job"><code>#[job]</code></SymbolRef>

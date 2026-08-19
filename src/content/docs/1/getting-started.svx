@@ -6,7 +6,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Callout, Example, Tabs } from '#lib/docs';
+	import { Callout, Example, GuideRef, Tabs } from '#lib/docs';
 </script>
 
 # Getting started
@@ -72,7 +72,7 @@ cargo run
 
 The `cli` and `di-check` features are enabled by default. `cli` generates the process runner and argument parser for a named application; `di-check` turns a missing dependency into a `cargo check` error instead of a startup failure. Add `jobs` for scheduled work, `ws` or `stomp` for WebSocket protocols, and `client` to generate typed clients.
 
-The framework never requires the tool: `cargo build` and `cargo run` are the only commands this guide needs. See [Cargo Upwell](/docs/latest/cargo-upwell) for what it adds afterwards — validation, inspection, and the other project templates.
+The framework never requires the tool: `cargo build` and `cargo run` are the only commands this guide needs. See <GuideRef slug="cargo-upwell">Cargo Upwell</GuideRef> for what it adds afterwards — validation, inspection, and the other project templates.
 
 The sections below write the application from nothing. If you scaffolded one instead, read them as a tour of the code the template generated.
 
@@ -194,7 +194,7 @@ The host discovers linked declarations, so `Greeter` and `GreetController` need 
 
 <Callout type="info" title="An item, not an expression">
 
-`app!` declares a type. Do not assign it to a variable or invoke it inside `main`; when a process must own its own startup, assemble the application with `App::<Axum>::builder(...)` instead. See [the application model](/docs/latest/framework/application-model) for that path.
+`app!` declares a type. Do not assign it to a variable or invoke it inside `main`; when a process must own its own startup, assemble the application with `App::<Axum>::builder(...)` instead. See <GuideRef slug="framework/application-model">the application model</GuideRef> for that path.
 
 </Callout>
 
@@ -226,11 +226,11 @@ The generated CLI is part of the host: `cargo run -- --help` lists the commands 
 
 ## Where to go next
 
-- [Application model](/docs/latest/framework/application-model) — the assembled `App<P>`, its lifecycle, and when to use the builder instead of a generated host.
-- [Components and injection](/docs/latest/di/components) — construction, providers, and lifetimes beyond a plain singleton.
-- [HTTP controllers](/docs/latest/axum/http) — extraction, request scope, and streaming responses.
-- [The `app!` macro](/docs/latest/framework/app-macro) — configuration callbacks, plugins, and CLI commands on the host.
-- [Cargo Upwell](/docs/latest/cargo-upwell) — the optional command-line tool that validates and inspects an application.
+- <GuideRef slug="framework/application-model">Application model</GuideRef> — the assembled <code>App&lt;P&gt;</code>, its lifecycle, and when to use the builder instead of a generated host.
+- <GuideRef slug="di/components">Components and injection</GuideRef> — construction, providers, and lifetimes beyond a plain singleton.
+- <GuideRef slug="axum/http">HTTP controllers</GuideRef> — extraction, request scope, and streaming responses.
+- <GuideRef slug="framework/app-macro">The <code>app!</code> macro</GuideRef> — configuration callbacks, plugins, and CLI commands on the host.
+- <GuideRef slug="cargo-upwell">Cargo Upwell</GuideRef> — the optional command-line tool that validates and inspects an application.
 
 <Callout type="info" title="Project layout">
 

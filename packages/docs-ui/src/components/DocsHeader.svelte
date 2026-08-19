@@ -71,6 +71,16 @@
 		backdrop-filter: blur(8px);
 	}
 
+	/* Narrow layouts scroll the document, so their navigation remains attached to that scroller. */
+	@media (max-width: 59.999rem) {
+		.header {
+			position: sticky;
+			top: 0;
+			z-index: 20;
+			background: color-mix(in srgb, var(--surface) 92%, transparent);
+		}
+	}
+
 	@media (min-width: 40rem) {
 		.header {
 			gap: 1rem;

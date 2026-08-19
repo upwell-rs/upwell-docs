@@ -11,6 +11,7 @@ import {
 	type SymbolPageSummary
 } from '@upwell/docs-core/content';
 import { buildGuideTree, navigationLeaves } from '@upwell/docs-core/navigation';
+import { encodeSourcePath } from '@upwell/docs-core/references';
 import {
 	groupByPath,
 	normalizeVersionPath,
@@ -80,6 +81,7 @@ export interface DocsContent {
 	navigationFor(version: DocsVersion): readonly NavigationNode[];
 	pageHref(versionId: string, slug: string): string;
 	symbolHref(source: string, versionId: string, segments: string): string;
+	sourceHref(source: string, versionId: string, path: string): string;
 }
 
 function path(basePath: string, ...segments: string[]): string {
@@ -95,6 +97,7 @@ export function createDocsContent(options: DocsContentOptions): DocsContent {
 
 	const pageHref = (versionId: string, slug: string): string => path(basePath, versionId, slug);
 	const symbolHref = (source: string, versionId: string, segments: string): string => path(basePath, source, versionId, 'symbols', segments);
+	const sourceHref = (source: string, versionId: string, segments: string): string => path(basePath, source, versionId, 'src', segments === '' ? '' : encodeSourcePath(segments));
 
 	function guideVariant(slug: string, releaseVersion: DocsVersion['releaseVersion']): GuideVariant | undefined {
 		const variants = guideVariants.get(slug);
@@ -186,14 +189,15 @@ export function createDocsContent(options: DocsContentOptions): DocsContent {
 
 			return load ? (await load()).default : undefined;
 		},
-			navigationFor(version) {
-				return buildGuideTree(
-					pagesFor(version.releaseVersion).filter((page) => !page.draft),
-					(slug) => pageHref(version.id, slug)
-				);
-			},
+		navigationFor(version) {
+			return buildGuideTree(
+				pagesFor(version.releaseVersion).filter((page) => !page.draft),
+				(slug) => pageHref(version.id, slug)
+			);
+		},
 		pageHref,
-		symbolHref
+		symbolHref,
+		sourceHref
 	};
 }
 

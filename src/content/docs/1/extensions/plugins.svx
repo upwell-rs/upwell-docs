@@ -6,7 +6,7 @@ topics: ['framework', 'tooling']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
 </script>
 
 # Compose plugins
@@ -44,7 +44,7 @@ impl Plugin for AuditPlugin {
 
 </Example>
 
-The lifecycle is deliberate: installation retains the plugin instance; composition resolves static identities, slots, and relations; `auto_discover` folds link-time state into each effective instance; then `contribute` consumes that instance into the plan. Contributions are validated and lowered with the regular application registry before the runtime starts. `auto_discover` must only merge discovered state, while `contribute` must deterministically emit the selected plugin's portable components, providers, and configuration bindings. The canonical [`Plugin`](/docs/latest/symbols/upwell_app/Plugin) and [`PluginContributions`](/docs/latest/symbols/upwell_app/PluginContributions) pages define the complete contract.
+The lifecycle is deliberate: installation retains the plugin instance; composition resolves static identities, slots, and relations; `auto_discover` folds link-time state into each effective instance; then `contribute` consumes that instance into the plan. Contributions are validated and lowered with the regular application registry before the runtime starts. `auto_discover` must only merge discovered state, while `contribute` must deterministically emit the selected plugin's portable components, providers, and configuration bindings. The canonical <SymbolRef path="upwell_app/Plugin">`Plugin`</SymbolRef> and <SymbolRef path="upwell_app/PluginContributions">`PluginContributions`</SymbolRef> pages define the complete contract.
 
 ## Preserve provenance while contributing
 
@@ -83,7 +83,7 @@ impl Plugin for SearchPlugin {
 
 </Example>
 
-Use the collector methods when a branch or loop makes the macro declaration less clear. Do not reuse one contribution ID, infer it from a descriptor, or use the reserved `upwell/` namespace in a third-party plugin. Duplicate local IDs and reserved namespaces fail plan finalization before the application runs. The [`contribute!` reference](/docs/latest/symbols/upwell_app/contribute) documents the macro grammar.
+Use the collector methods when a branch or loop makes the macro declaration less clear. Do not reuse one contribution ID, infer it from a descriptor, or use the reserved `upwell/` namespace in a third-party plugin. Duplicate local IDs and reserved namespaces fail plan finalization before the application runs. The <SymbolRef path="upwell_app/contribute">`contribute!` reference</SymbolRef> documents the macro grammar.
 
 ## Express composition statically
 
@@ -116,7 +116,7 @@ impl Plugin for AuditPlugin {
 
 </Example>
 
-Relations are canonicalized, so declaration order and repeated equivalent relations do not change plugin identity. A failed requirement, conflict, invalid target, or ordering cycle is a composition diagnostic. See [`PluginRelation`](/docs/latest/symbols/upwell_app/PluginRelation) for the exact target and kind model.
+Relations are canonicalized, so declaration order and repeated equivalent relations do not change plugin identity. A failed requirement, conflict, invalid target, or ordering cycle is a composition diagnostic. See <SymbolRef path="upwell_app/PluginRelation">`PluginRelation`</SymbolRef> for the exact target and kind model.
 
 ## Choose protocol defaults deliberately
 
@@ -143,7 +143,7 @@ fn register_plugins(plugins: &mut ProtocolPluginRegistrar) {
 
 </Example>
 
-The registrar is protocol-owned construction-time API, not an application customization point. Use [`ProtocolPluginRegistrar`](/docs/latest/symbols/upwell_app/ProtocolPluginRegistrar) for the full slot-policy contract.
+The registrar is protocol-owned construction-time API, not an application customization point. Use <SymbolRef path="upwell_app/ProtocolPluginRegistrar">`ProtocolPluginRegistrar`</SymbolRef> for the full slot-policy contract.
 
 ## Install through the correct boundary
 
@@ -195,7 +195,7 @@ app.run().await?;
 
 </Example>
 
-Do not use dynamic builder installation to stand in for a host declaration. Choose `app!` when the generated host owns startup, CLI, and early static composition; choose `App::builder` when the surrounding program owns the process boundary. [`ApplicationPluginRegistrar`](/docs/latest/symbols/upwell_app/ApplicationPluginRegistrar) documents the early declaration contract used by host integration, and [Application model](/docs/latest/framework/application-model) covers the broader host-versus-builder decision.
+Do not use dynamic builder installation to stand in for a host declaration. Choose `app!` when the generated host owns startup, CLI, and early static composition; choose `App::builder` when the surrounding program owns the process boundary. <SymbolRef path="upwell_app/ApplicationPluginRegistrar">`ApplicationPluginRegistrar`</SymbolRef> documents the early declaration contract used by host integration, and <GuideRef slug="framework/application-model">Application model</GuideRef> covers the broader host-versus-builder decision.
 
 ## Inspect the effective plan
 
@@ -220,4 +220,4 @@ cargo upwell graph \
 
 </Example>
 
-Use `inspect` to obtain stable IDs, `explain` to see provenance and decisions, and `graph` to follow requirements, ordering, replacements, and suppressions. Export JSON or a diagnostic envelope for CI instead of parsing terminal output. The [`EffectivePluginPlan`](/docs/latest/symbols/upwell_app/EffectivePluginPlan) reference describes programmatic inspection; [Inspect and query an application](/docs/latest/cargo-upwell/inspect-and-graph) documents Cargo Upwell selectors and output formats.
+Use `inspect` to obtain stable IDs, `explain` to see provenance and decisions, and `graph` to follow requirements, ordering, replacements, and suppressions. Export JSON or a diagnostic envelope for CI instead of parsing terminal output. The <SymbolRef path="upwell_app/EffectivePluginPlan">`EffectivePluginPlan`</SymbolRef> reference describes programmatic inspection; <GuideRef slug="cargo-upwell/inspect-and-graph">Inspect and query an application</GuideRef> documents Cargo Upwell selectors and output formats.

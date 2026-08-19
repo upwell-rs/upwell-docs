@@ -6,7 +6,7 @@ topics: ['rpc']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # RPC services
@@ -156,6 +156,6 @@ An RPC accepts at most one streaming input, and that stream is the complete requ
 
 The canonical references list all accepted options, generated artifacts, and edge cases:
 
-- [`#[service]`](/docs/latest/symbols/upwell_rpc_macros/service)
-- [`#[handlers]`](/docs/latest/symbols/upwell_rpc_macros/handlers)
-- [`#[rpc]`](/docs/latest/symbols/upwell_rpc_macros/rpc)
+- <SymbolRef path="upwell_rpc_macros/service"><code>#[service]</code></SymbolRef>
+- <SymbolRef path="upwell_rpc_macros/handlers"><code>#[handlers]</code></SymbolRef>
+- <SymbolRef path="upwell_rpc_macros/rpc"><code>#[rpc]</code></SymbolRef>

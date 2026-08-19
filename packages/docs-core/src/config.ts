@@ -1,6 +1,6 @@
 /** Shared configuration contracts and resolution helpers for a documentation site. */
 
-import type { SemVer, VersionId } from "./semver.ts";
+import { versionsEqual, type SemVer, type VersionId } from "./semver.ts";
 
 export interface DocsVersion {
   readonly id: VersionId;
@@ -54,6 +54,70 @@ export function frameworkCrateVersion(
   const wanted = id === "latest" ? crate.latest : id;
 
   return crate.versions.find((version) => version.id === wanted);
+}
+
+export interface FrameworkReferenceVersionOptions {
+  /** Repository workspace the reference targets. Defaults to the framework root. */
+  readonly source?: string;
+  /** Explicit configured version id, or `latest`. */
+  readonly version?: string;
+  /** Repository workspace whose documentation page is currently rendering. */
+  readonly activeSource: string;
+  /** Release currently rendering for `activeSource`. */
+  readonly activeVersion: DocsVersion;
+}
+
+/**
+ * Resolves a cross-repository reference without assuming repositories share version ids.
+ *
+ * An explicit version wins. A reference within the active repository keeps its active release. Across
+ * repositories, the same semantic release is preferred when configured, then the target's latest
+ * release is used.
+ */
+export function resolveFrameworkReferenceVersion(
+  config: DocsConfig,
+  options: FrameworkReferenceVersionOptions,
+): { readonly source: FrameworkCrateCoordinates; readonly version: DocsVersion } | undefined {
+  const source = frameworkCrate(
+    config,
+    options.source ?? config.framework.root.crate,
+  );
+
+  if (!source) {
+    return undefined;
+  }
+
+  if (options.version !== undefined) {
+    const version = frameworkCrateVersion(source, options.version);
+
+    return version ? { source, version } : undefined;
+  }
+
+  if (source.crate === options.activeSource) {
+    const active =
+      frameworkCrateVersion(source, options.activeVersion.id) ??
+      source.versions.find(
+        (version) => versionsEqual(
+          version.releaseVersion,
+          options.activeVersion.releaseVersion,
+        ),
+      );
+
+    if (active) {
+      return { source, version: active };
+    }
+  }
+
+  const corresponding = source.versions.find(
+    (version) => versionsEqual(
+      version.releaseVersion,
+      options.activeVersion.releaseVersion,
+    ),
+  );
+  const latest = frameworkCrateVersion(source, source.latest);
+  const version = corresponding ?? latest;
+
+  return version ? { source, version } : undefined;
 }
 
 export function docsVersions(config: DocsConfig): readonly DocsVersion[] {

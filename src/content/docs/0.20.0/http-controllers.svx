@@ -3,6 +3,7 @@ title: HTTP controllers
 description: Define typed HTTP endpoints with the Upwell 0.20 Axum controller macros.
 order: 110
 topics: ['web']
+until: 0.20.0
 ---
 
 <script lang="ts">

@@ -3,6 +3,7 @@ title: Application model
 description: Assemble an Upwell 0.20 host with the pre-1.0 builder-form app macro.
 order: 20
 topics: ['framework']
+until: 0.20.0
 ---
 
 <script lang="ts">

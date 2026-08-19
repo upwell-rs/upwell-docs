@@ -5,4 +5,4 @@
 	let { data }: PageProps = $props();
 </script>
 
-<GuidePage version={data.version} page={data.page} component={data.component} />
+<GuidePage component={data.component} />

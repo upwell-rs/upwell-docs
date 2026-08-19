@@ -6,7 +6,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # Advanced dependency injection
@@ -65,7 +65,7 @@ struct Notifications {
 
 </Example>
 
-An unqualified single dependency needs one unambiguous provider. A qualifier is more precise than `primary`; it names the implementation the component expects. See [`#[component]`](/docs/latest/symbols/upwell_macros/component) and [`#[injectable]`](/docs/latest/symbols/upwell_macros/injectable) for provider declarations and ordering controls.
+An unqualified single dependency needs one unambiguous provider. A qualifier is more precise than `primary`; it names the implementation the component expects. See <SymbolRef path="upwell_macros/component">`#[component]`</SymbolRef> and <SymbolRef path="upwell_macros/injectable">`#[injectable]`</SymbolRef> for provider declarations and ordering controls.
 
 ## Match the component lifetime to its state
 
@@ -155,7 +155,7 @@ impl Search {
 
 </Example>
 
-Use `Dynamic<H>` instead when a protocol or framework supplies a value only at runtime. It is not a reload mechanism and does not make an otherwise missing component optional. The [`#[config]` symbol page](/docs/latest/symbols/upwell_macros/config) documents configuration declarations and bindings.
+Use `Dynamic<H>` instead when a protocol or framework supplies a value only at runtime. It is not a reload mechanism and does not make an otherwise missing component optional. The <SymbolRef path="upwell_macros/config">`#[config]` symbol page</SymbolRef> documents configuration declarations and bindings.
 
 ## Delay resolution for a real need
 
@@ -204,7 +204,7 @@ Delayed handles preserve the consumer's scope and do not bypass dependency valid
 
 Use the macro references for complete accepted forms and constraints:
 
-- [`#[component]`](/docs/latest/symbols/upwell_macros/component)
-- [`#[methods]`](/docs/latest/symbols/upwell_macros/methods)
-- [`#[injectable]`](/docs/latest/symbols/upwell_macros/injectable)
-- [`#[config]`](/docs/latest/symbols/upwell_macros/config)
+- <SymbolRef path="upwell_macros/component"><code>#[component]</code></SymbolRef>
+- <SymbolRef path="upwell_macros/methods"><code>#[methods]</code></SymbolRef>
+- <SymbolRef path="upwell_macros/injectable"><code>#[injectable]</code></SymbolRef>
+- <SymbolRef path="upwell_macros/config"><code>#[config]</code></SymbolRef>

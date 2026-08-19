@@ -3,6 +3,7 @@ title: Native daemon and RPC
 description: Define a native Upwell 0.20 daemon RPC service with typed payloads and handlers.
 order: 120
 topics: ['rpc']
+until: 0.20.0
 ---
 
 <script lang="ts">

@@ -3,6 +3,7 @@ title: Components and dependency injection
 description: Register singleton components and request dependencies in an Upwell 0.20 application.
 order: 30
 topics: ['framework']
+until: 0.20.0
 ---
 
 <script lang="ts">

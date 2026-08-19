@@ -5,4 +5,4 @@
 	let { data }: PageProps = $props();
 </script>
 
-<SymbolPage version={data.version} page={data.page} symbol={data.symbol} component={data.component} kind={data.kind} docsHtml={data.docsHtml} />
+<SymbolPage page={data.page} symbol={data.symbol} component={data.component} kind={data.kind} docsHtml={data.docsHtml} />

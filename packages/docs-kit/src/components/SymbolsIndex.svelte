@@ -26,12 +26,11 @@
 
 	interface Props {
 		source: { readonly crate: string };
-		version: { readonly label: string };
 		records: readonly Record[];
 		sources: readonly { readonly name: string; readonly version: string; readonly href: string }[];
 	}
 
-	let { source, version, records, sources }: Props = $props();
+	let { source, records, sources }: Props = $props();
 	let query = $state('');
 	let crate = $state('all');
 	let scroller = $state<HTMLElement>();
@@ -97,11 +96,6 @@
 		get(rows).measureElement(element);
 	}
 </script>
-
-<svelte:head>
-		<title>{source.crate} {version.label} Symbols</title>
-		<meta name="description" content="Documented framework symbols for {version.label}." />
-</svelte:head>
 
 <header class="hero">
 	<p class="eyebrow">Reference</p>

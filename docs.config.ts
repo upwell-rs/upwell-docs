@@ -31,7 +31,7 @@ export const docsConfig: DocsConfig = {
   prerender: {
     routes: {
       // Serve cached symbols dynamically in dev; emit known symbol routes in production.
-      symbols: { development: false, production: "auto" },
+      symbols: { development: false, production: false },
     },
   },
   topics: [

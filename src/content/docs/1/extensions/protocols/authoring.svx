@@ -6,18 +6,18 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # Author a custom application protocol
 
 A custom application protocol connects one transport or dispatch model to an Upwell application. It declares protocol-owned registrations and scope boundaries, validates those declarations with the app, builds a dispatch runtime over the ready DI runtime, and optionally serves that runtime over one or more endpoint types.
 
-Keep each phase narrow. The definition is mutable assembly state; the prepared value is validated, immutable protocol state; the runtime is the operational dispatch layer; and [`Serve`](/docs/latest/symbols/upwell/Serve) is the endpoint loop. The framework owns application lifecycle and shutdown orchestration, while the protocol owns the work that happens at its boundary.
+Keep each phase narrow. The definition is mutable assembly state; the prepared value is validated, immutable protocol state; the runtime is the operational dispatch layer; and <SymbolRef path="upwell/Serve">`Serve`</SymbolRef> is the endpoint loop. The framework owns application lifecycle and shutdown orchestration, while the protocol owns the work that happens at its boundary.
 
 ## Start with a protocol definition
 
-Implement [`ProtocolDefinition`](/docs/latest/symbols/upwell/ProtocolDefinition) on the selected protocol type. Start with a stable protocol ID and an empty topology when every dependency is application-scoped.
+Implement <SymbolRef path="upwell/ProtocolDefinition">`ProtocolDefinition`</SymbolRef> on the selected protocol type. Start with a stable protocol ID and an empty topology when every dependency is application-scoped.
 
 <Example title="Declare a protocol with no custom scopes">
 
@@ -62,7 +62,7 @@ impl ProtocolDefinition for CatalogProtocol {
 
 </Example>
 
-Use the `upwell` facade, including `upwell::prelude::*`, rather than importing `upwell_app` implementation crates. The exact trait members and bounds belong to the [ProtocolDefinition reference](/docs/latest/symbols/upwell/ProtocolDefinition); the example establishes where each concern belongs.
+Use the `upwell` facade, including `upwell::prelude::*`, rather than importing `upwell_app` implementation crates. The exact trait members and bounds belong to the <SymbolRef path="upwell/ProtocolDefinition">ProtocolDefinition reference</SymbolRef>; the example establishes where each concern belongs.
 
 ## Place work in the correct lifecycle phase
 
@@ -125,7 +125,7 @@ Do not use `register_plugins` as a second registration hook. It declares how the
 
 ## Declare custom scope topology before using it
 
-A protocol owns the boundaries it opens. Describe each boundary in [`ScopeTopology`](/docs/latest/symbols/upwell/ScopeTopology) with a [`ScopeBoundary`](/docs/latest/symbols/upwell/ScopeBoundary) and exactly one [`ScopeParent`](/docs/latest/symbols/upwell/ScopeParent). The application root is implicit; a child boundary must name either it or another boundary in the same topology.
+A protocol owns the boundaries it opens. Describe each boundary in <SymbolRef path="upwell/ScopeTopology">`ScopeTopology`</SymbolRef> with a <SymbolRef path="upwell/ScopeBoundary">`ScopeBoundary`</SymbolRef> and exactly one <SymbolRef path="upwell/ScopeParent">`ScopeParent`</SymbolRef>. The application root is implicit; a child boundary must name either it or another boundary in the same topology.
 
 <Example title="Model connection and request scopes">
 
@@ -173,7 +173,7 @@ Open only declared boundaries at the corresponding transport event. For example,
 
 ## Build the dispatch runtime after validation
 
-[`PreparedProtocol`](/docs/latest/symbols/upwell/PreparedProtocol) receives the root [`AppRuntime`](/docs/latest/symbols/upwell/AppRuntime) only after validation and root-container construction. Turn prepared route metadata into a [`ProtocolRuntime`](/docs/latest/symbols/upwell/ProtocolRuntime) here. Keep the runtime focused on dispatch, codecs, router state, and transport-facing handles.
+<SymbolRef path="upwell/PreparedProtocol">`PreparedProtocol`</SymbolRef> receives the root <SymbolRef path="upwell/AppRuntime">`AppRuntime`</SymbolRef> only after validation and root-container construction. Turn prepared route metadata into a <SymbolRef path="upwell/ProtocolRuntime">`ProtocolRuntime`</SymbolRef> here. Keep the runtime focused on dispatch, codecs, router state, and transport-facing handles.
 
 <Example title="Build a dispatch runtime from prepared state">
 
@@ -214,7 +214,7 @@ If the protocol exposes stable generated facts to Cargo Upwell tooling, describe
 
 ## Serve an endpoint without owning the application lifecycle
 
-Implement [`Serve`](/docs/latest/symbols/upwell/Serve) for every concrete endpoint type the runtime can serve. Its `serve` method receives ownership of the built protocol runtime, an application runtime handle, a shutdown signal, and that endpoint. It should stop accepting work on shutdown, drain or cancel protocol-owned work as its contract requires, and return when serving has ended.
+Implement <SymbolRef path="upwell/Serve">`Serve`</SymbolRef> for every concrete endpoint type the runtime can serve. Its `serve` method receives ownership of the built protocol runtime, an application runtime handle, a shutdown signal, and that endpoint. It should stop accepting work on shutdown, drain or cancel protocol-owned work as its contract requires, and return when serving has ended.
 
 <Example title="Serve a listener and observe application shutdown">
 
@@ -308,10 +308,10 @@ The concise delegation above is appropriate only for a transparent wrapper. A wr
 
 The contracts, associated types, and generated member signatures live on the canonical reference pages:
 
-- [`ProtocolDefinition`](/docs/latest/symbols/upwell/ProtocolDefinition)
-- [`PreparedProtocol`](/docs/latest/symbols/upwell/PreparedProtocol)
-- [`ProtocolRuntime`](/docs/latest/symbols/upwell/ProtocolRuntime)
-- [`Serve`](/docs/latest/symbols/upwell/Serve)
-- [`ScopeTopology`](/docs/latest/symbols/upwell/ScopeTopology)
-- [`ScopeBoundary`](/docs/latest/symbols/upwell/ScopeBoundary)
-- [`ScopeParent`](/docs/latest/symbols/upwell/ScopeParent)
+- <SymbolRef path="upwell/ProtocolDefinition"><code>ProtocolDefinition</code></SymbolRef>
+- <SymbolRef path="upwell/PreparedProtocol"><code>PreparedProtocol</code></SymbolRef>
+- <SymbolRef path="upwell/ProtocolRuntime"><code>ProtocolRuntime</code></SymbolRef>
+- <SymbolRef path="upwell/Serve"><code>Serve</code></SymbolRef>
+- <SymbolRef path="upwell/ScopeTopology"><code>ScopeTopology</code></SymbolRef>
+- <SymbolRef path="upwell/ScopeBoundary"><code>ScopeBoundary</code></SymbolRef>
+- <SymbolRef path="upwell/ScopeParent"><code>ScopeParent</code></SymbolRef>

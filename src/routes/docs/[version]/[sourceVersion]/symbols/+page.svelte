@@ -5,4 +5,4 @@
 	let { data }: PageProps = $props();
 </script>
 
-<SymbolsIndex source={data.source} version={data.version} records={data.records} sources={data.sources} />
+<SymbolsIndex source={data.source} records={data.records} sources={data.sources} />

@@ -6,12 +6,12 @@ topics: ['tooling']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, GuideRef } from '#lib/docs';
 </script>
 
 # Inspect and query an application
 
-Start after [validating the application](/docs/latest/cargo-upwell#validate-one-application). Each command prepares the selected application's probe before reading its canonical tooling document; no command infers relationships from source files.
+Start after <GuideRef slug="cargo-upwell" fragment="validate-one-application">validating the application</GuideRef>. Each command prepares the selected application's probe before reading its canonical tooling document; no command infers relationships from source files.
 
 ## Find the resource you need
 
@@ -101,7 +101,7 @@ cargo upwell export \
 
 </Example>
 
-`document` succeeds only with a valid probe and produces the same bytes as `inspect --format json`. `envelope` can still write a valid probe envelope on failure. Choose `document` when downstream work must stop without a document, and `envelope` when the failure itself is an artifact. The [automation guide](/docs/latest/cargo-upwell/automation-and-extensions#automate-validation) explains how to handle nonzero exit statuses while retaining structured output.
+`document` succeeds only with a valid probe and produces the same bytes as `inspect --format json`. `envelope` can still write a valid probe envelope on failure. Choose `document` when downstream work must stop without a document, and `envelope` when the failure itself is an artifact. The <GuideRef slug="cargo-upwell/automation-and-extensions" fragment="automate-validation">automation guide</GuideRef> explains how to handle nonzero exit statuses while retaining structured output.
 
 ## Choose an output deliberately
 

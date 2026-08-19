@@ -270,6 +270,12 @@ a {
 	opacity: 1;
 }
 
+@media (hover: none), (pointer: coarse) {
+	.code-block__copy {
+		opacity: 1;
+	}
+}
+
 .code-block pre {
 	margin: 0;
 	padding: 0.875rem 1rem;

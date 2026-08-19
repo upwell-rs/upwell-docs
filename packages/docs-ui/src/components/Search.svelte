@@ -5,7 +5,7 @@
 	renders in the top layer above anything else on the page — all behaviour that is tedious to
 	reproduce and easy to get subtly wrong.
 
-	The field is `type="text"` with a searchbox role, **not** `type="search"`. Chrome gives a search
+	The field is `type="text"` with a combobox role, **not** `type="search"`. Chrome gives a search
 	input its own Escape handling — it clears the field and consumes the event — so with `type=search`
 	Escape emptied the query and left the dialog open, which is exactly not what pressing Escape in a
 	dialog should do.
@@ -33,6 +33,8 @@
 	let list = $state<HTMLElement>();
 	let query = $state('');
 	let moved = $state(0);
+	const id = $props.id();
+	const resultsId = `${id}-results`;
 
 	/**
 	 * How many results are kept.
@@ -55,6 +57,29 @@
 	 * writing state from an effect to keep an index in range is a loop waiting to happen.
 	 */
 	const selected = $derived(results.length === 0 ? 0 : Math.min(moved, results.length - 1));
+	const activeOptionId = $derived(results.length === 0 ? undefined : `${id}-option-${selected}`);
+	const liveStatus = $derived.by(() => {
+		if (searchIndex.status === 'loading') {
+			return 'Loading search results.';
+		}
+
+		if (searchIndex.status === 'failed') {
+			return 'The search index could not be loaded.';
+		}
+
+		if (query.trim() === '') {
+			return '';
+		}
+
+		if (results.length === 0) {
+			return 'No search results.';
+		}
+
+		const count = `${results.length}${results.length === LIMIT ? ' or more' : ''}`;
+		const kind = filter ? ` for ${filter}` : '';
+
+		return `${count} search ${results.length === 1 ? 'result' : 'results'}${kind}.`;
+	});
 
 	/**
 	 * Keeps the highlighted result in view.
@@ -70,7 +95,7 @@
 		void selected;
 		void results;
 
-		list?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+		list?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 	});
 
 	export function open(): void {
@@ -146,14 +171,19 @@
 			bind:value={query}
 			class="search__input"
 			type="text"
-			role="searchbox"
+			role="combobox"
 			placeholder="Search {version.label} documentation"
-			aria-label="Search documentation"
+			aria-label="Search {version.label} documentation"
+			aria-autocomplete="list"
+			aria-controls={resultsId}
+			aria-expanded={results.length > 0}
+			aria-activedescendant={activeOptionId}
 			autocomplete="off"
 			spellcheck="false"
 			oninput={retype}
 			{onkeydown}
 		/>
+		<p class="search__status" role="status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
 
 		{#if searchIndex.status === 'loading'}
 			<p class="search__note">Loading…</p>
@@ -173,55 +203,58 @@
 				{results.length}{results.length === LIMIT ? '+' : ''}
 				{results.length === 1 ? 'result' : 'results'}
 			</p>
-
-			<!--
-				Keyed by position, not by destination. Two results can legitimately share an `href`: a
-				symbol with no page of its own links to its source line, and two struct fields declared
-				on one line produce the same link. Keying by it crashed the whole dialog with a duplicate
-				key. Position is the honest identity here anyway — the list is rebuilt from scratch on
-				every keystroke, so nothing in it persists across queries to be identified.
-			-->
-			<ul bind:this={list} class="search__results">
-				{#each results as result, index (index)}
-					<li>
-						<a
-							class="search__result"
-							href={result.href}
-							rel={result.record.external ? 'noreferrer' : undefined}
-							aria-current={index === selected ? 'true' : undefined}
-							onmouseenter={() => (moved = index)}
-							onclick={close}
-						>
-							<span class="search__kind">
-								{KIND_LABEL[result.record.kind] ?? result.record.kind}
-								{#if result.record.symbolKind}
-									<span class="search__symbol-kind">{result.record.symbolKind.replace('_', ' ')}</span>
-								{/if}
-							</span>
-							<span class="search__title">
-								<Highlight text={result.record.title} ranges={result.titleRanges} />
-							</span>
-							{#if result.heading}
-								<span class="search__heading">› {result.heading}</span>
-							{/if}
-							{#if result.record.detail}
-								<span class="search__detail">
-									<Highlight text={result.record.detail} ranges={result.detailRanges} />
-								</span>
-							{/if}
-							{#if result.record.signature}
-								<span class="search__signature">{result.record.signature}</span>
-							{/if}
-							{#if result.excerpt}
-								<span class="search__excerpt">
-									<Highlight text={result.excerpt} ranges={result.excerptRanges} />
-								</span>
-							{/if}
-						</a>
-					</li>
-				{/each}
-			</ul>
 		{/if}
+
+		<!--
+			Keyed by position, not by destination. Two results can legitimately share an `href`: a
+			symbol with no page of its own links to its source line, and two struct fields declared
+			on one line produce the same link. Keying by it crashed the whole dialog with a duplicate
+			key. Position is the honest identity here anyway — the list is rebuilt from scratch on
+			every keystroke, so nothing in it persists across queries to be identified.
+		-->
+		<ul bind:this={list} class="search__results" id={resultsId} role="listbox" aria-label="Search results" hidden={results.length === 0}>
+			{#each results as result, index (index)}
+				<li role="presentation">
+					<a
+						class="search__result"
+						id={`${id}-option-${index}`}
+						href={result.href}
+						rel={result.record.external ? 'noreferrer' : undefined}
+						role="option"
+						tabindex="-1"
+						aria-selected={index === selected}
+						onmouseenter={() => (moved = index)}
+						onclick={close}
+					>
+						<span class="search__kind">
+							{KIND_LABEL[result.record.kind] ?? result.record.kind}
+							{#if result.record.symbolKind}
+								<span class="search__symbol-kind">{result.record.symbolKind.replace('_', ' ')}</span>
+							{/if}
+						</span>
+						<span class="search__title">
+							<Highlight text={result.record.title} ranges={result.titleRanges} />
+						</span>
+						{#if result.heading}
+							<span class="search__heading">› {result.heading}</span>
+						{/if}
+						{#if result.record.detail}
+							<span class="search__detail">
+								<Highlight text={result.record.detail} ranges={result.detailRanges} />
+							</span>
+						{/if}
+						{#if result.record.signature}
+							<span class="search__signature">{result.record.signature}</span>
+						{/if}
+						{#if result.excerpt}
+							<span class="search__excerpt">
+								<Highlight text={result.excerpt} ranges={result.excerptRanges} />
+							</span>
+						{/if}
+					</a>
+				</li>
+			{/each}
+		</ul>
 
 		{#if searchIndex.degraded}
 			<p class="search__note" data-degraded="true">
@@ -291,8 +324,21 @@
 		font-size: 1rem;
 	}
 
-	.search__input:focus {
-		outline: none;
+	.search__input:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: -2px;
+	}
+
+	.search__status {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	.search__note {
@@ -352,7 +398,7 @@
 		}
 	}
 
-	.search__result[aria-current='true'] {
+	.search__result[aria-selected='true'] {
 		background: var(--accent-surface);
 	}
 

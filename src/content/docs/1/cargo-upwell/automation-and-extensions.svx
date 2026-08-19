@@ -6,12 +6,12 @@ topics: ['tooling']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, GuideRef } from '#lib/docs';
 </script>
 
 # Automation and extension points
 
-Use structured output, explicit targets, and catalog-backed extensions rather than parsing terminal text. This guide builds on a validated application from [Cargo Upwell](/docs/latest/cargo-upwell).
+Use structured output, explicit targets, and catalog-backed extensions rather than parsing terminal text. This guide builds on a validated application from <GuideRef slug="cargo-upwell">Cargo Upwell</GuideRef>.
 
 ## Automate validation
 

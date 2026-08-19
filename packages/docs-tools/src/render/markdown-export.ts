@@ -17,6 +17,7 @@
  */
 
 import { splitLocation } from '@upwell/docs-core/paths';
+import { guideFragment, guideSlug, sourceCrate, sourcePath, symbolPath } from '@upwell/docs-core/references';
 
 /** Components whose content is the page's content, so only their tags come out. */
 const CONTENT_TAGS = ['Example', 'Steps', 'Tabs', 'Callout', 'Badge', 'PackageInstall', 'ReferenceNote'];
@@ -25,6 +26,8 @@ const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const SCRIPT_BLOCK = /<script\b[^>]*>[\s\S]*?<\/script>\s*/gi;
 const SNIPPET_BLOCK = /^[ \t]*\{[#/]snippet[^}]*\}[ \t]*\r?\n?/gm;
 const SYMBOL_TAG = /<Symbol\b([^>]*?)\/>/gi;
+const REFERENCE_BLOCK = /<(GuideRef|SymbolRef|SrcRef)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+const REFERENCE_TAG = /<(GuideRef|SymbolRef|SrcRef)\b([^>]*?)\/>/gi;
 /** A link, but not an image: an image's destination is a file, not a page, and takes no suffix. */
 const LINK = /(?<!!)\[([^\]]*)\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g;
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
@@ -49,7 +52,14 @@ export interface MarkdownExportOptions {
 	 * which is the honest rendering of a mistake.
 	 */
 	readonly exports?: (destination: string) => boolean;
+	/** Resolves version-aware authoring components to application or exported-document URLs. */
+	readonly referenceHref?: (reference: MarkdownAuthoringReference) => string;
 }
+
+export type MarkdownAuthoringReference =
+	| { readonly kind: 'guide'; readonly slug: string; readonly fragment?: string }
+	| { readonly kind: 'symbol'; readonly path: string; readonly source?: string; readonly version?: string }
+	| { readonly kind: 'source'; readonly path: string; readonly source?: string; readonly version?: string };
 
 /** Renders one page's source as plain Markdown, with its Svelte layer removed. */
 export function markdownFromPageSource(source: string, options: MarkdownExportOptions = {}): string {
@@ -58,6 +68,8 @@ export function markdownFromPageSource(source: string, options: MarkdownExportOp
 		text
 			.replace(SCRIPT_BLOCK, '')
 			.replace(SYMBOL_TAG, (_match, attributes: string) => symbolText(attributes))
+			.replace(REFERENCE_TAG, (_match, component: string, attributes: string) => referenceLink(component, attributes, '', options))
+			.replace(REFERENCE_BLOCK, (_match, component: string, attributes: string, label: string) => referenceLink(component, attributes, label.trim(), options))
 			.replace(tags, '')
 			.replace(SNIPPET_BLOCK, '')
 			.replace(LINK, (match, label: string, target: string, title: string) => relinked(match, label, target, title, options))
@@ -146,4 +158,54 @@ function symbolText(attributes: string): string {
 	const text = label ?? path;
 
 	return text ? `\`${text}\`` : '';
+}
+
+function referenceLink(component: string, attributes: string, authoredLabel: string, options: MarkdownExportOptions): string {
+	const reference = authoredReference(component, attributes);
+
+	if (!reference || !options.referenceHref) {
+		return authoredLabel || defaultReferenceLabel(reference);
+	}
+
+	return `[${authoredLabel || defaultReferenceLabel(reference)}](${options.referenceHref(reference)})`;
+}
+
+function authoredReference(component: string, attributes: string): MarkdownAuthoringReference | undefined {
+	if (component === 'GuideRef') {
+		const slug = ATTRIBUTE('slug').exec(attributes)?.[1];
+		const fragmentValue = ATTRIBUTE('fragment').exec(attributes)?.[1];
+		const fragment = fragmentValue === undefined ? undefined : guideFragment(fragmentValue);
+
+		return slug ? { kind: 'guide', slug: guideSlug(slug), ...(fragment ? { fragment } : {}) } : undefined;
+	}
+
+	const path = ATTRIBUTE('path').exec(attributes)?.[1];
+
+	if (!path) {
+		return undefined;
+	}
+
+	const sourceValue = ATTRIBUTE('source').exec(attributes)?.[1];
+	const source = sourceValue === undefined ? undefined : sourceCrate(sourceValue);
+	const version = ATTRIBUTE('version').exec(attributes)?.[1];
+	const normalizedPath = component === 'SymbolRef' ? symbolPath(path).replaceAll('/', '::') : sourcePath(path);
+	const shared = { path: normalizedPath, ...(source ? { source } : {}), ...(version ? { version } : {}) };
+
+	return component === 'SymbolRef' ? { kind: 'symbol', ...shared } : { kind: 'source', ...shared };
+}
+
+function defaultReferenceLabel(reference: MarkdownAuthoringReference | undefined): string {
+	if (!reference) {
+		return '';
+	}
+
+	if (reference.kind === 'guide') {
+		return reference.slug.replace(/^\/+|\/+$/g, '') || 'Documentation';
+	}
+
+	if (reference.kind === 'symbol') {
+		return reference.path.replace(/^(?:::|\/)+|(?:::|\/)+$/g, '').replaceAll('/', '::') || 'Symbols';
+	}
+
+	return reference.path.replace(/^\/+|\/+$/g, '') || 'Source';
 }
