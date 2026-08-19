@@ -20,7 +20,7 @@ const file = {
 };
 
 describe('SourceViewer', () => {
-	it('keeps the mobile file drawer open when Files is clicked before the initial reset effect', async () => {
+	it('opens the mobile file drawer immediately when Files is clicked', async () => {
 		const screen = render(SourceViewer, {
 			source: 'example',
 			version: 'v1',
@@ -35,7 +35,7 @@ describe('SourceViewer', () => {
 		await expect.poll(() => tree.classList.contains('tree--open')).toBe(true);
 	});
 
-	it('closes the mobile file drawer after client-side source-file navigation', async () => {
+	it('closes the mobile file drawer when the harness receives a new source-file path', async () => {
 		const screen = render(SourceViewerTestHarness);
 		const files = screen.container.querySelector<HTMLButtonElement>('.files')!;
 		const tree = screen.container.querySelector<HTMLElement>('.tree')!;
