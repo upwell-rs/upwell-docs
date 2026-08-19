@@ -83,17 +83,26 @@ export interface SourceServiceOptions {
 	 * reaches this code, because these requests are the server's. Pointing the two origins at a local
 	 * fixture exercises the same fetches against a repository the test owns.
 	 */
-	readonly github?: { readonly api?: string; readonly raw?: string };
+	readonly github?: {
+		readonly api?: string;
+		readonly raw?: string;
+		/** Optional server-side token for GitHub API inventory requests. */
+		readonly token?: string;
+		/** Additional request headers, primarily for local source fixtures. */
+		readonly headers?: HeadersInit;
+	};
 }
 
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_RAW = 'https://raw.githubusercontent.com';
+const TRUSTED_GITHUB_API = new URL(GITHUB_API);
 
 /** GitHub-backed source access pinned to repository revisions recorded in documentation artifacts. */
 export function createSourceService(options: SourceServiceOptions): SourceService {
 	const inventories = new Map<string, Promise<readonly SourceFileEntry[]>>();
 	const files = new Map<string, Promise<string | null>>();
 	const origins = { api: options.github?.api ?? GITHUB_API, raw: options.github?.raw ?? GITHUB_RAW };
+	const github = { token: options.github?.token?.trim() || undefined, headers: options.github?.headers };
 
 	async function resolveSnapshot(source: FrameworkCrateCoordinates, version: DocsVersion) {
 		const artifact = await options.artifacts.getArtifact(source, version);
@@ -114,7 +123,7 @@ export function createSourceService(options: SourceServiceOptions): SourceServic
 			return existing;
 		}
 
-		const loading = fetchGithubTree(snapshot, origins.api);
+		const loading = fetchGithubTree(snapshot, origins.api, github);
 		inventories.set(key, loading);
 
 		try {
@@ -513,7 +522,7 @@ async function fetchSource(snapshot: ArtifactSource, file: string, cache: Map<st
 	}
 }
 
-async function fetchGithubTree(snapshot: ArtifactSource, apiOrigin: string): Promise<readonly SourceFileEntry[]> {
+async function fetchGithubTree(snapshot: ArtifactSource, apiOrigin: string, github: { readonly token?: string; readonly headers?: HeadersInit }): Promise<readonly SourceFileEntry[]> {
 	const coordinates = githubCoordinates(snapshot.repository);
 
 	if (!coordinates) {
@@ -521,12 +530,12 @@ async function fetchGithubTree(snapshot: ArtifactSource, apiOrigin: string): Pro
 	}
 
 	const response = await fetch(`${apiOrigin}/repos/${coordinates}/git/trees/${snapshot.sha}?recursive=1`, {
-		headers: { accept: 'application/vnd.github+json', 'user-agent': 'upwell-docs-source-viewer' },
+		headers: githubApiHeaders(isTrustedGithubApiOrigin(apiOrigin) ? github.token : undefined, github.headers),
 		signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS)
 	});
 
 	if (!response.ok) {
-		throw new Error(`GitHub source inventory request failed with ${response.status}.`);
+		throw new Error(githubTreeFailure(response));
 	}
 
 	const body = await response.json() as { truncated?: boolean; tree?: { path?: string; type?: string; size?: number }[] };
@@ -539,6 +548,58 @@ async function fetchGithubTree(snapshot: ArtifactSource, apiOrigin: string): Pro
 		.filter((entry): entry is { path: string; type: string; size: number } => entry.type === 'blob' && typeof entry.path === 'string' && typeof entry.size === 'number')
 		.map((entry) => ({ path: entry.path, bytes: entry.size }))
 		.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function githubApiHeaders(token?: string, provided?: HeadersInit): Record<string, string> {
+	const headers = new Headers(provided);
+
+	if (!headers.has('accept')) {
+		headers.set('accept', 'application/vnd.github+json');
+	}
+
+	if (!headers.has('user-agent')) {
+		headers.set('user-agent', 'upwell-docs-source-viewer');
+	}
+
+	if (token && !headers.has('authorization')) {
+		headers.set('authorization', `Bearer ${token}`);
+	}
+
+	return Object.fromEntries(headers);
+}
+
+function isTrustedGithubApiOrigin(origin: string): boolean {
+	try {
+		return new URL(origin).href === TRUSTED_GITHUB_API.href;
+	} catch {
+		return false;
+	}
+}
+
+function githubTreeFailure(response: Response): string {
+	const details = [`status ${response.status}`];
+	const remaining = response.headers.get('x-ratelimit-remaining');
+	const rateLimited = response.status === 429 || remaining === '0';
+
+	if (rateLimited) {
+		details.push('rate limit exhausted');
+	} else if (response.status === 403) {
+		details.push('access denied');
+	}
+
+	for (const name of ['x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset', 'x-ratelimit-resource', 'retry-after', 'x-github-request-id']) {
+		const value = response.headers.get(name);
+
+		if (value) {
+			details.push(`${name}=${safeGithubHeaderValue(value)}`);
+		}
+	}
+
+	return `GitHub source inventory request failed (${details.join('; ')}).`;
+}
+
+function safeGithubHeaderValue(value: string): string {
+	return value.replace(/[\r\n]/g, ' ').slice(0, 200);
 }
 
 function githubRawUrl(snapshot: ArtifactSource, file: string, rawOrigin: string): string {
@@ -564,17 +625,11 @@ function githubCoordinates(repository: string): string | null {
 }
 
 function safeSourcePath(value: string, allowRoot = false): string | null {
-	let decoded: string;
+	// SvelteKit has already decoded route parameters. Decoding here would reinterpret literal `%` in a
+	// repository filename and reject malformed-looking, but valid, names such as `malformed%2 name.rs`.
+	const segments = value.split('/');
 
-	try {
-		decoded = decodeURIComponent(value);
-	} catch {
-		return null;
-	}
-
-	const segments = decoded.split('/');
-
-	return (allowRoot && decoded === '') || (decoded !== '' && !decoded.includes('\\') && !decoded.includes('\0') && segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')) ? decoded : null;
+	return (allowRoot && value === '') || (value !== '' && !value.includes('\\') && !value.includes('\0') && segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')) ? value : null;
 }
 
 /**
