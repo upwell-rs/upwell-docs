@@ -65,7 +65,7 @@ test('the file tree renders a window of a large repository', async ({ page }) =>
 	await expect.poll(async () => (await rows.first().innerText()).trim()).not.toBe('crates');
 });
 
-test('a filename that needs URL encoding is reachable', async ({ page }) => {
+test('filenames with URL-reserved and literal-percent characters are reachable', async ({ page }) => {
 	await page.goto(`${BASE}/crates/app/src/lib.rs`);
 
 	const tree = page.getByRole('complementary', { name: 'Repository files' });
@@ -76,6 +76,20 @@ test('a filename that needs URL encoding is reachable', async ({ page }) => {
 
 	await expect(page).toHaveURL(`${BASE}/crates/app/src/odd%23name.rs`);
 	await expect(page.locator('.code')).toContainText('pub const ODD');
+
+	// `%` is part of the repository filename, not a second URL-encoding layer.
+	await page.goto(`${BASE}/crates/app/src/lib.rs`);
+	await tree.getByLabel('Filter repository files').fill('malformed');
+	await tree.getByRole('link', { name: 'malformed%2 name.rs' }).click();
+
+	await expect(page).toHaveURL(`${BASE}/crates/app/src/malformed%252%20name.rs`);
+	await expect(page.locator('.code')).toContainText('pub const PERCENT');
+});
+
+test('a malformed percent-encoded source URL is rejected before route parameters are decoded', async ({ page }) => {
+	const response = await page.goto(`${BASE}/crates/app/src/malformed%2`);
+
+	expect(response?.status()).toBe(400);
 });
 
 test('a Markdown file offers both its preview and its source', async ({ page }) => {

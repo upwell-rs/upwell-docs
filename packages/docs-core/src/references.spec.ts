@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { guideFragment, guideSlug, sourceCrate, sourcePath, symbolPath } from './references.ts';
+import { encodeSourcePath, guideFragment, guideSlug, sourceCrate, sourcePath, symbolPath } from './references.ts';
 
 describe('authoring reference paths', () => {
 	it('normalizes authored guide, symbol, source, and crate separators', () => {
@@ -40,8 +40,10 @@ describe('authoring reference paths', () => {
 		(value) => expect(() => sourcePath(value)).toThrow('Invalid documentation source path')
 	);
 
-	it('keeps URL-reserved characters in source filenames for route-segment encoding', () => {
+	it('round-trips URL-reserved characters in source filenames through route-segment encoding', () => {
 		expect(sourcePath('src/odd#name?.rs')).toBe('src/odd#name?.rs');
 		expect(sourcePath('src/malformed%2 name.rs')).toBe('src/malformed%2 name.rs');
+		expect(encodeSourcePath('src/odd#name?.rs')).toBe('src/odd%23name%3F.rs');
+		expect(encodeSourcePath('src/malformed%2 name.rs')).toBe('src/malformed%252%20name.rs');
 	});
 });

@@ -46,6 +46,7 @@ const files = new Map<string, string>([
 	['docs/guide.md', '# Guide\n\nA linked document.\n'],
 	// A valid Git filename that is not a valid URL path segment: the viewer has to encode it.
 	['crates/app/src/odd#name.rs', 'pub const ODD: bool = true;\n'],
+	['crates/app/src/malformed%2 name.rs', 'pub const PERCENT: bool = true;\n'],
 	...Array.from({ length: 1_200 }, (_, index): [string, string] => [
 		`crates/generated/src/module${index}.rs`,
 		`pub const INDEX: usize = ${index};\n`

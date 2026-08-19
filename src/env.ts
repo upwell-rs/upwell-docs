@@ -27,5 +27,9 @@ export const variables = defineEnvVars({
 	DOCS_GITHUB_RAW_ORIGIN: {
 		description: 'Where the source viewer reads repository file contents from.',
 		schema: (value) => value ?? 'https://raw.githubusercontent.com'
+	},
+	GITHUB_TOKEN: {
+		description: 'Optional server-only GitHub token used by the source viewer for repository inventory requests.',
+		schema: (value) => value
 	}
 });
