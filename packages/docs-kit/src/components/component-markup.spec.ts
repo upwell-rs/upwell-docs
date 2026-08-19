@@ -32,6 +32,28 @@ describe('documentation component markup', () => {
 
 		expect(styles).toMatch(/@media \(hover: none\), \(pointer: coarse\)[\s\S]*\.code-block__copy[\s\S]*opacity: 1;/);
 	});
+
+	it('contains only vertical overscroll in scroll panes', async () => {
+		const [readingArea, symbolsIndex, mobileNav, docsShell] = await Promise.all([
+			source('../../../../src/lib/docs/site/ReadingArea.svelte'),
+			source('./SymbolsIndex.svelte'),
+			source('../../../docs-ui/src/components/MobileNav.svelte'),
+			source('./DocsShell.svelte')
+		]);
+
+		for (const component of [readingArea, symbolsIndex, mobileNav, docsShell]) {
+			expect(component).not.toMatch(/overscroll-behavior:\s*contain/);
+		}
+
+		expect(readingArea).toMatch(/\.layout__sidebar[\s\S]*overscroll-behavior-y:\s*contain/);
+		expect(readingArea).toMatch(/\.layout__main[\s\S]*overscroll-behavior-y:\s*contain/);
+		expect(readingArea).toMatch(/\.layout__toc[\s\S]*overscroll-behavior-y:\s*contain/);
+		expect(symbolsIndex).toMatch(/\.results[\s\S]*overscroll-behavior-y:\s*contain/);
+		expect(mobileNav).toMatch(/\.menu__body[\s\S]*overscroll-behavior-y:\s*contain/);
+		expect(docsShell).toMatch(/\.layout__sidebar[\s\S]*overscroll-behavior-y:\s*contain/);
+		expect(docsShell).toMatch(/\.layout__main[\s\S]*overscroll-behavior-y:\s*contain/);
+		expect(docsShell).toMatch(/\.layout__toc[\s\S]*overscroll-behavior-y:\s*contain/);
+	});
 });
 
 function source(relative: string): Promise<string> {

@@ -10,10 +10,11 @@ export const entries: EntryGenerator = () => docsServerRoutes.symbolEntries().th
 	entries.map(({ source, version, path }) => ({ source, sourceVersion: version, path }))
 );
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, parent, url }) => {
+	const { source, version } = await parent();
 	const data = await docsServerRoutes.loadSymbol({
-		source: params.source,
-		version: params.sourceVersion,
+		source,
+		version,
 		path: params.path
 	});
 	const metadata: PageMetadata = {

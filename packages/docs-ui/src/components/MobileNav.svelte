@@ -234,7 +234,7 @@
 		min-height: 0;
 		padding: 1.25rem;
 		overflow-y: auto;
-		overscroll-behavior: contain;
+		overscroll-behavior-y: contain;
 	}
 
 	.menu__toc {

@@ -92,6 +92,10 @@
 		border-left: 1px solid var(--border);
 	}
 
+	:global(.tree > li:has(> .tree__group)) {
+		list-style: none;
+	}
+
 	.tree__summary {
 		display: flex;
 		align-items: center;
