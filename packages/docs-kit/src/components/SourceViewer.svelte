@@ -54,6 +54,7 @@
 		showMarkdown = true;
 		inspector = undefined;
 		inspectorLoading = false;
+		treeOpenFor = undefined;
 	});
 
 	async function inspect(path: string): Promise<void> {
