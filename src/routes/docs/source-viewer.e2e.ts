@@ -117,3 +117,25 @@ test('the file drawer reveals the active file when a phone opens it', async ({ p
 	await expect(tree).toBeVisible();
 	await expect(tree.locator('.row a[aria-current="page"]')).toBeInViewport();
 });
+
+test('the phone file drawer closes on navigation and reveals the new active file when reopened', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 780 });
+	await page.goto(`${BASE}/crates/generated/src/module900.rs`);
+
+	await page.getByRole('button', { name: 'Files' }).click();
+
+	const tree = page.getByRole('complementary', { name: 'Repository files' });
+
+	await expect(tree.locator('.row a[aria-current="page"]')).toBeInViewport();
+	await tree.getByLabel('Filter repository files').fill('module901');
+	await tree.getByRole('link', { name: 'module901.rs' }).click();
+
+	await expect(page).toHaveURL(`${BASE}/crates/generated/src/module901.rs`);
+	await expect(tree).not.toBeVisible();
+
+	await page.getByRole('button', { name: 'Files' }).click();
+
+	await expect(tree).toBeVisible();
+	await expect(tree.locator('.row a[aria-current="page"]')).toHaveText('module901.rs');
+	await expect(tree.locator('.row a[aria-current="page"]')).toBeInViewport();
+});

@@ -27,11 +27,12 @@
 	 */
 	let inspection: AbortController | undefined;
 	let showMarkdown = $state(true);
-	let treeOpen = $state(false);
+	let treeOpenFor = $state<string>();
 	let previousPath: string | undefined;
 	const notifier = getDocsNotifier();
 	const sourceBase = $derived(`/docs/${source}/${version}/src/`);
 	const apiBase = $derived(`/api/docs/${source}/${version}`);
+	const treeOpen = $derived(treeOpenFor === file.path);
 
 	$effect(() => {
 		const path = file.path;
@@ -53,7 +54,6 @@
 		showMarkdown = true;
 		inspector = undefined;
 		inspectorLoading = false;
-		treeOpen = false;
 	});
 
 	async function inspect(path: string): Promise<void> {
@@ -91,11 +91,11 @@
 </script>
 
 <div class="viewer">
-	<SourceTree files={file.files} current={file.path} revision={file.revision} baseHref={sourceBase} {apiBase} mobileOpen={treeOpen} onclose={() => { treeOpen = false; }} />
+	<SourceTree files={file.files} current={file.path} revision={file.revision} baseHref={sourceBase} {apiBase} mobileOpen={treeOpen} onclose={() => { treeOpenFor = undefined; }} />
 
 	<section class="source">
 		<header>
-			<button class="files" type="button" onclick={() => { treeOpen = true; }}>Files</button>
+			<button class="files" type="button" onclick={() => { treeOpenFor = file.path; }}>Files</button>
 			<SourceBreadcrumbs {source} path={file.path} baseHref={sourceBase} />
 			<div class="actions">
 				{#if file.kind === 'file' && file.markdownHtml}<button type="button" onclick={() => { showMarkdown = !showMarkdown; }}>{showMarkdown ? 'View source' : 'Preview'}</button>{/if}
