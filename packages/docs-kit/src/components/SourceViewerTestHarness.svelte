@@ -24,3 +24,4 @@
 
 <SourceViewer source="example" version="v1" file={current} />
 <button type="button" onclick={() => { navigate('src/main.rs'); }}>Navigate</button>
+<button type="button" onclick={() => { navigate('src/lib.rs'); }}>Back</button>

@@ -107,6 +107,7 @@ test('a Markdown file offers both its preview and its source', async ({ page }) 
 test('the file drawer reveals the active file when a phone opens it', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 780 });
 	await page.goto(`${BASE}/crates/generated/src/module900.rs`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	// The drawer has no layout until it is opened, so the reveal has to happen then rather than on
 	// mount — which is what made the active file sit off-screen in a long tree.
@@ -121,6 +122,7 @@ test('the file drawer reveals the active file when a phone opens it', async ({ p
 test('the phone file drawer closes on navigation and reveals the new active file when reopened', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 780 });
 	await page.goto(`${BASE}/crates/generated/src/module900.rs`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Files' }).click();
 

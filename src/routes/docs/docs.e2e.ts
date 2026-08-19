@@ -698,6 +698,7 @@ test('arrowing through results keeps the highlighted one in view', async ({ page
 	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('component');
 
 	const list = page.locator('.search__results');
+	await expect(list.getByRole('option').first()).toBeVisible();
 
 	// The list has to overflow for this to mean anything.
 	expect(await list.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);

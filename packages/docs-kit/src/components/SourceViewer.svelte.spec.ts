@@ -35,7 +35,7 @@ describe('SourceViewer', () => {
 		await expect.poll(() => tree.classList.contains('tree--open')).toBe(true);
 	});
 
-	it('closes the mobile file drawer when the harness receives a new source-file path', async () => {
+	it('stays closed when history returns to an opened path until explicitly reopened', async () => {
 		const screen = render(SourceViewerTestHarness);
 		const files = screen.container.querySelector<HTMLButtonElement>('.files')!;
 		const tree = screen.container.querySelector<HTMLElement>('.tree')!;
@@ -43,9 +43,20 @@ describe('SourceViewer', () => {
 		files.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		await expect.poll(() => tree.classList.contains('tree--open')).toBe(true);
 
-		const navigate = screen.container.querySelector<HTMLButtonElement>('button:last-child')!;
+		const navigate = [...screen.container.querySelectorAll<HTMLButtonElement>('button')]
+			.find((button) => button.textContent === 'Navigate')!;
 		navigate.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
 		await expect.poll(() => tree.classList.contains('tree--open')).toBe(false);
+
+		const back = [...screen.container.querySelectorAll<HTMLButtonElement>('button')]
+			.find((button) => button.textContent === 'Back')!;
+		back.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+		await expect.poll(() => tree.classList.contains('tree--open')).toBe(false);
+
+		files.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+		await expect.poll(() => tree.classList.contains('tree--open')).toBe(true);
 	});
 });
