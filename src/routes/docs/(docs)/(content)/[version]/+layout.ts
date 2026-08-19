@@ -11,7 +11,6 @@
 
 import { dev } from '$app/env';
 import { resolvePrerender } from '@upwell/docs-core/config';
-import { docsSource, frameworkCrate, frameworkCrateVersion } from '@upwell/docs-core/config';
 import { docsRoutes } from '#lib/docs/runtime';
 import { docsConfig } from 'virtual:docs-config';
 import type { LayoutLoad } from './$types';
@@ -19,16 +18,5 @@ import type { LayoutLoad } from './$types';
 export const prerender = resolvePrerender(docsConfig, 'docs', dev);
 
 export const load: LayoutLoad = ({ params }) => {
-	const sourceVersion = (params as typeof params & { sourceVersion?: string }).sourceVersion;
-
-	if (sourceVersion) {
-		const source = frameworkCrate(docsConfig, params.version);
-		const version = source ? frameworkCrateVersion(source, sourceVersion) : undefined;
-
-		if (source && version) {
-			return { source: docsSource(source), version, versions: source.versions };
-		}
-	}
-
-	return docsRoutes.layout(params.version);
+	return { ...docsRoutes.layout(params.version), area: 'guide' as const };
 };

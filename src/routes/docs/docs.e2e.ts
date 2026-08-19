@@ -223,10 +223,20 @@ test('hovering a symbol shows its card', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
-	await page.locator('[data-symbol="upwell::prelude::component"]').first().hover();
+	const symbol = page.locator('[data-symbol="upwell::prelude::component"]').first();
+	const card = page.getByRole('dialog', { name: 'Symbol details' });
 
-	await expect(page.getByRole('tooltip')).toBeVisible();
-	await expect(page.getByRole('tooltip')).toContainText('#[component]');
+	await symbol.hover();
+
+	await expect(card).toBeVisible();
+	await expect(card).toContainText('#[component]');
+	await expect(symbol).toHaveAttribute('aria-haspopup', 'dialog');
+	await expect(symbol).toHaveAttribute('aria-expanded', 'true');
+
+	const cardId = await card.getAttribute('id');
+
+	expect(cardId).toBeTruthy();
+	await expect(symbol).toHaveAttribute('aria-controls', cardId!);
 });
 
 test('the card survives the pointer moving into it, so its links can be used', async ({ page }) => {
@@ -234,12 +244,13 @@ test('the card survives the pointer moving into it, so its links can be used', a
 
 	await page.locator('a[data-symbol="upwell::prelude::component"]').first().hover();
 
-	const link = page.getByRole('tooltip').getByRole('link', { name: 'component' });
+	const card = page.getByRole('dialog', { name: 'Symbol details' });
+	const link = card.getByRole('link', { name: 'component' });
 
 	// Closing on `mouseout` made these links unreachable by mouse: the pointer has to leave the token
 	// and cross a gap to get to them.
 	await link.hover();
-	await expect(page.getByRole('tooltip')).toBeVisible();
+	await expect(card).toBeVisible();
 
 	await link.click();
 	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
@@ -256,7 +267,7 @@ test('a symbol referenced in prose gets the same treatment as one in code', asyn
 	await expect(inline).toHaveAttribute('data-symbol-feature', 'axum');
 
 	await inline.hover();
-	await expect(page.getByRole('tooltip')).toBeVisible();
+	await expect(page.getByRole('dialog', { name: 'Symbol details' })).toBeVisible();
 });
 
 test('clicking a documented inline symbol navigates to its authored reference', async ({ page }) => {
@@ -275,7 +286,7 @@ test('a documented symbol card keeps View source on GitHub', async ({ page }) =>
 
 	await page.locator('a[data-symbol="upwell::prelude::component"]').first().hover();
 
-	const source = page.getByRole('tooltip').getByRole('link', { name: 'View source' });
+	const source = page.getByRole('dialog', { name: 'Symbol details' }).getByRole('link', { name: 'View source' });
 
 	await expect(source).toHaveAttribute('href', /github\.com\/upwell-rs\/upwell\/blob\//);
 });
@@ -462,6 +473,60 @@ test('guides and symbols have explicit, independent navigation', async ({ page }
 	await expect(entry).toHaveCount(0);
 	await sidebar.locator('details[data-group-id="symbols:upwell_axum/config"] > summary').press('Enter');
 	await expect(entry).toHaveCount(1);
+});
+
+test('client navigation retains the docs frame while route-group areas exchange', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/di/components`);
+
+	const header = page.locator('.header');
+	const marker = `docs-frame-${Date.now()}`;
+
+	// Hydration is required before a click can prove that SvelteKit retained the client shell rather
+	// than following the link as a document navigation.
+	await expect(header).toHaveAttribute('data-hydrated');
+	await page.evaluate(({ marker }) => {
+		const frame = document.querySelector('.header');
+
+		if (!frame) {
+			throw new Error('Documentation header is missing.');
+		}
+
+		(window as unknown as { docsFrameMarker?: string; docsFrameHeader?: Element }).docsFrameMarker = marker;
+		(window as unknown as { docsFrameMarker?: string; docsFrameHeader?: Element }).docsFrameHeader = frame;
+	}, { marker });
+
+	await page.locator('a[data-symbol="upwell::prelude::component"]').first().click();
+	await expect(page).toHaveURL(`/docs/upwell/${VERSION}/symbols/upwell_macros/component`);
+	await expect(page.getByRole('heading', { level: 1, name: 'component' })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Symbols' })).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toHaveCount(0);
+	expect(await page.evaluate(({ marker }) => {
+		const state = window as unknown as { docsFrameMarker?: string; docsFrameHeader?: Element };
+
+		return state.docsFrameMarker === marker && state.docsFrameHeader === document.querySelector('.header');
+	}, { marker })).toBe(true);
+
+	await page.getByRole('navigation', { name: 'Documentation sections' }).getByRole('link', { name: 'Source' }).click();
+	await expect(page).toHaveURL(`/docs/${docsConfig.framework.root.crate}/${VERSION}/src`);
+	await expect(header).toHaveAttribute('data-hydrated');
+	await expect(page.locator('.viewer')).toBeVisible();
+	await expect(page.getByRole('complementary', { name: 'Repository files' })).toBeVisible();
+	await expect(page.locator('.layout__reading')).toHaveCount(0);
+	expect(await page.evaluate(({ marker }) => {
+		const state = window as unknown as { docsFrameMarker?: string; docsFrameHeader?: Element };
+
+		return state.docsFrameMarker === marker && state.docsFrameHeader === document.querySelector('.header');
+	}, { marker })).toBe(true);
+
+	await page.getByRole('navigation', { name: 'Documentation sections' }).getByRole('link', { name: 'Guides' }).click();
+	await expect(page).toHaveURL(`/docs/${VERSION}/${docsConfig.landingSlug}`);
+	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
+	await expect(page.locator('.layout__reading')).toBeVisible();
+	expect(await page.evaluate(({ marker }) => {
+		const state = window as unknown as { docsFrameMarker?: string; docsFrameHeader?: Element };
+
+		return state.docsFrameMarker === marker && state.docsFrameHeader === document.querySelector('.header');
+	}, { marker })).toBe(true);
 });
 
 test('a symbol page shows hand-written prose alongside generated facts', async ({ page }) => {
@@ -692,7 +757,7 @@ test('a local whose type the build worked out carries it', async ({ page }) => {
 	await expect(local).not.toHaveAttribute('data-symbol', /./);
 
 	await local.hover();
-	await expect(page.getByRole('tooltip')).toContainText('local');
+	await expect(page.getByRole('dialog', { name: 'Symbol details' })).toContainText('local');
 });
 
 test('search matches a camel-case name from separate words', async ({ page }) => {
@@ -889,7 +954,7 @@ test('a type from another crate is marked and links to its own documentation', a
 	await expect(arc).toHaveAttribute('href', /doc\.rust-lang\.org/);
 
 	await arc.hover();
-	await expect(page.getByRole('tooltip')).toContainText('alloc');
+	await expect(page.getByRole('dialog', { name: 'Symbol details' })).toContainText('alloc');
 });
 
 test('an external trait is distinguishable from an external type', async ({ page }) => {

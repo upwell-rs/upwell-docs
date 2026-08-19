@@ -1,5 +1,9 @@
+<!--
+	@deprecated Use application-owned documentation framing for new integrations. This package-only
+	compatibility component remains available for downstream consumers of the original docs-kit API.
+-->
 <script lang="ts">
-	import { onMount, type Snippet } from 'svelte';
+	import type { Snippet } from 'svelte';
 
 	import { setDocsNotifier, setDocsVersion } from '@upwell/docs-ui/context';
 	import type { SearchIndex } from '@upwell/docs-ui/search';
@@ -47,8 +51,6 @@
 	let { content, version, source, versions, pathname, chrome: current, previous, next, symbolRecords = [], searchIndex, sidebar, notifications, navigate, assignLocation, children }: Props = $props();
 
 	let article = $state<HTMLElement>();
-	let layout = $state<HTMLElement>();
-	let main = $state<HTMLElement>();
 	let search = $state<ReturnType<typeof Search>>();
 	let sidebarMax = $state(SIDEBAR_MAX_WIDTH);
 
@@ -98,7 +100,7 @@
 	const sidebarArea = $derived<SidebarArea>(symbols ? 'symbols' : 'guides');
 	const sidebarWidth = $derived(Math.min(sidebar.width.get(sidebarArea), sidebarMax));
 
-	onMount(() => {
+	function observeSidebarMaximumWidth(layout: HTMLElement): () => void {
 		const minimumReadingWidth = 544;
 		const updateSidebarMax = () => {
 			if (!layout) {
@@ -121,7 +123,7 @@
 		updateSidebarMax();
 
 		return () => observer.disconnect();
-	});
+	}
 
 	/**
 	 * Returns the reading pane to the top on navigation.
@@ -131,15 +133,15 @@
 	 * halfway down the next one. A URL carrying a fragment is left alone, because there the whole
 	 * point of the navigation is to arrive somewhere other than the top.
 	 */
-	$effect(() => {
+	function resetReadingPaneOnNavigation(main: HTMLElement): void {
 		void pathname;
 
 		if (location.hash) {
 			return;
 		}
 
-		main?.scrollTo({ top: 0 });
-	});
+		main.scrollTo({ top: 0 });
+	}
 
 	function changeVersion(id: string): void {
 		const target = availableVersions.find((candidate) => candidate.id === id);
@@ -212,7 +214,7 @@
 		{/snippet}
 	</DocsHeader>
 
-	<div bind:this={layout} class:layout--source={sourceViewer} class="layout" style={`--sidebar-width: ${sidebarWidth}px`}>
+	<div {@attach observeSidebarMaximumWidth} class:layout--source={sourceViewer} class="layout" style={`--sidebar-width: ${sidebarWidth}px`}>
 		<aside class="layout__sidebar" class:layout__sidebar--hidden={sourceViewer}>
 			{#if symbols}
 				<SymbolsSidebar records={symbolRecords} current={slug} indexHref={symbolsIndexHref} state={sidebar} />
@@ -234,7 +236,7 @@
 			</div>
 		{/if}
 
-		<main id={DOCS_MAIN_ID} bind:this={main} class:layout__main--source={sourceViewer} class:layout__main--notice={sourceViewer && Boolean(releaseNotice)} class="layout__main" tabindex="-1">
+		<main id={DOCS_MAIN_ID} {@attach resetReadingPaneOnNavigation} class:layout__main--source={sourceViewer} class:layout__main--notice={sourceViewer && Boolean(releaseNotice)} class="layout__main" tabindex="-1">
 			{#if sourceViewer}
 				<ReleaseNotice notice={releaseNotice} mode="source" />
 				<div class="layout__source-content">{@render children()}</div>

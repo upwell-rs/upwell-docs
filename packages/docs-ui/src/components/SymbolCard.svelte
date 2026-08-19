@@ -6,54 +6,19 @@
 	absent — the card never shows a placeholder for missing documentation, because an empty section
 	reads as "undocumented" when the truth is "not applicable".
 -->
-<script lang="ts" module>
-	export interface SymbolCardData {
-		path: string;
-		kind: string;
-		signature?: string;
-		/** First paragraph of the symbol's `///` comment. */
-		summary?: string;
-		feature?: string;
-		deprecated?: string;
-		sourceHref?: string;
-		/** Destination from the defined references, when the symbol has one. */
-		documentedAt?: { href: string; title: string };
-		/**
-		 * Set when the token is a local rather than a framework symbol.
-		 *
-		 * The card then reads `app: App` and describes the *type*, because that is the only useful
-		 * thing to say about a variable — and saying it as though the variable were the symbol would
-		 * be wrong.
-		 */
-		variable?: string;
-		/**
-		 * Set when the name was declared by the snippet itself.
-		 *
-		 * Says where its definition is, in place of the crate and feature a framework symbol would
-		 * carry — an example's own type has none of those, and pretending otherwise would suggest it
-		 * is part of the framework.
-		 */
-		definedInPage?: string;
-		/**
-		 * Set when the symbol belongs to another crate.
-		 *
-		 * The card then says which crate and links out, because that is the whole of what this site
-		 * knows about it — the external tier records a path, a kind and a destination, deliberately
-		 * not a signature or documentation. See `@upwell/docs-tools/rustdoc`.
-		 */
-		externalCrate?: string;
-	}
-</script>
-
 <script lang="ts">
+	import type { Attachment } from 'svelte/attachments';
+
+	import type { SymbolCardData } from './symbol-card/data.ts';
+
 	interface Props {
 		data: SymbolCardData;
 		anchor: HTMLElement;
-		/** Bound so the article can keep the card open while the pointer is inside it. */
-		element?: HTMLElement;
+		id: string;
+		interaction?: Attachment<HTMLElement>;
 	}
 
-	let { data, anchor, element = $bindable() }: Props = $props();
+	let { data, anchor, id, interaction = () => {} }: Props = $props();
 
 	/**
 	 * Positions the card under its token, nudged inward when it would leave the viewport.
@@ -61,27 +26,25 @@
 	 * Measured after mount rather than computed from CSS, because the card's height depends on how
 	 * much documentation the symbol has.
 	 */
-	$effect(() => {
-		if (!element) {
-			return;
-		}
+	function positionCard(target: HTMLElement): Attachment<HTMLElement> {
+		return (element) => {
+			const targetBounds = target.getBoundingClientRect();
+			const cardBounds = element.getBoundingClientRect();
+			const margin = 12;
 
-		const target = anchor.getBoundingClientRect();
-		const own = element.getBoundingClientRect();
-		const margin = 12;
+			const left = Math.min(Math.max(margin, targetBounds.left), window.innerWidth - cardBounds.width - margin);
+			const below = targetBounds.bottom + 4;
+			const fitsBelow = below + cardBounds.height < window.innerHeight - margin;
 
-		const left = Math.min(Math.max(margin, target.left), window.innerWidth - own.width - margin);
-		const below = target.bottom + 4;
-		const fitsBelow = below + own.height < window.innerHeight - margin;
-
-		element.style.left = `${left}px`;
-		// Sits closer to the token than the pointer can travel in one frame, so moving towards the
-		// card does not cross a gap that would register as leaving both.
-		element.style.top = `${fitsBelow ? below : target.top - own.height - 4}px`;
-	});
+			element.style.left = `${left}px`;
+			// Sits closer to the token than the pointer can travel in one frame, so moving towards the
+			// card does not cross a gap that would register as leaving both.
+			element.style.top = `${fitsBelow ? below : targetBounds.top - cardBounds.height - 4}px`;
+		};
+	}
 </script>
 
-<div bind:this={element} class="card" role="tooltip">
+<div {id} class="card" role="dialog" aria-label="Symbol details" {@attach positionCard(anchor)} {@attach interaction}>
 	<p class="card__path">
 		{#if data.externalCrate && data.variable}
 			<span class="card__kind">local · {data.externalCrate}</span>

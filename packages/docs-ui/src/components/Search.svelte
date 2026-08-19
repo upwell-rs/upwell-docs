@@ -14,10 +14,12 @@
 	never downloads it.
 -->
 <script lang="ts">
-	import Highlight from './Highlight.svelte';
 	import { parseQuery } from '@upwell/docs-ui/search/query';
 	import type { SearchIndex } from '../search/index.svelte.ts';
 	import type { DocsVersion } from '../types.ts';
+	import { clampSelection, moveSelection, type SearchNavigationKey } from './search/navigation.ts';
+	import SearchInput from './search/SearchInput.svelte';
+	import SearchResults from './search/SearchResults.svelte';
 
 	interface Props {
 		version: DocsVersion;
@@ -29,12 +31,12 @@
 	let { version, searchIndex, searchHref, navigate }: Props = $props();
 
 	let dialog = $state<HTMLDialogElement>();
-	let input = $state<HTMLInputElement>();
-	let list = $state<HTMLElement>();
+	let input = $state<SearchInput>();
 	let query = $state('');
 	let moved = $state(0);
 	const id = $props.id();
 	const resultsId = `${id}-results`;
+	const optionIdPrefix = `${id}-option`;
 
 	/**
 	 * How many results are kept.
@@ -56,53 +58,17 @@
 	 * Clamped when read rather than corrected in an effect: results change as the reader types, and
 	 * writing state from an effect to keep an index in range is a loop waiting to happen.
 	 */
-	const selected = $derived(results.length === 0 ? 0 : Math.min(moved, results.length - 1));
-	const activeOptionId = $derived(results.length === 0 ? undefined : `${id}-option-${selected}`);
-	const liveStatus = $derived.by(() => {
-		if (searchIndex.status === 'loading') {
-			return 'Loading search results.';
-		}
+	const selected = $derived(clampSelection(moved, results.length));
+	const activeOptionId = $derived(results.length === 0 ? undefined : `${optionIdPrefix}-${selected}`);
 
-		if (searchIndex.status === 'failed') {
-			return 'The search index could not be loaded.';
-		}
-
-		if (query.trim() === '') {
-			return '';
-		}
-
-		if (results.length === 0) {
-			return 'No search results.';
-		}
-
-		const count = `${results.length}${results.length === LIMIT ? ' or more' : ''}`;
-		const kind = filter ? ` for ${filter}` : '';
-
-		return `${count} search ${results.length === 1 ? 'result' : 'results'}${kind}.`;
-	});
-
-	/**
-	 * Keeps the highlighted result in view.
-	 *
-	 * Focus stays in the text field so the reader can keep typing, which means the browser never
-	 * scrolls for them: it only follows focus. Arrow keys moved the highlight out of sight instead.
-	 *
-	 * `block: 'nearest'` scrolls the least that will do, so a result already visible does not jump,
-	 * and only the list scrolls rather than the page behind it.
-	 */
-	$effect(() => {
-		// Read both so the effect runs when the highlight moves and when the results change.
-		void selected;
-		void results;
-
-		list?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
-	});
+	function captureDialog(element: HTMLDialogElement): void {
+		dialog = element;
+	}
 
 	export function open(): void {
 		dialog?.showModal();
 		void searchIndex.load(version.id, searchHref(version.id));
-		input?.focus();
-		input?.select();
+		input?.focusAndSelect();
 	}
 
 	function close(): void {
@@ -133,16 +99,9 @@
 	 * reader can keep typing while moving through what they have found.
 	 */
 	function onkeydown(event: KeyboardEvent): void {
-		if (event.key === 'ArrowDown') {
+		if (isNavigationKey(event.key)) {
 			event.preventDefault();
-			moved = results.length === 0 ? 0 : (selected + 1) % results.length;
-
-			return;
-		}
-
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			moved = results.length === 0 ? 0 : (selected - 1 + results.length) % results.length;
+			moved = moveSelection(event.key, selected, results.length);
 
 			return;
 		}
@@ -153,114 +112,40 @@
 		}
 	}
 
-	const KIND_LABEL: Record<string, string> = {
-		guide: 'Guide',
-		'symbol-page': 'Reference',
-		symbol: 'Symbol'
-	};
+	function isNavigationKey(key: string): key is SearchNavigationKey {
+		return key === 'ArrowDown' || key === 'ArrowUp' || key === 'Home' || key === 'End';
+	}
 </script>
 
-<dialog bind:this={dialog} class="search" onclose={() => { query = ''; moved = 0; }}>
+<dialog {@attach captureDialog} class="search" onclose={() => { query = ''; moved = 0; }}>
 	<!-- Clicking the backdrop closes; clicks inside the panel must not bubble out to it. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="search__backdrop" onclick={close}></div>
 
 	<div class="search__panel">
-		<input
-			bind:this={input}
+		<SearchInput
+			bind:this={() => input, (component) => (input = component)}
 			bind:value={query}
-			class="search__input"
-			type="text"
-			role="combobox"
-			placeholder="Search {version.label} documentation"
-			aria-label="Search {version.label} documentation"
-			aria-autocomplete="list"
-			aria-controls={resultsId}
-			aria-expanded={results.length > 0}
-			aria-activedescendant={activeOptionId}
-			autocomplete="off"
-			spellcheck="false"
+			label={`Search ${version.label} documentation`}
+			{resultsId}
+			expanded={results.length > 0}
+			{activeOptionId}
 			oninput={retype}
 			{onkeydown}
 		/>
-		<p class="search__status" role="status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
-
-		{#if searchIndex.status === 'loading'}
-			<p class="search__note">Loading…</p>
-		{:else if searchIndex.status === 'failed'}
-			<p class="search__note">The search index could not be loaded.</p>
-		{:else if query.trim() === ''}
-			<p class="search__note">
-				Search guides, reference pages and framework symbols. Narrow with
-				<code>struct:</code>, <code>trait:</code>, <code>fn:</code>, <code>macro:</code> or
-				<code>doc:</code>.
-			</p>
-		{:else if results.length === 0}
-			<p class="search__note">Nothing matches “{query}”.</p>
-		{:else}
-			<p class="search__filter">
-				{#if filter}Showing <code>{filter}</code> only ·{/if}
-				{results.length}{results.length === LIMIT ? '+' : ''}
-				{results.length === 1 ? 'result' : 'results'}
-			</p>
-		{/if}
-
-		<!--
-			Keyed by position, not by destination. Two results can legitimately share an `href`: a
-			symbol with no page of its own links to its source line, and two struct fields declared
-			on one line produce the same link. Keying by it crashed the whole dialog with a duplicate
-			key. Position is the honest identity here anyway — the list is rebuilt from scratch on
-			every keystroke, so nothing in it persists across queries to be identified.
-		-->
-		<ul bind:this={list} class="search__results" id={resultsId} role="listbox" aria-label="Search results" hidden={results.length === 0}>
-			{#each results as result, index (index)}
-				<li role="presentation">
-					<a
-						class="search__result"
-						id={`${id}-option-${index}`}
-						href={result.href}
-						rel={result.record.external ? 'noreferrer' : undefined}
-						role="option"
-						tabindex="-1"
-						aria-selected={index === selected}
-						onmouseenter={() => (moved = index)}
-						onclick={close}
-					>
-						<span class="search__kind">
-							{KIND_LABEL[result.record.kind] ?? result.record.kind}
-							{#if result.record.symbolKind}
-								<span class="search__symbol-kind">{result.record.symbolKind.replace('_', ' ')}</span>
-							{/if}
-						</span>
-						<span class="search__title">
-							<Highlight text={result.record.title} ranges={result.titleRanges} />
-						</span>
-						{#if result.heading}
-							<span class="search__heading">› {result.heading}</span>
-						{/if}
-						{#if result.record.detail}
-							<span class="search__detail">
-								<Highlight text={result.record.detail} ranges={result.detailRanges} />
-							</span>
-						{/if}
-						{#if result.record.signature}
-							<span class="search__signature">{result.record.signature}</span>
-						{/if}
-						{#if result.excerpt}
-							<span class="search__excerpt">
-								<Highlight text={result.excerpt} ranges={result.excerptRanges} />
-							</span>
-						{/if}
-					</a>
-				</li>
-			{/each}
-		</ul>
-
-		{#if searchIndex.degraded}
-			<p class="search__note" data-degraded="true">
-				This release has no prepared artifact, so framework symbols are not searchable.
-			</p>
-		{/if}
+		<SearchResults
+			id={resultsId}
+			{optionIdPrefix}
+			{results}
+			{selected}
+			status={searchIndex.status}
+			{query}
+			{filter}
+			limit={LIMIT}
+			degraded={searchIndex.degraded}
+			onactive={(index) => (moved = index)}
+			onselect={close}
+		/>
 	</div>
 </dialog>
 
@@ -314,152 +199,4 @@
 		}
 	}
 
-	.search__input {
-		padding: 0.875rem 1rem;
-		border: none;
-		border-bottom: 1px solid var(--border);
-		background: none;
-		color: var(--text);
-		font: inherit;
-		font-size: 1rem;
-	}
-
-	.search__input:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: -2px;
-	}
-
-	.search__status {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
-	}
-
-	.search__note {
-		margin: 0;
-		padding: 1rem;
-		color: var(--text-subtle);
-		font-size: 0.875rem;
-	}
-
-	.search__note code,
-	.search__filter code {
-		padding: 0.05em 0.3em;
-		border-radius: 3px;
-		background: var(--surface-sunken);
-		font-family: var(--font-mono);
-		font-size: 0.8125em;
-	}
-
-	.search__filter {
-		margin: 0;
-		padding: 0.5rem 1rem;
-		border-bottom: 1px solid var(--border);
-		color: var(--text-subtle);
-		font-size: 0.75rem;
-	}
-
-	.search__note[data-degraded='true'] {
-		border-top: 1px solid var(--border);
-		padding: 0.625rem 1rem;
-		font-size: 0.75rem;
-	}
-
-	.search__results {
-		margin: 0;
-		padding: 0.375rem;
-		overflow-y: auto;
-		list-style: none;
-	}
-
-	/*
-	 * The kind column is dropped below 30rem: five rem of a narrow screen spent on a label, with the
-	 * title squeezed into what is left, is the wrong trade. The kind then sits above the title.
-	 */
-	.search__result {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 0 0.75rem;
-		padding: 0.5rem 0.625rem;
-		border-radius: calc(var(--radius) - 2px);
-		color: var(--text);
-		text-decoration: none;
-	}
-
-	@media (min-width: 30rem) {
-		.search__result {
-			grid-template-columns: 5rem 1fr;
-		}
-	}
-
-	.search__result[aria-selected='true'] {
-		background: var(--accent-surface);
-	}
-
-	.search__kind {
-		color: var(--text-subtle);
-		font-size: 0.6875rem;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		line-height: 1.6;
-	}
-
-	.search__title {
-		font-weight: 500;
-	}
-
-	.search__heading,
-	.search__detail,
-	.search__excerpt,
-	.search__signature {
-		color: var(--text-muted);
-		font-size: 0.8125rem;
-	}
-
-	@media (min-width: 30rem) {
-		.search__kind {
-			grid-row: 1;
-		}
-
-		.search__title,
-		.search__heading,
-		.search__detail,
-		.search__excerpt,
-		.search__signature {
-			grid-column: 2;
-		}
-	}
-
-	.search__signature {
-		overflow: hidden;
-		color: var(--text-subtle);
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.search__symbol-kind {
-		display: block;
-		font-size: 0.9em;
-		opacity: 0.75;
-	}
-
-	.search__detail {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-	}
-
-	.search__excerpt {
-		color: var(--text-subtle);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
 </style>

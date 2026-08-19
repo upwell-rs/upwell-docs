@@ -50,8 +50,8 @@ export async function sitemapParamValues(): Promise<Record<string, string[][]>> 
 
 	return {
 		'/docs/[version]/[...slug]': guides,
-		'/docs/[version]/[sourceVersion]/symbols': symbolIndexes,
-		'/docs/[version]/[sourceVersion]/symbols/[...path]': symbols
+		'/docs/[source]/[sourceVersion]/symbols': symbolIndexes,
+		'/docs/[source]/[sourceVersion]/symbols/[...path]': symbols
 	};
 }
 
@@ -68,7 +68,7 @@ export const sitemapExclusions: readonly RegExp[] = [
 	/^\/docs$/,
 	/^\/docs\/latest(?:$|\/)/,
 	/^\/docs\/\[version\]\/symbols(?:$|\/)/,
-	/^\/docs\/\[version\]\/\[sourceVersion\]\/src(?:$|\/)/
+	/^\/docs\/\[source\]\/\[sourceVersion\]\/src(?:$|\/)/
 ];
 
 export function robots(): string {

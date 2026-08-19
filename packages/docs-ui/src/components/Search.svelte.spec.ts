@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 
 import Search from './Search.svelte';
 import { SearchIndex } from '../search/index.svelte.ts';
+import type { SearchRecord } from '../search/rank.ts';
 
 const version = { id: 'current', label: 'Current' } as const;
 const records = [
@@ -11,7 +12,7 @@ const records = [
 	{ href: '/guides/state', title: 'State guide', kind: 'guide' as const }
 ];
 
-function response(items = records): Response {
+function response(items: readonly SearchRecord[] = records): Response {
 	return new Response(JSON.stringify({ version: version.id, records: items, degraded: false }));
 }
 
@@ -29,6 +30,7 @@ function press(input: HTMLInputElement, key: string): Promise<void> {
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 	document.documentElement.style.removeProperty('--accent');
 });
@@ -70,6 +72,25 @@ describe('Search', () => {
 		expect(options[0].hasAttribute('aria-current')).toBe(false);
 	});
 
+	it('imperatively focuses and selects the existing query when opened', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
+		const screen = render(Search, {
+			version,
+			searchIndex: new SearchIndex(),
+			searchHref: () => '/search.json',
+			navigate: vi.fn()
+		});
+		const input = screen.container.querySelector<HTMLInputElement>('[role="combobox"]')!;
+
+		await type(input, 'guide');
+		input.blur();
+		screen.component.open();
+
+		await expect.poll(() => input.ownerDocument.activeElement).toBe(input);
+		expect(input.selectionStart).toBe(0);
+		expect(input.selectionEnd).toBe('guide'.length);
+	});
+
 	it('keeps options out of the tab order', async () => {
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
 		const screen = render(Search, {
@@ -94,7 +115,7 @@ describe('Search', () => {
 		expect([...compositeTabStops]).toEqual([input]);
 	});
 
-	it('moves the active descendant while retaining input focus', async () => {
+	it('moves the active descendant with arrow, Home, and End keys while retaining input focus', async () => {
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
 		const screen = render(Search, {
 			version,
@@ -116,6 +137,75 @@ describe('Search', () => {
 		expect(input.getAttribute('aria-activedescendant')).toBe(options[1].id);
 		expect(options[0].getAttribute('aria-selected')).toBe('false');
 		expect(options[1].getAttribute('aria-selected')).toBe('true');
+
+		await press(input, 'Home');
+		expect(input.getAttribute('aria-activedescendant')).toBe(options[0].id);
+
+		await press(input, 'ArrowUp');
+		expect(input.getAttribute('aria-activedescendant')).toBe(options[1].id);
+
+		await press(input, 'End');
+		expect(input.getAttribute('aria-activedescendant')).toBe(options[1].id);
+
+		await type(input, 'routing');
+		await expect.poll(() => screen.container.querySelectorAll('[role="option"]')).toHaveLength(1);
+		expect(input.getAttribute('aria-activedescendant')).toBe(
+			screen.container.querySelector<HTMLElement>('[role="option"]')!.id
+		);
+	});
+
+	it('keeps the active option visible while keyboard selection moves', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
+		const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const screen = render(Search, {
+			version,
+			searchIndex: new SearchIndex(),
+			searchHref: () => '/search.json',
+			navigate: vi.fn()
+		});
+		const input = screen.container.querySelector<HTMLInputElement>('[role="combobox"]')!;
+
+		screen.component.open();
+		await type(input, 'guide');
+		await expect.poll(() => input.getAttribute('aria-expanded')).toBe('true');
+		scrollIntoView.mockClear();
+
+		await press(input, 'ArrowDown');
+		await expect.poll(() => scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+
+		const active = screen.container.querySelector<HTMLElement>('[aria-selected="true"]')!;
+
+		expect(scrollIntoView.mock.instances.at(-1)).toBe(active);
+	});
+
+	it('closes from the backdrop, restores focus, and resets the query', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
+		const opener = document.createElement('button');
+
+		document.body.append(opener);
+		opener.focus();
+
+		const screen = render(Search, {
+			version,
+			searchIndex: new SearchIndex(),
+			searchHref: () => '/search.json',
+			navigate: vi.fn()
+		});
+		const dialog = screen.container.querySelector('dialog')!;
+		const input = screen.container.querySelector<HTMLInputElement>('[role="combobox"]')!;
+
+		screen.component.open();
+		await type(input, 'guide');
+		await expect.poll(() => input.getAttribute('aria-expanded')).toBe('true');
+
+		screen.container.querySelector<HTMLElement>('.search__backdrop')!.click();
+		await expect.poll(() => dialog.open).toBe(false);
+		await expect.poll(() => input.value).toBe('');
+
+		expect(document.activeElement).toBe(opener);
+		expect(input.getAttribute('aria-expanded')).toBe('false');
+
+		opener.remove();
 	});
 
 	it('opens the active descendant with Enter', async () => {
@@ -173,6 +263,45 @@ describe('Search', () => {
 		expect(click.defaultPrevented).toBe(true);
 		expect(navigate).not.toHaveBeenCalled();
 		expect(dialog.open).toBe(false);
+	});
+
+	it('renders result metadata and highlights the matched fields', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(
+				response([
+					{
+						href: '/symbols/router',
+						title: 'Router',
+						kind: 'symbol' as const,
+						symbolKind: 'struct_field',
+						detail: 'crate::Router',
+						signature: 'pub struct Router',
+						text: 'A router dispatches requests.'
+					}
+				])
+			)
+		);
+		const screen = render(Search, {
+			version,
+			searchIndex: new SearchIndex(),
+			searchHref: () => '/search.json',
+			navigate: vi.fn()
+		});
+		const input = screen.container.querySelector<HTMLInputElement>('[role="combobox"]')!;
+
+		screen.component.open();
+		await type(input, 'router');
+		await expect.poll(() => input.getAttribute('aria-expanded')).toBe('true');
+
+		const option = screen.container.querySelector<HTMLAnchorElement>('.search__result')!;
+
+		expect(option.querySelector('.search__kind')?.textContent).toContain('Symbol');
+		expect(option.querySelector('.search__symbol-kind')?.textContent).toBe('struct field');
+		expect(option.querySelector('.search__detail')?.textContent).toBe('crate::Router');
+		expect(option.querySelector('.search__signature')?.textContent).toBe('pub struct Router');
+		expect(option.querySelector('.search__excerpt')?.textContent).toContain('router dispatches requests');
+		expect(option.querySelectorAll('mark').length).toBeGreaterThan(0);
 	});
 
 	it('announces loading, result counts, empty results, and failures politely', async () => {

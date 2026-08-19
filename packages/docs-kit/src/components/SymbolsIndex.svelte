@@ -14,19 +14,13 @@
 	import { createVirtualizer, elementScroll, observeElementOffset, observeElementRect } from '@tanstack/svelte-virtual';
 	import { get } from 'svelte/store';
 
-	interface Record {
-		readonly path: string;
-		readonly name: string;
-		readonly crate: string;
-		readonly kind: string;
-		readonly summary: string | null;
-		readonly href: string;
-		readonly authored: boolean;
-	}
+	import { filterSymbolRecords, type SymbolRecord } from './symbols-index/filter-symbol-records.ts';
+	import SymbolIndexFilters from './symbols-index/SymbolIndexFilters.svelte';
+	import SymbolIndexRow from './symbols-index/SymbolIndexRow.svelte';
 
 	interface Props {
 		source: { readonly crate: string };
-		records: readonly Record[];
+		records: readonly SymbolRecord[];
 		sources: readonly { readonly name: string; readonly version: string; readonly href: string }[];
 	}
 
@@ -37,11 +31,7 @@
 
 	const ROW_ESTIMATE = 84;
 	const crates = $derived([...new Set(records.map((record) => record.crate))].sort());
-	const visible = $derived(records.filter((record) => {
-		const wanted = query.trim().toLowerCase();
-
-		return (crate === 'all' || record.crate === crate) && (!wanted || record.path.toLowerCase().includes(wanted) || record.summary?.toLowerCase().includes(wanted));
-	}));
+	const visible = $derived(filterSymbolRecords(records, query, crate));
 
 	/**
 	 * The complete option set, named in one place.
@@ -114,19 +104,7 @@
 	</nav>
 {/if}
 
-<div class="filters">
-	<label>
-		<span>Find a symbol</span>
-		<input bind:value={query} type="search" placeholder="Try component or AxumConfig" />
-	</label>
-	<label>
-		<span>Crate</span>
-		<select bind:value={crate}>
-			<option value="all">All crates</option>
-			{#each crates as name (name)}<option value={name}>{name}</option>{/each}
-		</select>
-	</label>
-</div>
+<SymbolIndexFilters {crates} bind:query bind:crate />
 
 <p class="count">{visible.length} {visible.length === 1 ? 'symbol' : 'symbols'}</p>
 
@@ -136,12 +114,7 @@
 			{@const record = visible[row.index]}
 			{#if record}
 				<li use:measure data-index={row.index} style={`transform: translateY(${row.start}px)`}>
-					<div class="symbol__heading">
-						<a href={record.href}><code>{record.path}</code></a>
-						<span class="kind">{record.kind}</span>
-						{#if record.authored}<span class="authored">curated</span>{/if}
-					</div>
-					{#if record.summary}<p>{record.summary}</p>{/if}
+					<SymbolIndexRow {record} />
 				</li>
 			{/if}
 		{/each}
@@ -158,9 +131,6 @@
 	.sources a:hover, .sources a[aria-current='page'] { border-color: var(--accent); }
 	.sources code { color: var(--text); font-size: 0.8125rem; }
 	.sources span { color: var(--text-subtle); font-size: 0.75rem; }
-	.filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem); gap: 0.75rem; margin: 1.5rem 0 0.75rem; }
-	.filters label { display: grid; gap: 0.3rem; color: var(--text-subtle); font-size: 0.75rem; font-weight: 600; }
-	.filters input, .filters select { min-width: 0; padding: 0.6rem 0.7rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); color: var(--text); font: inherit; }
 	.count { color: var(--text-subtle); font-size: 0.8125rem; }
 
 	/*
@@ -174,11 +144,4 @@
 	.results { max-height: min(70vh, 46rem); overflow: hidden auto; overscroll-behavior: contain; }
 	.symbols { position: relative; margin: 0; padding: 0; list-style: none; }
 	.symbols li { position: absolute; top: 0; left: 0; box-sizing: border-box; width: 100%; padding: 1rem 0; border-top: 1px solid var(--border); }
-	.symbol__heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-	.symbols a { text-decoration: none; }
-	.symbols code { font-family: var(--font-mono); font-size: 0.875rem; }
-	.kind, .authored { color: var(--text-subtle); font-size: 0.6875rem; letter-spacing: 0.05em; text-transform: uppercase; }
-	.authored { color: var(--accent); }
-	.symbols p { margin: 0.3rem 0 0; color: var(--text-muted); font-size: 0.875rem; }
-	@media (max-width: 36rem) { .filters { grid-template-columns: 1fr; } }
 </style>

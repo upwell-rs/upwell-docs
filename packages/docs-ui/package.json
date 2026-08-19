@@ -8,6 +8,7 @@
 		"./styles.css": "./src/styles.css",
 		"./context": "./src/context.ts",
 		"./types": "./src/types.ts",
+		"./symbol-card": "./src/components/symbol-card/index.ts",
 		"./search": "./src/search/index.svelte.ts",
 		"./search/match": "./src/search/match.ts",
 		"./search/query": "./src/search/query.ts",
