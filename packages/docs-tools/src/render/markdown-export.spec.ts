@@ -85,6 +85,60 @@ describe("markdownFromPageSource", () => {
     expect(bare).toBe("See `upwell::axum::Axum` for defaults.\n");
   });
 
+  it("renders authoring references as links with authored and default labels", () => {
+    const source = [
+      '<GuideRef slug="getting-started">Start here</GuideRef>',
+      '<GuideRef slug="configuration" />',
+      '<GuideRef slug="cargo-upwell" fragment="#validate-one-application">validation</GuideRef>',
+      '<SymbolRef path="upwell::App">the application</SymbolRef>',
+      '<SymbolRef path="upwell::Router" source="upwell-extra" version="extra-v2" />',
+      '<SrcRef path="src/lib.rs">implementation</SrcRef>',
+      '<SrcRef path="src/odd#name.rs" source="upwell-extra" />',
+    ].join("\n");
+    const seen: unknown[] = [];
+    const markdown = markdownFromPageSource(source, {
+      referenceHref: (reference) => {
+        seen.push(reference);
+
+        if (reference.kind === "guide") {
+          return `/llms/root-v1/${reference.slug}.md${reference.fragment ? `#${reference.fragment}` : ""}`;
+        }
+
+        const version = reference.version ?? (reference.source ? "extra-latest" : "root-v1");
+        const source = reference.source ?? "upwell";
+        const route = reference.kind === "symbol" ? "symbols" : "src";
+
+        return `/docs/${source}/${version}/${route}/${reference.path.replaceAll("::", "/")}`;
+      },
+    });
+
+    expect(markdown).toContain("[Start here](/llms/root-v1/getting-started.md)");
+    expect(markdown).toContain("[configuration](/llms/root-v1/configuration.md)");
+    expect(markdown).toContain("[validation](/llms/root-v1/cargo-upwell.md#validate-one-application)");
+    expect(markdown).toContain("[the application](/docs/upwell/root-v1/symbols/upwell/App)");
+    expect(markdown).toContain("[upwell::Router](/docs/upwell-extra/extra-v2/symbols/upwell/Router)");
+    expect(markdown).toContain("[implementation](/docs/upwell/root-v1/src/src/lib.rs)");
+    expect(markdown).toContain("[src/odd#name.rs](/docs/upwell-extra/extra-latest/src/src/odd#name.rs)");
+    expect(markdown).not.toMatch(/<\/?(?:GuideRef|SymbolRef|SrcRef)/);
+    expect(seen).toContainEqual({ kind: "symbol", path: "upwell::Router", source: "upwell-extra", version: "extra-v2" });
+  });
+
+  it("removes unresolved authoring tags while preserving their visible text", () => {
+    const markdown = markdownFromPageSource('<GuideRef slug="guide">read this</GuideRef> and <SymbolRef path="upwell::App" />');
+
+    expect(markdown).toBe("read this and upwell::App\n");
+  });
+
+  it.each([
+    '<GuideRef slug="bad#slug" />',
+    '<GuideRef slug="guide" fragment="bad#fragment" />',
+    '<SymbolRef path="upwell::Bad?" />',
+    '<SymbolRef path="upwell::App" source="upwell extra" />',
+    '<SrcRef path="../secret.rs" />',
+  ])("rejects invalid authored reference input in exports", (source) => {
+    expect(() => markdownFromPageSource(source, { referenceHref: () => "/unused" })).toThrow("Invalid documentation");
+  });
+
   it("leaves a fenced example alone, however much it looks like the page's own markup", () => {
     const source = [
       "# Writing a page",

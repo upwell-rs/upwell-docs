@@ -6,12 +6,12 @@ topics: ['tooling']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, GuideRef } from '#lib/docs';
 </script>
 
 # Cargo Upwell
 
-Cargo Upwell is the command-line companion to the framework, not a requirement for building an application. Start with [getting started](/docs/latest/getting-started) if you have not written an Upwell application yet.
+Cargo Upwell is the command-line companion to the framework, not a requirement for building an application. Start with <GuideRef slug="getting-started">getting started</GuideRef> if you have not written an Upwell application yet.
 
 Use `cargo-upwell` to prepare an Upwell application's tooling document, validate it, and then inspect its resources. It builds a generated probe in an isolated tooling path; it never starts the application server.
 
@@ -64,7 +64,7 @@ cargo upwell doctor --format json
 
 </Example>
 
-`doctor` includes application validation plus checks for workspace selection, the isolated build, probe compatibility, framework-version agreement, and preparation. Its JSON report has a versioned `schema`, stable `outcome`, numeric `exit_code`, selected target when available, and canonical diagnostics. See [automate validation](/docs/latest/cargo-upwell/automation-and-extensions#automate-validation) before depending on those fields in CI.
+`doctor` includes application validation plus checks for workspace selection, the isolated build, probe compatibility, framework-version agreement, and preparation. Its JSON report has a versioned `schema`, stable `outcome`, numeric `exit_code`, selected target when available, and canonical diagnostics. See <GuideRef slug="cargo-upwell/automation-and-extensions" fragment="automate-validation">automate validation</GuideRef> before depending on those fields in CI.
 
 ## Resolve a workspace ambiguity
 
@@ -98,4 +98,4 @@ Without explicit flags, Cargo Upwell selects one eligible default-member binary,
 
 ## Continue from a valid document
 
-After `check` succeeds, follow [inspect and query an application](/docs/latest/cargo-upwell/inspect-and-graph) to trace a resource or render its relationships. Use [automation and extension points](/docs/latest/cargo-upwell/automation-and-extensions) to retain structured reports in CI, generate projects, add renderers, or configure completion.
+After `check` succeeds, follow <GuideRef slug="cargo-upwell/inspect-and-graph">inspect and query an application</GuideRef> to trace a resource or render its relationships. Use <GuideRef slug="cargo-upwell/automation-and-extensions">automation and extension points</GuideRef> to retain structured reports in CI, generate projects, add renderers, or configure completion.

@@ -6,7 +6,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # The `app!` macro
@@ -72,7 +72,7 @@ app! {
 
 Use lifecycle callbacks when work belongs to process startup, the completed application, or serving. Use protocol-specific builder methods inside configuration for routes, middleware, and transport settings.
 
-The [canonical `app!` reference](/docs/latest/symbols/upwell_macros/app) lists every macro key, callback shape, and protocol-specific option. It is the source for `services`, components, configuration bindings, managers, CLI commands, and macro path overrides.
+The <SymbolRef path="upwell_macros/app">canonical `app!` reference</SymbolRef> lists every macro key, callback shape, and protocol-specific option. It is the source for `services`, components, configuration bindings, managers, CLI commands, and macro path overrides.
 
 ## When to use the builder
 

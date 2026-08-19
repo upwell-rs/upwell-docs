@@ -7,8 +7,20 @@
  */
 
 import { docsRoutes } from '#lib/docs/runtime';
+import type { PageMetadata } from '#lib/docs/site/metadata';
+import { docsConfig } from 'virtual:docs-config';
 import type { EntryGenerator, PageLoad } from './$types';
 
 export const entries: EntryGenerator = () => [...docsRoutes.guideEntries()];
 
-export const load: PageLoad = async ({ params, parent }) => docsRoutes.loadGuide(params, (await parent()).version);
+export const load: PageLoad = async ({ params, parent, url }) => {
+	const data = await docsRoutes.loadGuide(params, (await parent()).version);
+	const metadata: PageMetadata = {
+		title: data.page.title,
+		description: data.page.description ?? `${data.page.title} in the ${docsConfig.framework.name} ${data.version.label} documentation.`,
+		path: url.pathname,
+		version: data.version.label
+	};
+
+	return { ...data, metadata };
+};

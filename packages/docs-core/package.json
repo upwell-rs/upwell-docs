@@ -7,6 +7,7 @@
 		".": "./src/index.ts",
 		"./config": "./src/config.ts",
 		"./semver": "./src/semver.ts",
+		"./references": "./src/references.ts",
 		"./applicability": "./src/applicability.ts",
 		"./overlay": "./src/overlay.ts",
 		"./paths": "./src/paths.ts",

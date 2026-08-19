@@ -7,10 +7,11 @@
  * supply the enumeration and the rendering.
  */
 
-import { docsVersions, latestVersion } from '@upwell/docs-core/config';
+import { docsVersions, latestVersion, resolveFrameworkReferenceVersion } from '@upwell/docs-core/config';
 import { directoryOf, resolveRelativePath } from '@upwell/docs-core/paths';
+import { guideSlug, sourceCrate, sourcePath, symbolPath } from '@upwell/docs-core/references';
 import { llmsTxt, robotsTxt } from '@upwell/docs-kit/server';
-import { markdownFromPageSource } from '@upwell/docs-tools/render/markdown-export';
+import { markdownFromPageSource, type MarkdownAuthoringReference } from '@upwell/docs-tools/render/markdown-export';
 
 import { docsContent, docsRoutes } from './runtime.ts';
 import { docsServerRoutes } from './runtime.server.ts';
@@ -101,7 +102,7 @@ export function llms(): string {
 				title: 'Reference',
 				links: [
 					{ title: 'Symbol index', path: docsContent.symbolHref(docsContent.config.framework.root.crate, latest.id, '').replace(/\/$/, ''), description: 'Every documented symbol in this release.' },
-					{ title: 'Repository source', path: `/docs/${docsContent.config.framework.root.crate}/${latest.id}/src/`, description: 'The framework source at the revision this release documents.' }
+					{ title: 'Repository source', path: docsContent.sourceHref(docsContent.config.framework.root.crate, latest.id, ''), description: 'The framework source at the revision this release documents.' }
 				]
 			},
 			{
@@ -149,12 +150,34 @@ export async function guideMarkdown(versionId: string, requested: string): Promi
 
 	return markdownFromPageSource(await load(), {
 		relativeLinkSuffix: '.md',
+		referenceHref: (reference) => exportedReferenceHref(reference, version),
 		exports: (destination) => {
 			const target = resolveRelativePath(directory, destination);
 
 			return Boolean(target && docsContent.findPage(target, version.releaseVersion));
 		}
 	});
+}
+
+function exportedReferenceHref(reference: MarkdownAuthoringReference, activeVersion: ReturnType<typeof docsRoutes.resolveVersion>): string {
+	if (reference.kind === 'guide') {
+		return `${markdownPath(activeVersion.id, guideSlug(reference.slug))}${reference.fragment ? `#${reference.fragment}` : ''}`;
+	}
+
+	const target = resolveFrameworkReferenceVersion(docsContent.config, {
+		source: reference.source === undefined ? undefined : sourceCrate(reference.source),
+		version: reference.version,
+		activeSource: docsContent.config.framework.root.crate,
+		activeVersion
+	});
+
+	if (!target) {
+		throw new Error(`Unknown documentation source or version in exported ${reference.kind} reference.`);
+	}
+
+	return reference.kind === 'symbol'
+		? docsContent.symbolHref(target.source.crate, target.version.id, symbolPath(reference.path))
+		: docsContent.sourceHref(target.source.crate, target.version.id, sourcePath(reference.path));
 }
 
 /** Every guide that has a Markdown copy, for prerendering them all. */

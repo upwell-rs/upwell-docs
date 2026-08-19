@@ -6,7 +6,7 @@ topics: ['web']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # HTTP controllers
@@ -129,7 +129,7 @@ impl UsersController {
 
 </Example>
 
-Use a direct typed response whenever possible. When a custom `IntoResponse` obscures the success body or alternatives, document that contract with route response metadata in the [`#[route]` reference](/docs/latest/symbols/upwell_axum_macros/route).
+Use a direct typed response whenever possible. When a custom `IntoResponse` obscures the success body or alternatives, document that contract with route response metadata in the <SymbolRef path="upwell_axum_macros/route">`#[route]` reference</SymbolRef>.
 
 ## Accept a request stream only for streamed input
 
@@ -173,7 +173,7 @@ A route has at most one request stream. Use a recognized streaming response, or 
 
 The canonical references list route syntax, options, generated clients, and constraints:
 
-- [`#[controller]`](/docs/latest/symbols/upwell_axum_macros/controller)
-- [`#[handlers]`](/docs/latest/symbols/upwell_axum_macros/handlers)
-- [`#[route]`](/docs/latest/symbols/upwell_axum_macros/route)
-- [`#[dto]`](/docs/latest/symbols/upwell_axum_macros/dto)
+- <SymbolRef path="upwell_axum_macros/controller"><code>#[controller]</code></SymbolRef>
+- <SymbolRef path="upwell_axum_macros/handlers"><code>#[handlers]</code></SymbolRef>
+- <SymbolRef path="upwell_axum_macros/route"><code>#[route]</code></SymbolRef>
+- <SymbolRef path="upwell_axum_macros/dto"><code>#[dto]</code></SymbolRef>

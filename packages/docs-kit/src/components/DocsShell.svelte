@@ -4,7 +4,7 @@
 	import { setDocsNotifier, setDocsVersion } from '@upwell/docs-ui/context';
 	import type { SearchIndex } from '@upwell/docs-ui/search';
 	import { Breadcrumbs, DocsArticle, DocsHeader, MobileNav, Notifications, PageNav, PaneResizer, ReferenceNote, ReleaseSelect, Search, Shortcuts, TableOfContents } from '@upwell/docs-ui';
-	import type { DocsSource, DocsVersion } from '@upwell/docs-core/config';
+	import { docsVersions, frameworkCrate, resolveFrameworkReferenceVersion, type DocsSource, type DocsVersion } from '@upwell/docs-core/config';
 	import type { DocSummary, PageChrome } from '@upwell/docs-core/content';
 
 	import type { DocsContent } from '../content.ts';
@@ -19,9 +19,12 @@
 		type SidebarState
 	} from '../client.svelte.ts';
 	import DocsSidebar from './DocsSidebar.svelte';
+	import ReleaseNotice from './ReleaseNotice.svelte';
+	import SkipLink from './SkipLink.svelte';
 	import SymbolsSidebar from './SymbolsSidebar.svelte';
+	import { resolveReleaseNotice } from './release-notice.ts';
+	import { DOCS_MAIN_ID } from './shell-a11y.ts';
 	import type { SymbolRecord } from '../sveltekit-server.ts';
-	import { docsVersions } from '@upwell/docs-core/config';
 
 	interface Props {
 		content: DocsContent;
@@ -51,18 +54,47 @@
 
 	setDocsVersion(() => version);
 	setDocsNotifier((() => notifications.notifier)() as DocsNotifier);
+
+	function reference(sourceId?: string, versionId?: string) {
+		const resolved = resolveFrameworkReferenceVersion(content.config, {
+			source: sourceId,
+			version: versionId,
+			activeSource: source?.crate ?? content.config.framework.root.crate,
+			activeVersion: version
+		});
+
+		if (!resolved) {
+			throw new Error(`Unknown documentation source or version: ${sourceId ?? content.config.framework.root.crate}${versionId ? `@${versionId}` : ''}.`);
+		}
+
+		return resolved;
+	}
+
 	setDocsAuthoringContext({
 		defaultCrate: (() => content.config.framework.root.crate)(),
-		version: () => version
+		version: () => version,
+		guideHref: (slug) => content.pageHref(reference().version.id, slug),
+		symbolHref: (path, source, requestedVersion) => {
+			const target = reference(source, requestedVersion);
+
+			return content.symbolHref(target.source.crate, target.version.id, path);
+		},
+		sourceHref: (path, source, requestedVersion) => {
+			const target = reference(source, requestedVersion);
+
+			return content.sourceHref(target.source.crate, target.version.id, path);
+		}
 	});
 
 	const slug = $derived(current?.slug ?? '');
 	const symbols = $derived(slug === 'symbols' || slug.startsWith('symbols/'));
 	const sourceViewer = $derived(slug.startsWith('src/'));
 	const activeSource = $derived(source ?? content.config.framework.root);
+	const activeCrate = $derived(frameworkCrate(content.config, activeSource.crate) ?? content.config.framework.root);
 	const availableVersions = $derived(versions ?? docsVersions(content.config));
+	const releaseNotice = $derived(resolveReleaseNotice({ content, version, source: activeCrate, slug }));
 	const symbolsIndexHref = $derived(content.symbolHref(activeSource.crate, version.id, '').replace(/\/$/, ''));
-	const sourceHref = $derived(`/docs/${activeSource.crate}/${version.id}/src/`);
+	const sourceHref = $derived(content.sourceHref(activeSource.crate, version.id, ''));
 	const sidebarArea = $derived<SidebarArea>(symbols ? 'symbols' : 'guides');
 	const sidebarWidth = $derived(Math.min(sidebar.width.get(sidebarArea), sidebarMax));
 
@@ -117,7 +149,7 @@
 		}
 
 		if (sourceViewer) {
-			assignLocation(`/docs/${activeSource.crate}/${target.id}/${slug}`);
+			assignLocation(content.sourceHref(activeSource.crate, target.id, slug.slice('src/'.length)));
 
 			return;
 		}
@@ -134,11 +166,13 @@
 
 <!--
 	The shell is a two-row grid so the layout below the header measures itself against whatever is
-	left of the viewport, rather than against a hardcoded copy of the header's height. Only these two
-	elements may be its children: the overlays below render nothing in flow, but as grid items they
-	would claim rows and break the split.
+	left of the viewport, rather than against a hardcoded copy of the header's height. The skip link is
+	fixed and therefore does not claim a grid row; overlays rendered below the shell stay outside it for
+	the same reason.
 -->
 <div class:shell--fixed={sourceViewer} class="shell">
+	<SkipLink />
+
 	<DocsHeader
 		{version}
 		name={content.config.framework.name}
@@ -200,11 +234,14 @@
 			</div>
 		{/if}
 
-		<main bind:this={main} class:layout__main--source={sourceViewer} class="layout__main">
+		<main id={DOCS_MAIN_ID} bind:this={main} class:layout__main--source={sourceViewer} class:layout__main--notice={sourceViewer && Boolean(releaseNotice)} class="layout__main" tabindex="-1">
 			{#if sourceViewer}
-				{@render children()}
+				<ReleaseNotice notice={releaseNotice} mode="source" />
+				<div class="layout__source-content">{@render children()}</div>
 			{:else}
 				<div class="layout__reading">
+					<ReleaseNotice notice={releaseNotice} />
+
 					{#if current}
 						<Breadcrumbs {version} section={current.section} title={current.title} />
 					{/if}
@@ -274,6 +311,9 @@
 	.shell--fixed { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; overflow: hidden; }
 	.layout--source { box-sizing: border-box; min-height: 0; height: 100%; max-width: none; margin: 0; padding: 0; overflow: hidden; }
 	.layout__main--source { min-height: 0; height: 100%; overflow: hidden; }
+	.layout__main--source.layout__main--notice { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+	.layout__source-content { min-height: 0; height: 100%; overflow: hidden; }
+	.layout__main--notice .layout__source-content { height: auto; }
 
 	@media (min-width: 60rem) {
 		/*

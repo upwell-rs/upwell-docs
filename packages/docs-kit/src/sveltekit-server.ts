@@ -98,7 +98,7 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 			crate: page.symbol.split('::')[0].replaceAll('_', '-'),
 			kind: 'page',
 			summary: page.description ?? null,
-			href: `/docs/${source.crate}/${version.id}/symbols/${page.segments}`,
+			href: content.symbolHref(source.crate, version.id, page.segments),
 			authored: true
 		})) : []);
 
@@ -182,7 +182,7 @@ export function createDocsServerRouteHelpers(options: DocsServerRouteHelpersOpti
 				return {
 					name: entry.crate,
 					version: latest.label,
-					href: `/docs/${entry.crate}/${latest.id}/symbols`
+					href: content.symbolHref(entry.crate, latest.id, '').replace(/\/$/, '')
 				};
 			});
 

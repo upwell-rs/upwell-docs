@@ -1,5 +1,6 @@
 export * from "./semver.ts";
 export * from "./config.ts";
+export * from "./references.ts";
 export * from "./applicability.ts";
 export * from "./overlay.ts";
 export * from "./content.ts";

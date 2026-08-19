@@ -6,7 +6,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # Components and injection
@@ -103,7 +103,7 @@ impl DatabaseConnection {
 
 </Example>
 
-The initializer can be synchronous or asynchronous and can return either the component directly or a `Result`. Use `#[hook(...)]` in the same `#[methods]` implementation for lifecycle behavior that runs after construction. See the [methods symbol page](/docs/latest/symbols/upwell_macros/methods) for hook and initializer signatures.
+The initializer can be synchronous or asynchronous and can return either the component directly or a `Result`. Use `#[hook(...)]` in the same `#[methods]` implementation for lifecycle behavior that runs after construction. See the <SymbolRef path="upwell_macros/methods">methods symbol page</SymbolRef> for hook and initializer signatures.
 
 ## Depend on behavior, not an implementation
 
@@ -158,7 +158,7 @@ Injecting both the concrete component and its trait view still uses one construc
 
 This guide focuses on choosing and assembling a component. The canonical symbol pages cover attributes, accepted forms, and edge cases:
 
-- [`#[component]`](/docs/latest/symbols/upwell_macros/component)
-- [`#[methods]`](/docs/latest/symbols/upwell_macros/methods)
-- [`#[injectable]`](/docs/latest/symbols/upwell_macros/injectable)
-- [`#[config]`](/docs/latest/symbols/upwell_macros/config)
+- <SymbolRef path="upwell_macros/component"><code>#[component]</code></SymbolRef>
+- <SymbolRef path="upwell_macros/methods"><code>#[methods]</code></SymbolRef>
+- <SymbolRef path="upwell_macros/injectable"><code>#[injectable]</code></SymbolRef>
+- <SymbolRef path="upwell_macros/config"><code>#[config]</code></SymbolRef>

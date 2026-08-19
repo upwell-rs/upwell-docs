@@ -12,7 +12,7 @@ export {
 	SymbolSignature,
 	Tabs
 } from '@upwell/docs-ui';
-export { PackageInstall } from './components/index.ts';
+export { GuideRef, PackageInstall, SrcRef, SymbolRef } from './components/index.ts';
 export type { DocFrontmatter, DocHeading, DocSummary, NavigationGroup, NavigationNode, SymbolFrontmatter } from '@upwell/docs-core/content';
 export type { SymbolInfo, SymbolLink, SymbolMember } from '@upwell/docs-ui/types';
 export { getDocsVersion } from './authoring-context.svelte.ts';

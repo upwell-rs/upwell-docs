@@ -9,7 +9,8 @@ import { latestVersion } from '@upwell/docs-core/config';
  * Version ids change as releases are added, and a suite that hardcodes one throughout fails for a
  * configuration update rather than for a regression.
  */
-const VERSION = latestVersion(docsConfig).id;
+const RELEASE = latestVersion(docsConfig);
+const VERSION = RELEASE.id;
 
 /**
  * End-to-end coverage of the things that only exist once a page is built and served: the version
@@ -35,6 +36,39 @@ test('the release picker falls back to the target landing page when a normalized
 
 	await page.getByRole('navigation', { name: 'Release' }).getByRole('combobox').selectOption('0.20.0');
 	await expect(page).toHaveURL('/docs/0.20.0/getting-started');
+});
+
+test('historical guides link to the matching latest guide or its landing page', async ({ page }) => {
+	await page.goto('/docs/0.20.0/release-compatibility');
+
+	let notice = page.getByRole('complementary', { name: 'Release notice' });
+
+	await expect(notice).toContainText('You are viewing 0.20.0');
+	await expect(notice.getByRole('link', { name: `View the latest release (${RELEASE.label})` })).toHaveAttribute(
+		'href',
+		`/docs/${VERSION}/release-compatibility`
+	);
+
+	await page.goto('/docs/0.20.0/native-daemon-rpc');
+
+	notice = page.getByRole('complementary', { name: 'Release notice' });
+
+	await expect(notice.getByRole('link', { name: `View the latest release (${RELEASE.label})` })).toHaveAttribute(
+		'href',
+		`/docs/${VERSION}/${docsConfig.landingSlug}`
+	);
+});
+
+test('a historical source notice links to the verified latest source root', async ({ page }) => {
+	await page.goto('/docs/upwell/0.20.0/src/crates/app/src/lib.rs');
+
+	const notice = page.getByRole('complementary', { name: 'Release notice' });
+
+	await expect(notice).toContainText('You are viewing 0.20.0');
+	await expect(notice.getByRole('link', { name: `View the latest release (${RELEASE.label})` })).toHaveAttribute(
+		'href',
+		`/docs/upwell/${VERSION}/src/`
+	);
 });
 
 test('versioned guide visibility uses normalized routes without a root Guides group', async ({ page }) => {
@@ -71,7 +105,7 @@ test('historical releases expose generated symbols by default', async ({ page })
 	// anything.
 	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 	await page.getByRole('button', { name: 'Search' }).click();
-	await page.getByRole('searchbox').fill('release compatibility');
+	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('release compatibility');
 	await expect(page.locator('.search__result[href="/docs/0.20.0/release-compatibility"]')).toBeVisible();
 });
 
@@ -93,6 +127,61 @@ test('a guide renders with navigation', async ({ page }) => {
 	// would be ambiguous rather than wrong.
 	await expect(sidebar.getByRole('link', { name: 'Advanced dependency injection' })).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: 'Components and injection' })).toHaveAttribute('aria-current', 'page');
+});
+
+test('the skip link is the first keyboard control and focuses the reading pane', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/di/components`);
+
+	const skip = page.getByRole('link', { name: 'Skip to documentation' });
+	const main = page.locator('#docs-main');
+
+	await page.keyboard.press('Tab');
+
+	await expect(skip).toBeFocused();
+	await expect(skip).toBeInViewport();
+	await expect(skip).toHaveAttribute('href', '#docs-main');
+
+	await page.keyboard.press('Enter');
+
+	await expect(page).toHaveURL(`/docs/${VERSION}/di/components#docs-main`);
+	await expect(main).toBeFocused();
+});
+
+test('a guide publishes one canonical social metadata set for its explicit URL', async ({ page }, testInfo) => {
+	const baseURL = testInfo.project.use.baseURL;
+
+	if (typeof baseURL !== 'string') {
+		throw new Error('Playwright baseURL must be configured for metadata coverage.');
+	}
+
+	const url = `${new URL(baseURL).origin}/docs/${VERSION}/di/components`;
+
+	await page.goto(`/docs/${VERSION}/di/components`);
+	await expect(page).toHaveURL(url);
+
+	const title = await page.title();
+	const metadata = [
+		'link[rel="canonical"]',
+		'meta[property="og:type"]',
+		'meta[property="og:site_name"]',
+		'meta[property="og:title"]',
+		'meta[property="og:description"]',
+		'meta[property="og:url"]',
+		'meta[name="twitter:card"]',
+		'meta[name="twitter:title"]',
+		'meta[name="twitter:description"]'
+	];
+
+	expect(title).toContain(`${docsConfig.framework.name} ${RELEASE.label}`);
+
+	for (const selector of metadata) {
+		await expect(page.locator(selector)).toHaveCount(1);
+	}
+
+	await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', url);
+	await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', url);
+	await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', title);
+	await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute('content', title);
 });
 
 test('code blocks carry symbol metadata resolved at build time', async ({ page }) => {
@@ -182,6 +271,7 @@ test('clicking a documented inline symbol navigates to its authored reference', 
 
 test('a documented symbol card keeps View source on GitHub', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	await page.locator('a[data-symbol="upwell::prelude::component"]').first().hover();
 
@@ -424,7 +514,7 @@ test('an unknown symbol answers with a 404', async ({ page }) => {
 });
 
 test('letter shortcuts move between adjacent path-derived pages', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/di/advanced`);
 
 	// Shortcuts are registered on mount, so the page has to be interactive before a key means
 	// anything. Waiting on a hydration-dependent element is more honest than a fixed delay.
@@ -435,7 +525,7 @@ test('letter shortcuts move between adjacent path-derived pages', async ({ page 
 	// unmodified and the matcher — which compares modifiers exactly — would never fire.
 	await page.keyboard.press('p');
 
-	await expect(page).toHaveURL(`/docs/${VERSION}/framework/app-macro`);
+	await expect(page).toHaveURL(`/docs/${VERSION}/di/components`);
 });
 
 test('Alt+arrow moves between pages too', async ({ page }) => {
@@ -471,7 +561,7 @@ test('search finds a guide by a word in its body', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
-	await page.getByRole('searchbox').fill('choose one provider');
+	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('choose one provider');
 
 	// A heading match points into the section rather than the top of the page.
 	const first = page.locator('.search__result').first();
@@ -485,7 +575,7 @@ test('a kind filter narrows search to that kind', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
-	await page.getByRole('searchbox').fill('trait:Component');
+	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('trait:Component');
 
 	await expect(page.locator('.search__filter')).toContainText('trait');
 	// Every result is a symbol; the guide that shares the word is excluded.
@@ -497,7 +587,7 @@ test('a documented symbol appears once, under its own kind, linking to its page'
 	await page.goto(`/docs/${VERSION}/di/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
-	await page.getByRole('searchbox').fill('macro:component');
+	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('macro:component');
 
 	// One record, not two: the symbol is reachable at several paths but is one thing, and the
 	// hand-written page is where it should lead — not at a path with no page behind it.
@@ -511,20 +601,24 @@ test('Escape closes the search dialog', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
-	await page.getByRole('searchbox').fill('component');
+
+	const search = page.getByRole('combobox', { name: /^Search .+ documentation$/ });
+
+	await search.fill('component');
+	await expect(search).toHaveAttribute('aria-expanded', 'true');
 
 	// Escape must reach the dialog: a `type=search` input would swallow it to clear itself, and a
 	// global Escape hotkey would swallow it before that.
 	await page.keyboard.press('Escape');
 
-	await expect(page.getByRole('searchbox')).toBeHidden();
+	await expect(search).toBeHidden();
 });
 
 test('arrowing through results keeps the highlighted one in view', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
-	await page.getByRole('searchbox').fill('component');
+	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('component');
 
 	const list = page.locator('.search__results');
 
@@ -538,7 +632,7 @@ test('arrowing through results keeps the highlighted one in view', async ({ page
 	// Focus stays in the text field, so the browser will not scroll for the reader — the component
 	// has to. Without that, arrowing moved the highlight out of sight.
 	const visible = await list.evaluate((node) => {
-		const current = node.querySelector('[aria-current="true"]');
+		const current = node.querySelector('[role="option"][aria-selected="true"]');
 
 		if (!current) {
 			return false;
@@ -560,11 +654,16 @@ test('search opens with a keyboard shortcut and navigates with Enter', async ({ 
 	await page.locator('body').click({ position: { x: 5, y: 5 } });
 
 	await page.keyboard.press('/');
-	await page.getByRole('searchbox').fill('advanced dependency injection');
+
+	const search = page.getByRole('combobox', { name: /^Search .+ documentation$/ });
+	const results = page.getByRole('listbox', { name: 'Search results' });
+
+	await search.fill('advanced dependency injection');
 
 	// The index is fetched when the dialog first opens, so there is nothing to choose until it
 	// arrives. Waiting for a result is what a reader does too.
-	await expect(page.locator('.search__result').first()).toBeVisible();
+	await expect(results).toBeVisible();
+	await expect(results.getByRole('option').first()).toBeVisible();
 	await page.keyboard.press('Enter');
 
 	await expect(page).toHaveURL(new RegExp(`/docs/${VERSION}/di/advanced`));
@@ -601,16 +700,17 @@ test('search matches a camel-case name from separate words', async ({ page }) =>
 
 	await page.getByRole('button', { name: 'Search' }).click();
 	// Cannot match as one substring: the space is not in the identifier.
-	await page.getByRole('searchbox').fill('http request');
+	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('http request');
 
 	await expect(page.locator('.search__result').first()).toContainText('HttpRequest');
 });
 
 test('search highlights what matched', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/di/components`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Search' }).click();
-	await page.getByRole('searchbox').fill('component');
+	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('component');
 
 	// The highlight comes from the same pass that scored the result, so it marks the reason the
 	// result was found rather than a second search over the text.
@@ -639,7 +739,10 @@ test('a phone reaches search and release selection through the menu', async ({ p
 
 	await menu.getByRole('button', { name: 'Search' }).click();
 
-	await expect(page.getByRole('searchbox')).toBeVisible();
+	const search = page.getByRole('combobox', { name: /^Search .+ documentation$/ });
+
+	await expect(search).toBeVisible();
+	await expect(search).toHaveAttribute('aria-autocomplete', 'list');
 });
 
 test('narrow viewports get navigation, which the sidebar cannot provide', async ({ page }) => {
@@ -660,6 +763,38 @@ test('narrow viewports get navigation, which the sidebar cannot provide', async 
 	await expect(page).toHaveURL(`/docs/${VERSION}/di/advanced`);
 	// The layout survives navigation, so nothing else would have dismissed the menu.
 	await expect(menu).toBeHidden();
+});
+
+test('a phone keeps its header and navigation reachable after a long scroll', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 780 });
+	await page.goto(`/docs/${VERSION}/di/components`);
+
+	await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+	await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+	const header = page.locator('.header');
+
+	await expect(header).toBeInViewport();
+	expect(Math.abs((await header.boundingBox())?.y ?? Number.POSITIVE_INFINITY)).toBeLessThanOrEqual(1);
+	await page.getByRole('button', { name: 'Menu' }).click();
+	await expect(page.getByRole('dialog', { name: 'Documentation navigation' })).toBeVisible();
+});
+
+test.describe('touch navigation', () => {
+	test.use({ hasTouch: true, viewport: { width: 390, height: 780 } });
+
+	test('copy controls are discoverable without hover', async ({ page }) => {
+		await page.goto(`/docs/${VERSION}/di/components`);
+
+		expect(await page.evaluate(() => matchMedia('(hover: none), (pointer: coarse)').matches)).toBe(true);
+
+		const copy = page.locator('.code-block__copy').first();
+
+		await copy.scrollIntoViewIfNeeded();
+		await expect(copy).toBeVisible();
+		await expect(copy).toBeInViewport();
+		await expect(copy).toHaveCSS('opacity', '1');
+	});
 });
 
 test('copying a code block confirms it, and the toaster loads only then', async ({ page }) => {

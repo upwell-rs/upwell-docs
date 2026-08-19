@@ -6,7 +6,7 @@ topics: ['web']
 ---
 
 <script lang="ts">
-	import { Example } from '#lib/docs';
+	import { Example, SymbolRef } from '#lib/docs';
 </script>
 
 # WebSocket protocols
@@ -224,6 +224,6 @@ Use `emit` when a full subscriber buffer may drop an event, `publish` when the s
 - <Symbol path="upwell::axum::AxumAppBuilder" />
 - <Symbol path="upwell::axum::WebsocketController" />
 - <Symbol path="upwell::axum::Topic" />
-- [`#[controller]`](/docs/latest/symbols/upwell_axum_macros/controller)
-- [`#[message]`](/docs/latest/symbols/upwell_axum_macros/message)
-- [`#[topics]`](/docs/latest/symbols/upwell_axum_macros/topics)
+- <SymbolRef path="upwell_axum_macros/controller"><code>#[controller]</code></SymbolRef>
+- <SymbolRef path="upwell_axum_macros/message"><code>#[message]</code></SymbolRef>
+- <SymbolRef path="upwell_axum_macros/topics"><code>#[topics]</code></SymbolRef>
