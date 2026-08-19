@@ -28,12 +28,25 @@
 	let inspection: AbortController | undefined;
 	let showMarkdown = $state(true);
 	let treeOpen = $state(false);
+	let previousPath: string | undefined;
 	const notifier = getDocsNotifier();
 	const sourceBase = $derived(`/docs/${source}/${version}/src/`);
 	const apiBase = $derived(`/api/docs/${source}/${version}`);
 
 	$effect(() => {
-		void file.path;
+		const path = file.path;
+
+		if (previousPath === undefined) {
+			previousPath = path;
+
+			return;
+		}
+
+		if (path === previousPath) {
+			return;
+		}
+
+		previousPath = path;
 
 		inspection?.abort();
 		inspection = undefined;
