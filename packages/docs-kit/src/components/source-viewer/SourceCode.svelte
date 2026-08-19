@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { SymbolCard, type SymbolCardData } from '@upwell/docs-ui';
+	import type { Attachment } from 'svelte/attachments';
+
+	import { SymbolCard } from '@upwell/docs-ui';
+	import {
+		createSourceSymbolCardInteractions,
+		type ActiveSymbolCard
+	} from '@upwell/docs-ui/symbol-card';
 	import type { SourceCandidate } from '../../server/source.ts';
 	import SourceCandidates from './SourceCandidates.svelte';
 
@@ -9,10 +15,16 @@
 	}
 
 	let { html, oninspect }: Props = $props();
-	let active = $state<{ data: SymbolCardData; anchor: HTMLElement }>();
+	let active = $state<ActiveSymbolCard>();
 	let ambiguous = $state<{ candidates: readonly SourceCandidate[]; anchor: HTMLElement }>();
-	let card = $state<HTMLElement>();
-	let closing: ReturnType<typeof setTimeout> | undefined;
+	const id = $props.id();
+	const symbolCardId = `symbol-card-${id}`;
+	const symbolCards = createSourceSymbolCardInteractions({
+		panelId: symbolCardId,
+		onChange: (next) => {
+			active = next;
+		}
+	});
 
 	function choose(event: MouseEvent): void {
 		const ambiguousTarget = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-candidates]');
@@ -38,81 +50,34 @@
 		}
 	}
 
-	function symbolInteractions(node: HTMLElement): { destroy(): void } {
+	const sourceInteractions: Attachment<HTMLElement> = (node) => {
+		const detachSymbolCards = symbolCards.targets(node);
+
 		node.addEventListener('click', choose);
-		node.addEventListener('mouseover', open);
-		node.addEventListener('mouseout', leave);
-		node.addEventListener('focusin', open);
-		node.addEventListener('focusout', leave);
-
-		return { destroy: () => {
-			node.removeEventListener('click', choose);
-			node.removeEventListener('mouseover', open);
-			node.removeEventListener('mouseout', leave);
-			node.removeEventListener('focusin', open);
-			node.removeEventListener('focusout', leave);
-		} };
-	}
-
-	function open(event: Event): void {
-		const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-symbol], [data-external]');
-
-		if (!target) return;
-		clearTimeout(closing);
-		const external = target.dataset.external;
-		const path = external ?? target.dataset.symbol;
-
-		if (!path) return;
-		active = {
-			anchor: target,
-			data: external ? {
-				path,
-				kind: target.dataset.externalKind ?? 'item',
-				externalCrate: target.dataset.externalCrate,
-				summary: target.dataset.externalDoc,
-				signature: target.dataset.externalSignature,
-				sourceHref: target.getAttribute('href') ?? undefined
-			} : {
-				path,
-				kind: target.dataset.symbolKind ?? 'item',
-				signature: target.dataset.symbolSignature,
-				summary: target.dataset.symbolDoc,
-				feature: target.dataset.symbolFeature,
-				deprecated: target.dataset.symbolDeprecated,
-				sourceHref: target.dataset.symbolSource,
-				documentedAt: target.dataset.symbolDocs ? { href: target.dataset.symbolDocs, title: target.dataset.symbolDocsTitle ?? 'Documentation' } : undefined
-			}
-		};
-	}
-
-	function leave(event: Event): void {
-		if ((event.target as HTMLElement | null)?.closest('[data-symbol], [data-external]')) {
-			closing = setTimeout(() => { active = undefined; }, 160);
-		}
-	}
-
-	$effect(() => {
-		if (!card) return;
-		const keep = () => clearTimeout(closing);
-		const close = () => { closing = setTimeout(() => { active = undefined; }, 160); };
-		card.addEventListener('mouseenter', keep);
-		card.addEventListener('mouseleave', close);
 
 		return () => {
-			card?.removeEventListener('mouseenter', keep);
-			card?.removeEventListener('mouseleave', close);
+			node.removeEventListener('click', choose);
+			detachSymbolCards?.();
 		};
-	});
+	};
+
+	function dismiss(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			symbolCards.dismiss(true);
+		}
+	}
 </script>
 
-<div class="code" use:symbolInteractions>
+<svelte:window onkeydown={dismiss} />
+
+<div class="code" {@attach sourceInteractions}>
 	<!-- Server-rendered by Shiki; source is escaped and only trusted annotation attributes are added. -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	{@html html}
 </div>
 
 {#if active}
-	<SymbolCard bind:element={card} data={active.data} anchor={active.anchor} />
+	<SymbolCard id={symbolCardId} data={active.data} anchor={active.anchor} interaction={symbolCards.card} />
 {/if}
 
 {#if ambiguous}

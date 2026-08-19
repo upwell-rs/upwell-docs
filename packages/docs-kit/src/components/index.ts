@@ -1,3 +1,4 @@
+/** @deprecated Legacy package-only documentation shell retained for downstream compatibility. */
 export { default as DocsShell } from './DocsShell.svelte';
 export { default as DocsSidebar } from './DocsSidebar.svelte';
 export { default as GuideRef } from './GuideRef.svelte';

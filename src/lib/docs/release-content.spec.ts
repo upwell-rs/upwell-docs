@@ -68,13 +68,26 @@ describe('release content visibility', () => {
 
 		vi.doMock('./runtime.ts', () => ({ docsContent: content, docsRoutes: routes }));
 		vi.doMock('./runtime.server.ts', () => ({
-			docsServerRoutes: { symbolIndexEntries: () => [], symbolEntries: async () => [] }
+			docsServerRoutes: {
+				symbolIndexEntries: () => [{ source: 'upwell', version: version.id }],
+				symbolEntries: async () => [{ source: 'upwell', version: version.id, path: 'AppRuntime' }]
+			}
 		}));
 		vi.doMock('./site.ts', () => ({ siteOrigin: 'https://docs.example.com' }));
 
-		const { guideMarkdownEntries, sitemapParamValues } = await import('./discovery.server.ts');
-		const sitemapGuides = (await sitemapParamValues())['/docs/[version]/[...slug]'];
+		const { guideMarkdownEntries, sitemapExclusions, sitemapParamValues } = await import('./discovery.server.ts');
+		const sitemapParams = await sitemapParamValues();
+		const sitemapGuides = sitemapParams['/docs/[version]/[...slug]'];
 		const markdownEntries = guideMarkdownEntries();
+
+		expect(sitemapParams).toMatchObject({
+			'/docs/[source]/[sourceVersion]/symbols': [['upwell', version.id]],
+			'/docs/[source]/[sourceVersion]/symbols/[...path]': [['upwell', version.id, 'AppRuntime']]
+		});
+		expect(sitemapParams).not.toHaveProperty('/docs/[version]/[sourceVersion]/symbols');
+		expect(sitemapParams).not.toHaveProperty('/docs/[version]/[sourceVersion]/symbols/[...path]');
+		expect(sitemapExclusions.some((pattern) => pattern.test('/docs/[source]/[sourceVersion]/src/lib.rs'))).toBe(true);
+		expect(sitemapExclusions.some((pattern) => pattern.test('/docs/[version]/[sourceVersion]/src/lib.rs'))).toBe(false);
 
 		for (const slug of fixtureSlugs) {
 			expect(content.findPage(slug, version.releaseVersion)?.draft).toBe(true);

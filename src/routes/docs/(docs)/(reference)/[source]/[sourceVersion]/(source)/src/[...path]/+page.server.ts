@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { docsSource, frameworkCrate, frameworkCrateVersion } from '@upwell/docs-core/config';
+import { frameworkCrate } from '@upwell/docs-core/config';
 import { docsSources } from '#lib/docs/runtime.server';
 import type { PageMetadata } from '#lib/docs/site/metadata';
 import { docsConfig } from 'virtual:docs-config';
@@ -7,11 +7,11 @@ import type { PageServerLoad } from './$types';
 
 export const prerender = false;
 
-export const load: PageServerLoad = async ({ params, setHeaders, url }) => {
-	const source = frameworkCrate(docsConfig, params.version);
-	const version = source ? frameworkCrateVersion(source, params.sourceVersion) : undefined;
+export const load: PageServerLoad = async ({ params, parent, setHeaders, url }) => {
+	const { source: sourceData, version } = await parent();
+	const source = frameworkCrate(docsConfig, sourceData.crate);
 
-	if (!source || !version) {
+	if (!source) {
 		error(404, 'Unknown documentation source or version.');
 	}
 
@@ -31,9 +31,6 @@ export const load: PageServerLoad = async ({ params, setHeaders, url }) => {
 	};
 
 	return {
-		source: docsSource(source),
-		version,
-		versions: source.versions,
 		file,
 		metadata,
 		chrome: { slug: file.path ? `src/${file.path}` : 'src/', title: file.path.split('/').pop() || 'Source', section: 'Source', reference: true as const }

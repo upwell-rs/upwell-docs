@@ -7,12 +7,12 @@ import type { EntryGenerator, PageServerLoad } from './$types';
 
 export const prerender = resolvePrerender(docsConfig, 'symbols', dev);
 export const entries: EntryGenerator = () => docsServerRoutes.symbolEntries().then((entries) =>
-	entries.map(({ source, version, path }) => ({ version: source, sourceVersion: version, path }))
+	entries.map(({ source, version, path }) => ({ source, sourceVersion: version, path }))
 );
 
 export const load: PageServerLoad = async ({ params, url }) => {
 	const data = await docsServerRoutes.loadSymbol({
-		source: params.version,
+		source: params.source,
 		version: params.sourceVersion,
 		path: params.path
 	});

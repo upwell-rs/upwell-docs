@@ -6,10 +6,10 @@ import { docsConfig } from 'virtual:docs-config';
 import type { EntryGenerator, PageServerLoad } from './$types';
 
 export const prerender = resolvePrerender(docsConfig, 'symbols', dev);
-export const entries: EntryGenerator = () => [...docsServerRoutes.symbolIndexEntries()].map(({ source, version }) => ({ version: source, sourceVersion: version }));
+export const entries: EntryGenerator = () => [...docsServerRoutes.symbolIndexEntries()].map(({ source, version }) => ({ source, sourceVersion: version }));
 
 export const load: PageServerLoad = async ({ params, url }) => {
-	const data = await docsServerRoutes.loadSymbolsIndex(params.version, params.sourceVersion);
+	const data = await docsServerRoutes.loadSymbolsIndex(params.source, params.sourceVersion);
 	const metadata: PageMetadata = {
 		title: `${data.source.crate} symbols`,
 		description: `Browse documented symbols for ${data.source.crate} ${data.version.label}.`,

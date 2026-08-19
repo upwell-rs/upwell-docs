@@ -26,7 +26,7 @@ export { default as TableOfContents } from './components/TableOfContents.svelte'
 export { default as Tabs } from './components/Tabs.svelte';
 export { default as TopicFilter } from './components/TopicFilter.svelte';
 
-export type { SymbolCardData } from './components/SymbolCard.svelte';
+export type { SymbolCardData } from './components/symbol-card/data.ts';
 export { revealWithin } from './reveal.ts';
 export * from './context.ts';
 export type * from './types.ts';

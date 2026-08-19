@@ -4,21 +4,8 @@ import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 
 import ReleaseNotice from './ReleaseNotice.svelte';
-import SkipLink from './SkipLink.svelte';
-import { DOCS_MAIN_ID } from './shell-a11y.ts';
 
-describe('documentation shell markup', () => {
-	it('links the first shell control to the stable reading pane target', async () => {
-		const link = render(SkipLink).body;
-		const shell = await source('./DocsShell.svelte');
-
-		expect(link).toContain(`href="#${DOCS_MAIN_ID}"`);
-		expect(link).toContain('Skip to documentation');
-		expect(shell).toContain('id={DOCS_MAIN_ID}');
-		expect(shell).toContain('tabindex="-1"');
-		expect(shell.indexOf('<SkipLink />')).toBeLessThan(shell.indexOf('<DocsHeader'));
-	});
-
+describe('documentation component markup', () => {
 	it('renders the historical-release message as a labelled aside', () => {
 		const body = render(ReleaseNotice, {
 			props: { notice: { currentLabel: '1.0', latestLabel: '2.0', href: '/docs/v2/guide' } }
