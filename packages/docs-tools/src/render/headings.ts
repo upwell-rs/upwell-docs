@@ -85,12 +85,17 @@ export function rehypeHeadingAnchors() {
 
     walk(tree, used, headings, prose);
 
-    const source = file?.filename ?? file?.path;
+    const source = physicalSource(file?.filename ?? file?.path);
 
     if (source) {
       recordDocument({ file: source, headings, text: collapse(prose) });
     }
   };
+}
+
+/** Vite virtual ids retain the physical path after their leading null marker. */
+function physicalSource(source: string | undefined): string | undefined {
+  return source?.startsWith("\0/") ? source.slice(1) : source;
 }
 
 /** Elements whose text is not prose and would only add noise to a search index. */

@@ -30,6 +30,20 @@ test('/docs/latest redirects to the explicit release', async ({ page }) => {
 	await expect(page).toHaveURL(`/docs/${VERSION}/${docsConfig.landingSlug}`);
 });
 
+test('client-side release redirects preserve query and fragment state', async ({ page }) => {
+	await page.goto(`/docs/${VERSION}/getting-started`);
+	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
+
+	await page.locator('body').evaluate((body) => {
+		const link = document.createElement('a');
+		link.href = '/docs/latest/framework?view=compact#contents';
+		body.append(link);
+		link.click();
+	});
+
+	await expect(page).toHaveURL(`/docs/${VERSION}/framework?view=compact#contents`);
+});
+
 test('the release picker falls back to the target landing page when a normalized page is unavailable', async ({ page }) => {
 	await page.goto('/docs/1.0.0/framework/new-runtime');
 	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
@@ -130,10 +144,16 @@ test('a guide renders with navigation', async ({ page }) => {
 });
 
 test('moved guide routes redirect permanently to their canonical hierarchy', async ({ request }) => {
-	const response = await request.get(`/docs/${VERSION}/di/components`, { maxRedirects: 0 });
+	const response = await request.get(`/docs/${VERSION}/di/components?source=bookmark`, { maxRedirects: 0 });
 
 	expect(response.status()).toBe(308);
-	expect(response.headers().location).toBe(`/docs/${VERSION}/framework/dependency-injection/components`);
+	expect(response.headers().location).toBe(`/docs/${VERSION}/framework/dependency-injection/components?source=bookmark`);
+});
+
+test('moved guides do not bypass missing historical release targets', async ({ request }) => {
+	const response = await request.get('/docs/0.20.0/di/components', { maxRedirects: 0 });
+
+	expect(response.status()).toBe(404);
 });
 
 test('the skip link is the first keyboard control and focuses the reading pane', async ({ page }) => {
@@ -264,13 +284,13 @@ test('the card survives the pointer moving into it, so its links can be used', a
 });
 
 test('a symbol referenced in prose gets the same treatment as one in code', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/axum/http`);
+	await page.goto(`/docs/${VERSION}/axum/http/request-context`);
 
 	// Not inside a code block: this one is written in a sentence.
-	const inline = page.locator('code.symbol-ref [data-symbol="upwell::axum::HttpRequest"]').first();
+	const inline = page.locator('code.symbol-ref [data-symbol="upwell::axum::RequestMeta"]').first();
 
 	await expect(inline).toBeVisible();
-	await expect(inline).toHaveAttribute('data-symbol-signature', /pub struct HttpRequest/);
+	await expect(inline).toHaveAttribute('data-symbol-signature', /pub struct RequestMeta/);
 	await expect(inline).toHaveAttribute('data-symbol-feature', 'axum');
 
 	await inline.hover();
@@ -402,7 +422,7 @@ test('visible directory groups persist independently by normalized path id', asy
 	const protocols = sidebar.locator('details[data-group-id="guides:axum"]');
 	const tooling = sidebar.locator('details[data-group-id="guides:cargo-upwell"]');
 
-	await protocols.locator('summary').click();
+	await protocols.locator(':scope > summary').click();
 	await expect(protocols).not.toHaveAttribute('open', '');
 	await expect(tooling).toHaveAttribute('open', '');
 	await expect
@@ -623,22 +643,17 @@ test('Alt+arrow moves between pages too', async ({ page }) => {
 	await expect(page).toHaveURL(`/docs/${VERSION}/framework/dependency-injection/advanced`);
 });
 
-test('page navigation follows the rendered sidebar leaf order', async ({ page }) => {
+test('page navigation includes directory landing pages in depth-first reading order', async ({ page }) => {
 	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
-	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
-	const sidebarLeaves = await sidebar.locator('.tree__link').evaluateAll((links) =>
-		links
-			.filter((link) => !link.getAttribute('href')?.includes('/symbols/'))
-			.map((link) => new URL(link.getAttribute('href')!, window.location.origin).pathname)
+	await expect(page.locator('[data-direction="previous"]')).toHaveAttribute(
+		'href',
+		`/docs/${VERSION}/framework/dependency-injection`
 	);
-	const current = `/docs/${VERSION}/framework/dependency-injection/components`;
-	const position = sidebarLeaves.indexOf(current);
-
-	expect(position).toBeGreaterThan(0);
-	expect(position).toBeLessThan(sidebarLeaves.length - 1);
-	await expect(page.locator('[data-direction="previous"]')).toHaveAttribute('href', sidebarLeaves[position - 1]);
-	await expect(page.locator('[data-direction="next"]')).toHaveAttribute('href', sidebarLeaves[position + 1]);
+	await expect(page.locator('[data-direction="next"]')).toHaveAttribute(
+		'href',
+		`/docs/${VERSION}/framework/dependency-injection/advanced`
+	);
 });
 
 test('search finds a guide by a word in its body', async ({ page }) => {

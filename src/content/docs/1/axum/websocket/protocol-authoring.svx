@@ -91,6 +91,6 @@ Race socket input with <Symbol path="upwell::axum::WsShutdown" /> so graceful sh
 
 ## Negotiate subprotocols deliberately
 
-`SUBPROTOCOLS` lists accepted RFC 6455 tokens in server preference order. The selected token and request metadata are exposed through <Symbol path="upwell::axum::WebsocketUpgradeMeta" />. With `REQUIRE_SUBPROTOCOL = true`, reject an upgrade that offers no accepted token; otherwise the protocol may continue without one.
+`SUBPROTOCOLS` lists accepted RFC 6455 tokens in server preference order. <Symbol path="upwell::axum::WebsocketUpgradeMeta" /> exposes the upgrade request metadata; read the negotiated token from <Symbol path="upwell_axum::ws::WsConnectionMeta" /> with `WsConnectionMeta::selected_subprotocol()`. With `REQUIRE_SUBPROTOCOL = true`, reject an upgrade that offers no accepted token; otherwise the protocol may continue without one.
 
 Keep serializer selection and handshake validation in protocol connection state, not application controllers. Add <GuideRef slug="axum/websocket/topics-and-publishing">topic support</GuideRef> only when the protocol can frame typed subscriber publications.

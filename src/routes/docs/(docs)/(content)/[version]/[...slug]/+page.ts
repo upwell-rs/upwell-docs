@@ -6,6 +6,7 @@
  * so `/docs/<version>` serves the landing page.
  */
 
+import { building } from '$app/env';
 import { docsContent, docsRoutes } from '#lib/docs/runtime';
 import { guideRedirects } from '#lib/docs/guide-redirects';
 import type { PageMetadata } from '#lib/docs/site/metadata';
@@ -22,7 +23,7 @@ export const load: PageLoad = async ({ params, parent, url }) => {
 	const target = guideRedirects[params.slug];
 
 	if (target && docsContent.findPage(target, version.releaseVersion)) {
-		redirect(308, docsContent.pageHref(version.id, target));
+		redirect(308, `${docsContent.pageHref(version.id, target)}${building ? '' : `${url.search}${url.hash}`}`);
 	}
 
 	const data = await docsRoutes.loadGuide(params, version);

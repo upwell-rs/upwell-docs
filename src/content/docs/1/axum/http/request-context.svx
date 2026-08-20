@@ -99,7 +99,7 @@ If middleware data must enter DI, install a deliberate scope seed or component i
 
 ## WebSocket inheritance
 
-An accepted upgrade creates an Axum `upwell::axum::scope::Connection` scope under the root, then a child `upwell::axum::scope::Request` scope for each decoded application message. The framework seeds the upgrade request's `RequestMeta` into the connection scope, so message-scoped dependencies resolve its method, URI, headers, and cookies through the parent chain. <Symbol path="upwell_axum::ws::WsConnectionMeta" /> separately exposes the selected RFC 6455 subprotocol.
+An accepted upgrade creates an Axum `upwell::axum::scope::Connection` scope under the root, then a child `upwell::axum::scope::Request` scope for each decoded application message. The framework seeds `WebsocketUpgradeMeta` into the connection scope, so message-scoped dependencies resolve the upgrade method, URI, headers, and cookies through the parent chain. <Symbol path="upwell_axum::ws::WsConnectionMeta" /> separately exposes the selected RFC 6455 subprotocol.
 
 This is deliberate metadata inheritance, not retention of the original HTTP request scope. Put longer-lived derived authentication state in a connection-scoped component and keep per-message state request-scoped.
 
@@ -108,7 +108,7 @@ This is deliberate metadata inheritance, not retention of the original HTTP requ
 - `Extension<T>` missing means no covering Axum layer inserted exactly that `T`.
 - `RequestMeta` missing means dispatch did not open the framework HTTP request scope.
 - Cookies absent while the header exists may be malformed pairs; parsing intentionally drops invalid cookies.
-- A WebSocket message handler may resolve inherited upgrade `RequestMeta`; unrelated HTTP request-scoped component instances are not carried into the socket.
+- A WebSocket message handler may resolve inherited `WebsocketUpgradeMeta`; unrelated HTTP request-scoped component instances are not carried into the socket.
 - Custom router composition can place a layer on the wrong side of `merge` or `nest`; inspect which router owns the final route.
 
 See <GuideRef slug="axum/http">HTTP controllers</GuideRef>, <GuideRef slug="axum/websocket">WebSocket protocols</GuideRef>, and <GuideRef slug="framework/dependency-injection/advanced">advanced dependency injection</GuideRef>.
