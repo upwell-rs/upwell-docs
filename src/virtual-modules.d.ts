@@ -16,3 +16,17 @@ declare module 'virtual:docs-config' {
 
 	export const docsConfig: DocsConfig;
 }
+
+declare module 'virtual:docs-rpc-server-index.svx' {
+	import type { Component } from 'svelte';
+
+	const component: Component;
+	export default component;
+}
+
+declare module 'virtual:docs-rpc-server-policies.svx' {
+	import type { Component } from 'svelte';
+
+	const component: Component;
+	export default component;
+}

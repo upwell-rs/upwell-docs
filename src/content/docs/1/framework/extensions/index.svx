@@ -1,0 +1,26 @@
+---
+title: Extensions
+description: Package reusable application behavior and implement custom application protocols.
+order: 50
+topics: ['framework', 'tooling']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Extensions
+
+Framework extensions own reusable application composition. A plugin contributes to an application plan; a custom application protocol defines preparation, runtime, scopes, and endpoint serving. Axum WebSocket protocol implementations remain under Axum because they own that server wire contract.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| package components and declarations as one inspectable unit | <GuideRef slug="framework/extensions/plugins">Compose plugins</GuideRef> |
+| define a new application-level dispatch and serving model | <GuideRef slug="framework/extensions/protocol-authoring">Protocol authoring</GuideRef> |
+| implement WebSocket framing, dispatch, and subprotocol negotiation | <GuideRef slug="axum/websocket/protocol-authoring">Axum WebSocket protocol authoring</GuideRef> |
+
+## Shared prerequisites
+
+Understand the <GuideRef slug="framework/application/protocol-composition">one-protocol application invariant</GuideRef> and use stable IDs for anything that must be inspected or composed across packages.

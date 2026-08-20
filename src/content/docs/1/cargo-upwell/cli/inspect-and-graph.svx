@@ -11,7 +11,7 @@ topics: ['tooling']
 
 # Inspect and query an application
 
-Start after <GuideRef slug="cargo-upwell" fragment="validate-one-application">validating the application</GuideRef>. Each command prepares the selected application's probe before reading its canonical tooling document; no command infers relationships from source files.
+Start after <GuideRef slug="cargo-upwell/cli" fragment="validate-one-application">validating the application</GuideRef>. Each command prepares the selected application's probe before reading its canonical tooling document; no command infers relationships from source files.
 
 ## Find the resource you need
 
@@ -101,7 +101,7 @@ cargo upwell export \
 
 </Example>
 
-`document` succeeds only with a valid probe and produces the same bytes as `inspect --format json`. `envelope` can still write a valid probe envelope on failure. Choose `document` when downstream work must stop without a document, and `envelope` when the failure itself is an artifact. The <GuideRef slug="cargo-upwell/automation-and-extensions" fragment="automate-validation">automation guide</GuideRef> explains how to handle nonzero exit statuses while retaining structured output.
+`document` succeeds only with a valid probe and produces the same bytes as `inspect --format json`. `envelope` can still write a valid probe envelope on failure. Choose `document` when downstream work must stop without a document, and `envelope` when the failure itself is an artifact. The <GuideRef slug="cargo-upwell/cli/automation-and-completions" fragment="automate-validation">automation guide</GuideRef> explains how to handle nonzero exit statuses while retaining structured output.
 
 ## Choose an output deliberately
 

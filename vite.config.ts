@@ -1,5 +1,8 @@
 import { mdsvex } from "mdsvex";
+import { readFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
+import path from "node:path";
+import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import adapter from "@sveltejs/adapter-node";
@@ -7,6 +10,28 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import { docsConfig, docsManifest } from "@upwell/docs-vite";
 import { docsPreprocessors } from "@upwell/docs-tools/render/preprocessors";
 import { docsConfig as siteDocsConfig } from "./docs.config.ts";
+
+const VIRTUAL_GUIDES = new Map([
+  ["virtual:docs-rpc-server-index.svx", "src/content/docs/1/rpc/server/index.svx"],
+  ["virtual:docs-rpc-server-policies.svx", "src/content/docs/1/rpc/server/policies.svx"],
+]);
+
+function nestedServerGuides(): Plugin {
+  return {
+    name: "framework:nested-server-guides",
+    enforce: "pre",
+
+    resolveId(id) {
+      return VIRTUAL_GUIDES.has(id) ? `\0${id}` : undefined;
+    },
+
+    load(id) {
+      const file = VIRTUAL_GUIDES.get(id.slice(1));
+
+      return file ? readFile(path.join(import.meta.dirname, file), "utf8") : undefined;
+    },
+  };
+}
 
 export default defineConfig(({ command }) => {
   const preprocessors = docsPreprocessors({
@@ -18,6 +43,11 @@ export default defineConfig(({ command }) => {
 
   return {
   plugins: [
+    // SvelteKit reserves physical `/server/` directories for private modules. Guide routes use the
+    // same ownership word publicly, so load those SVX files through virtual ids while retaining the
+    // original path for manifest routing and preprocessing.
+    nestedServerGuides(),
+
     docsConfig(),
 
     // Before SvelteKit, so the manifest module resolves for the content modules that import it.

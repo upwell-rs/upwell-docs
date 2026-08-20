@@ -1,0 +1,98 @@
+---
+title: Catalog tools and renderers
+description: Register metadata-only tools and capability-free renderer components with deterministic validation.
+order: 41
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Catalog tools and renderers
+
+Catalog schema `1` supports three entry kinds: templates, external tool metadata, and renderer components. This page covers the two extension kinds; template source and override rules are in <GuideRef slug="cargo-upwell/catalog/templates">catalog templates</GuideRef>.
+
+## Declare a metadata-only tool
+
+<Example title="Advertise an external tool">
+
+```toml
+schema = "1"
+
+[[entries]]
+type = "tool"
+id = "acme/architecture-tool"
+command = "cargo-upwell-architecture"
+description = "Checks Acme architecture policy"
+package = "cargo-upwell-architecture"
+protocols = ["upwell/axum", "upwell/rpc"]
+```
+
+</Example>
+
+<Symbol path="cargo_upwell::init::catalog::ToolEntry" /> retains the command, description, optional package, and understood protocol IDs. In the validated inventory this is future integration metadata only: Cargo Upwell does not install or execute the command. Do not present a catalog tool entry as a supply-chain installer or plugin execution hook.
+
+## Declare a renderer
+
+```toml
+[[entries]]
+type = "renderer"
+id = "acme/architecture-renderer"
+component = "renderers/architecture.component.wasm"
+commands = ["inspect", "graph"]
+format = "architecture"
+media-type = "text/plain"
+extension = "txt"
+color = false
+pager = false
+output-file = true
+priority = 100
+abi = "^0.1"
+tooling-schema = "^0.20"
+utf8 = true
+```
+
+`component` resolves relative to the catalog file. `commands` selects only commands whose canonical projection this component understands. `format` is command-scoped and must not collide with reserved built-in formats. `media-type`, optional extension, and capabilities control presentation policy; machine/binary formats cannot claim incompatible color, pager, or output behavior.
+
+`abi` and `tooling-schema` are semantic-version requirements. Defaults come from the installed Cargo Upwell build, but writing them explicitly makes compatibility reviewable. Higher `priority` wins only among otherwise valid competing registrations; duplicate effective renderer/format/default rules are rejected by <Symbol path="cargo_upwell::renderer::RendererRegistry" />.
+
+## Apply path and override rules
+
+Catalog selection follows explicit path, environment path, then platform default. Relative component paths resolve from that selected file. Within one document, every ID is unique across all entry kinds. A tool or renderer cannot reuse a built-in or user template ID.
+
+The exact platform defaults produced by `ProjectDirs::from("org", "upwell-rs", "Upwell")` are:
+
+| Platform | Default catalog |
+|---|---|
+| macOS | `~/Library/Application Support/org.upwell-rs.Upwell/catalog.toml` |
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/upwell/catalog.toml` |
+| Windows | `%APPDATA%\upwell-rs\Upwell\config\catalog.toml` |
+
+`cargo upwell templates` lists effective template IDs. Pass `--catalog <path>` to `templates`, `init`, or a renderer-capable command to inspect/use the same selected document; `UPWELL_CATALOG_PATH` applies to every Cargo Upwell command. Completion can expose catalog-backed renderer formats from metadata without loading or invoking the component.
+
+User renderers combine with native built-ins. They do not replace canonical data production: Cargo Upwell prepares and validates the native command projection first, then passes a bounded payload to the selected renderer.
+
+## Validate reproducibility and security
+
+- Commit the catalog and component digest/release artifact together.
+- Pin the renderer build toolchain and canonical WIT version.
+- Keep component paths regular files; symlinks/reparse points and special files are rejected by platform checks.
+- Do not rely on ambient working directory or a mutable global catalog in CI; pass `--catalog`.
+- Preserve canonical JSON beside custom presentation when downstream automation needs lossless data.
+
+<Callout type="warning" title="No host capabilities">
+
+Renderer components must import nothing. They cannot read files, use the network, spawn processes, consult clocks through a host API, or execute catalog tools. Their entire input is the bounded render request.
+
+</Callout>
+
+## Troubleshoot extensions
+
+- A tool entry appears in catalog output but does not run: expected; it is metadata-only.
+- A renderer format is unavailable: verify command claim, catalog selector, registry validation, and semantic requirements.
+- A component path works from one directory only: make it absolute or keep it relative to the catalog, not the shell.
+- A duplicate ID may collide with an effective built-in template even when the user file declares only one entry.
+- Binary output with `utf8 = true` is rejected if bytes are not UTF-8; set the contract deliberately.
+
+Continue with <GuideRef slug="cargo-upwell/renderers/authoring">renderer authoring</GuideRef> and <GuideRef slug="cargo-upwell/renderers/testing-and-failures">renderer testing and failures</GuideRef>.

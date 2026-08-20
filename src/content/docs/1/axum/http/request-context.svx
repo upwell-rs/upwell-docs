@@ -1,0 +1,114 @@
+---
+title: Request context and extensions
+description: Use RequestMeta through request-scoped DI and Axum Extension only for layer-provided values.
+order: 116
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Request context and extensions
+
+Upwell request metadata and Axum extensions solve different problems. <Symbol path="upwell::axum::RequestMeta" /> is seeded by the framework into every Upwell HTTP request scope. `axum::extract::Extension<T>` succeeds only when an Axum layer or router inserted `T` into request extensions.
+
+## Read native request metadata through DI
+
+`RequestMeta` contains the method, URI, complete header map, and successfully parsed cookies keyed by name.
+
+<Example title="Build a request-scoped identity">
+
+```rust
+use upwell::axum::{RequestMeta, scope::Request};
+use upwell::prelude::*;
+
+#[component(scope = Request)]
+struct RequestIdentity {
+    meta: RequestMeta,
+}
+
+impl RequestIdentity {
+    fn bearer(&self) -> Option<&str> {
+        self.meta
+            .headers
+            .get("authorization")?
+            .to_str()
+            .ok()?
+            .strip_prefix("Bearer ")
+    }
+}
+```
+
+The value is injectable by value and cloned within one request's bounded metadata. A request-scoped component may depend on singleton state, but a singleton must not retain request-scoped identity.
+
+</Example>
+
+A handler can extract `Inject<Arc<RequestIdentity>>` or the by-value framework seed as `Inject<RequestMeta>`. Failure to resolve either indicates the handler is outside the Upwell-managed HTTP request scope or the defining crate's feature/registration set is inconsistent.
+
+## Install and extract an Axum extension
+
+Use an extension for a value owned by router middleware rather than the Upwell component graph:
+
+```rust
+use upwell::axum::axum::Extension;
+use upwell::axum::prelude::*;
+use upwell::prelude::*;
+
+#[derive(Clone)]
+struct DeploymentRegion(&'static str);
+
+#[controller(path = "/deployment")]
+struct DeploymentController;
+
+#[handlers]
+impl DeploymentController {
+    #[get("/region")]
+    async fn region(
+        &self,
+        Extension(region): Extension<DeploymentRegion>,
+    ) -> String {
+        region.0.to_owned()
+    }
+}
+
+let app = App::builder("catalog-api")
+    .auto_discover()
+    .layer(Extension(DeploymentRegion("eu-west")))
+    .build()
+    .await?;
+```
+
+<Symbol path="upwell_axum::plugin::AxumAppBuilder::layer" /> applies a standard Tower/Axum layer to the assembled Upwell router. The generated route keeps <code>Extension&lt;DeploymentRegion&gt;</code> as a server-only extractor, so it does not become an argument on the generated client method. Missing <code>Extension&lt;T&gt;</code> rejects extraction according to Axum's response behavior; it is not a DI construction error.
+
+## Choose the boundary
+
+| Need | Use |
+|---|---|
+| method, URI, headers, cookies in an Upwell handler/component | `RequestMeta` |
+| request-scoped component constructed from framework dependencies | Axum `scope::Request` + DI |
+| value inserted by arbitrary Axum middleware/router | `Extension<T>` |
+| one handler's ordinary path/query/body input | Axum extractor |
+| WebSocket connection identity after upgrade | connection-scope metadata, not retained HTTP request scope |
+
+<Callout type="warning" title="Do not bridge by global mutable state">
+
+If middleware data must enter DI, install a deliberate scope seed or component integration. Copying request values into a singleton or task-local with unclear cleanup breaks concurrency and WebSocket upgrades.
+
+</Callout>
+
+## WebSocket inheritance
+
+An accepted upgrade creates an Axum `upwell::axum::scope::Connection` scope under the root, then a child `upwell::axum::scope::Request` scope for each decoded application message. The framework seeds the upgrade request's `RequestMeta` into the connection scope, so message-scoped dependencies resolve its method, URI, headers, and cookies through the parent chain. <Symbol path="upwell_axum::ws::WsConnectionMeta" /> separately exposes the selected RFC 6455 subprotocol.
+
+This is deliberate metadata inheritance, not retention of the original HTTP request scope. Put longer-lived derived authentication state in a connection-scoped component and keep per-message state request-scoped.
+
+## Troubleshoot context
+
+- `Extension<T>` missing means no covering Axum layer inserted exactly that `T`.
+- `RequestMeta` missing means dispatch did not open the framework HTTP request scope.
+- Cookies absent while the header exists may be malformed pairs; parsing intentionally drops invalid cookies.
+- A WebSocket message handler may resolve inherited upgrade `RequestMeta`; unrelated HTTP request-scoped component instances are not carried into the socket.
+- Custom router composition can place a layer on the wrong side of `merge` or `nest`; inspect which router owns the final route.
+
+See <GuideRef slug="axum/http">HTTP controllers</GuideRef>, <GuideRef slug="axum/websocket">WebSocket protocols</GuideRef>, and <GuideRef slug="framework/dependency-injection/advanced">advanced dependency injection</GuideRef>.

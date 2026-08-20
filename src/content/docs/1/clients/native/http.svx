@@ -1,0 +1,118 @@
+---
+title: Native HTTP clients
+description: Construct Reqwest or Hyper transports and call generated unary and streaming controller methods.
+order: 131
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Native HTTP clients
+
+Enable the generated HTTP surface and at least one backend:
+
+```toml
+[dependencies]
+upwell = { version = "1", features = ["axum", "client", "reqwest"] }
+```
+
+Use `hyper` instead of or alongside `reqwest` when its constraints fit the deployment.
+
+## Construct a Reqwest client
+
+The committed HTTP fixture declares `GreetController`, so its generated `GreetControllerClient` is an inventory-backed example name.
+
+<Example title="Call the fixture controller with Reqwest">
+
+```rust
+use upwell::axum::client::ReqwestClient;
+
+let transport = ReqwestClient::new("https://api.example.test");
+let client = GreetControllerClient::new(transport);
+let response = client.greet_path(String::from("Ada")).await?;
+
+println!("{}", response.body().message);
+```
+
+The exact generated method follows the committed controller handler (`greet_path`) and returns an <Symbol path="upwell_axum::client::response::HttpResponse" /> so status and headers remain available beside the decoded body.
+
+</Example>
+
+Use `ReqwestClient::with_client` to supply a configured `reqwest::Client` with deployment TLS, proxy, redirect, timeout, and pool policy. `set_header_provider` installs a native callback that returns fresh default headers for every request; call-specific headers still win.
+
+## Construct a Hyper client
+
+```rust
+use upwell::axum::client::HyperClient;
+
+let transport = HyperClient::new("http://127.0.0.1:3000");
+let client = GreetControllerClient::new(transport);
+```
+
+The validated Hyper backend uses `hyper-util` pooling and is plain HTTP only. It enables no TLS stack. Terminate TLS at a trusted local proxy or use Reqwest when the client must connect directly to HTTPS.
+
+## Add cross-cutting observation
+
+Both backends store a typed <Symbol path="upwell_axum::client::interceptor::ClientInterceptor" />. `on_request` runs after the absolute URI and defaults are assembled, `on_response` runs when status and headers arrive before classification/decoding, and `on_error` observes terminal client errors.
+
+An interceptor is observation/mutation around each call, not a retry policy. Retrying non-idempotent methods can duplicate remote work; implement retries only with an explicit operation policy and idempotency contract.
+
+## Compare capabilities
+
+| Capability | Reqwest | Hyper |
+|---|---|---|
+| Unary generated methods | yes | yes |
+| Status/headers envelope | yes | yes |
+| Streamed responses | yes | yes |
+| Streamed requests | named by the validated capability docs | exercised by the committed HTTP fixture at the recorded source revision |
+| Multipart body | encoded byte body | encoded byte body when method bounds fit |
+| Direct HTTPS | through configured Reqwest | no TLS in validated backend |
+| Attach a WebSocket request/reply transport | `with_websocket` | `with_websocket` |
+
+The generated method's generic transport bounds are authoritative. The stored artifact is version-skewed: its `HttpClientStreaming` docs say Reqwest, but the committed source fixture at the artifact revision successfully calls a generated request-stream method through Hyper. Verify the exact packaged release's implementation and tests rather than treating either row as an unconditional 1.0 guarantee. If a backend lacks a capability in your build, use another backend rather than manually pretending the route is unary.
+
+## Call generated streaming methods
+
+The committed `Api` fixture emits the following exact method names and call shapes:
+
+```rust plain
+use futures::{StreamExt, stream};
+
+let client = ApiClient::new(ReqwestClient::new("http://127.0.0.1:3000"));
+
+// GET /api/ticks/{n}: outer call errors before streaming; items are u64.
+let mut ticks = client.ticks(4).await?;
+while let Some(tick) = ticks.next().await {
+    println!("{tick}");
+}
+
+// POST /api/collect: generated NDJSON request stream, unary HttpResponse<u64>.
+let total = client.collect(stream::iter([1_u64, 2, 3, 4])).await?;
+assert_eq!(*total, 10);
+```
+
+These names are fixture-emitted, not reserved framework methods. A raw response wrapper similarly emits the declared controller method and yields `Bytes` chunks. The generated HTTP request-stream path is NDJSON-only in the committed macros; a raw byte request must use a supported ordinary body such as `Bytes` or a manually constructed backend request rather than a generated `#[stream]` method.
+
+## Error and cancellation behavior
+
+Non-success statuses declared by the generated contract become typed remote errors; unexpected statuses are classified through the backend and interceptor. Redirects can be surfaced as `ClientError::Redirect` depending on the supplied backend client's redirect policy. Decode and transport failures remain distinct.
+
+Dropping a unary future stops local waiting, but the server may already be executing. Dropping a response stream closes local body consumption and should propagate a send failure/cancellation to a well-behaved producer. Configure transport and application deadlines explicitly; generated calls do not invent one universal timeout.
+
+<Callout type="warning" title="Base URLs need scheme and authority">
+
+Construct transports with a base such as `https://api.example.test`, not a route URL. Generated clients append their controller/route path and percent-encode path/query values.
+
+</Callout>
+
+## Troubleshoot native HTTP
+
+- Unresolved client type: compile the defining controller crate with `client` and a backend feature.
+- HTTPS fails under Hyper: use Reqwest or a TLS-terminating proxy.
+- A streamed request does not compile on the selected backend: inspect that release's generated bounds and backend implementation; the committed artifact and source fixture disagree about Hyper coverage.
+- Authentication is stale: return a fresh header map from the Reqwest header provider or use per-call headers.
+- A route returns an unexpected status: inspect the full `HttpResponse`/`ClientError`, not only body decoding.
+
+See <GuideRef slug="axum/http/streaming">streaming HTTP</GuideRef>, <GuideRef slug="axum/http/multipart-uploads">multipart uploads</GuideRef>, and <GuideRef slug="clients/native/websocket">native WebSocket clients</GuideRef>.

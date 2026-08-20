@@ -14,7 +14,14 @@ import type { Component } from 'svelte';
 import { docsConfig } from 'virtual:docs-config';
 import { manifest } from 'virtual:docs-manifest';
 
-const guideModules = import.meta.glob<{ default: Component }>('/src/content/docs/**/*.svx');
+const guideModules = {
+	...import.meta.glob<{ default: Component }>([
+		'/src/content/docs/**/*.svx',
+		'!/src/content/docs/**/server/**/*.svx'
+	]),
+	'/src/content/docs/1/rpc/server/index.svx': () => import('virtual:docs-rpc-server-index.svx'),
+	'/src/content/docs/1/rpc/server/policies.svx': () => import('virtual:docs-rpc-server-policies.svx')
+};
 const symbolModules = import.meta.glob<{ default: Component }>('/src/content/symbols/**/*.svx');
 
 export const docsContent = createDocsContent({

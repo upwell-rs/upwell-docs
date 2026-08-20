@@ -1,0 +1,25 @@
+---
+title: Browser clients
+description: Build a Wasm client package, call HTTP controllers, and attach browser messaging transports.
+order: 20
+topics: ['web']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Browser clients
+
+Browser client guides own Wasm packaging, generated TypeScript ABI, the shared browser `Connection`, and client-side WebSocket lifecycle. Axum owns the server routes, upgrade endpoints, protocol implementation, and topic publication.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| split native and Wasm dependencies, run `wasm-pack`, initialize the package, and call HTTP controllers | <GuideRef slug="clients/browser/setup-and-http">Setup and HTTP</GuideRef> |
+| connect JSON-WS or STOMP, invoke generated message clients, and manage subscriptions | <GuideRef slug="clients/browser/websocket-messaging">WebSocket messaging</GuideRef> |
+
+## Shared prerequisites
+
+Keep DTOs and generated client declarations in a library that compiles for `wasm32-unknown-unknown`. Complete setup first: the messaging guide uses the same initialized package and shared `Connection` rather than repeating target dependencies and ABI rules.

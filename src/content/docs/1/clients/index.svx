@@ -1,0 +1,50 @@
+---
+title: Clients
+description: Choose a native or browser client surface and keep transport lifecycle out of server guides.
+order: 130
+topics: ['web', 'rpc']
+---
+
+<script lang="ts">
+	import { Callout, GuideRef } from '#lib/docs';
+</script>
+
+# Clients
+
+Upwell generates transport-generic clients from the same service, controller, message, and topic declarations used by the server. The transport determines which capabilities are available; generated methods remain specific to your application's names and wire shapes.
+
+## Choose a path
+
+| Goal | Features and backend | Guide |
+|---|---|---|
+| Construct native HTTP, RPC, or WebSocket transports | protocol feature, `client`, and selected backend | <GuideRef slug="clients/native">Native clients</GuideRef> |
+| Publish a browser SDK and call HTTP controllers | `axum`, `client`, `reqwest`, target-specific Wasm dependencies | <GuideRef slug="clients/browser/setup-and-http">Browser setup and HTTP</GuideRef> |
+| Connect JSON-WS or STOMP from the browser | protocol feature, `client`, `tungstenite` | <GuideRef slug="clients/browser/websocket-messaging">Browser WebSocket messaging</GuideRef> |
+
+Generated methods use capability traits from <Symbol path="upwell_client" />. Unary calls are universal. Server, client, and bidirectional streaming exist only when the protocol/backend implements the corresponding capability. A missing method or unsatisfied transport bound is the intended signal that the selected backend cannot carry that shape.
+
+## Interpret client errors
+
+<Symbol path="upwell_client::ClientError" /> distinguishes encoding, decoding, transport, connection closure, timeout, redirect, and remote response failures. The `Status` type is protocol-owned: HTTP uses `http::StatusCode`, native RPC uses `upwell_transport::StatusCode`, and STOMP uses its own status enum.
+
+Typed generated methods mark remote error-body bytes with the declared error type. Decode those bytes with the same transport codec when needed; do not assume every remote error is JSON or that all protocols interpret status alike.
+
+## Generated-shape policy
+
+<Callout type="warning" title="Use names emitted by your application">
+
+Do not copy hypothetical names such as `UsersControllerClient` or an undeclared RPC client from prose. The HTTP fixture committed in the validated source includes `GreetControllerClient`, `ChatHistoryClient`, `ChatTopicClient`, and `ChatHandlerClient`; other names and method signatures depend on your declarations. Inspect Rust expansion/reference output or the `wasm-pack` TypeScript declarations for the app you built.
+
+</Callout>
+
+The artifact is labeled 1.0.0 but records dirty 0.20.0 source. These guides anchor stable runtime transports and committed fixture names, and call out generated-shape variability instead of projecting unreleased details.
+
+## Common ownership rules
+
+- Clone transport handles rather than opening a new pool or socket for every generated client.
+- Keep a transport alive while response streams and subscriptions use it.
+- Treat dropping a future as cancellation of local interest, not proof the remote handler never ran.
+- Use protocol-specific shutdown APIs only where they exist; there is no generic `disconnect` across every client transport.
+- Apply authentication at the transport's supported boundary: native HTTP header provider, per-call headers, STOMP CONNECT options, or browser-safe cookie/query/subprotocol mechanisms.
+
+Continue with the guide for the selected transport and <GuideRef slug="framework/platforms/features-and-targets">features and targets</GuideRef>.

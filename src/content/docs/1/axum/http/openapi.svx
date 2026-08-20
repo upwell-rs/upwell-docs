@@ -1,0 +1,111 @@
+---
+title: OpenAPI generation and UI
+description: Enable metadata generation, mount JSON and an optional UI, and validate paths and base prefixes.
+order: 118
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# OpenAPI generation and UI
+
+OpenAPI has a compile-time half and a runtime half. The feature makes `#[dto]` and route macros contribute schema and operation metadata; <Symbol path="upwell_axum::config::OpenApiConfig" /> decides whether Axum assembles and mounts the document.
+
+## Enable generation in the manifest
+
+```toml plain
+[dependencies]
+upwell = { version = "1", features = ["axum", "openapi"] }
+utoipa = { version = "5", features = ["macros"] }
+```
+
+`utoipa` must be direct because generated derives and attributes name `::utoipa`. Add one UI feature only if this binary should bundle it, for example `openapi-swagger-ui`, `openapi-redoc`, `openapi-rapidoc`, or `openapi-scalar`.
+
+## Contribute schemas and operations
+
+```rust plain
+#[dto]
+struct CreateUser {
+    name: String,
+}
+
+#[post("/users")]
+async fn create(&self, Json(input): Json<CreateUser>) -> Json<User> {
+    Json(save(input).await)
+}
+```
+
+`#[dto]` contributes its schema and nested DTO schemas. Route metadata contributes the joined controller and route path, methods, operation details, parameters, request body, and response information the macro can infer. If a custom response hides success and error variants, add the route metadata required by the canonical macro reference rather than assuming OpenAPI can inspect runtime behavior.
+
+## Enable serving explicitly
+
+The surface is disabled by default even when compiled.
+
+<Example title="Serve JSON and Swagger UI">
+
+```toml
+[axum.openapi]
+enabled = true
+title = "Catalog API"
+version = "2026-08"
+json_path = "/openapi.json"
+ui = "swagger"
+ui_path = "/docs"
+```
+
+When enabled, Axum builds the document once and mounts the JSON route. `ui = "none"` serves JSON only.
+
+</Example>
+
+Every runtime field has an exact environment-backed default:
+
+| TOML field | Environment variable | Default |
+|---|---|---|
+| `enabled` | `AXUM_OPENAPI_ENABLED` | `false` |
+| `json_path` | `AXUM_OPENAPI_JSON_PATH` | `/openapi.json` |
+| `ui` | `AXUM_OPENAPI_UI` | `none` |
+| `ui_path` | `AXUM_OPENAPI_UI_PATH` | `/docs` |
+| `title` | `AXUM_OPENAPI_TITLE` | `API` |
+| `version` | `AXUM_OPENAPI_VERSION` | `0.0.0` |
+
+```sh
+AXUM_OPENAPI_ENABLED=true \
+AXUM_OPENAPI_UI=swagger \
+AXUM_OPENAPI_TITLE='Catalog API' \
+cargo run
+```
+
+These variables are substitutions in `OpenApiConfig::DEFAULTS`, not a configuration source with a separate top-level rank. An explicitly supplied `[axum.openapi]` field survives default filling and therefore wins; the environment value fills the field only when higher-precedence merged configuration leaves it absent. See the configuration-source precedence guide for the merge that happens before defaults are filled.
+
+Selecting a UI whose feature is not compiled logs a warning and skips the UI while leaving JSON mounted. JSON is therefore the supported fallback, not an implicit promise that a UI binary exists.
+
+## Apply the global base path correctly
+
+<Symbol path="upwell_axum::openapi::build_openapi" /> receives Axum's already-normalized global base path. A non-empty value becomes the OpenAPI server URL while operation paths remain relative to it. The UI receives the prefixed JSON URL so it fetches the document from the same nested router.
+
+Do not invent another OpenAPI-only base-path setting. Configure the Axum host's actual global nesting/prefix, then let the OpenAPI mount use that value. A reverse proxy that strips or adds a prefix must be reflected in the host/proxy contract so the served `servers` value and fetch URL remain true.
+
+## Validate paths and collisions
+
+`json_path` and `ui_path` must be valid route paths. When they overlap, <Symbol path="upwell_axum::openapi::mount" /> returns an Axum configuration error instead of allowing router construction to panic. Controller route collisions are still subject to router/protocol validation; OpenAPI deduplicating schemas by name or merging methods under one path does not legalize two runtime handlers for the same route.
+
+Operations sharing an OpenAPI path are merged by HTTP method. Component schemas are deduplicated by schema name, so unrelated DTOs with the same emitted name are a design collision even if document assembly produces one entry.
+
+<Callout type="warning" title="Metadata follows the compiled application">
+
+Only linked, macro-contributed metadata in this build is available. Runtime dynamic routes and externally mounted raw Axum routers need their own OpenAPI integration.
+
+</Callout>
+
+## Expected behavior and troubleshooting
+
+- Feature enabled but 404: set `[axum.openapi].enabled = true`.
+- JSON works but UI is absent: compile the selected UI feature and check the warning log.
+- UI loads but cannot fetch JSON: verify the actual global prefix, proxy rewrite, `json_path`, and browser-visible origin.
+- A DTO is missing: ensure it is `#[dto]` and reachable from linked operation metadata.
+- A response is incomplete: declare route response metadata when inference cannot see through a custom `IntoResponse`.
+- Startup fails with a path collision: choose distinct JSON and UI paths and check controller routes under the same prefix.
+
+See <GuideRef slug="axum/http">HTTP controllers</GuideRef>, <GuideRef slug="framework/configuration/sources-and-bindings">configuration sources</GuideRef>, and the <Symbol path="upwell_axum::config::OpenApiUi" /> reference.

@@ -1,0 +1,127 @@
+---
+title: Lifecycle and graceful shutdown
+description: Acquire resources in order, roll back partial startup, drain a protocol, and release resources.
+order: 40
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef, SymbolRef } from '#lib/docs';
+</script>
+
+# Lifecycle and graceful shutdown
+
+Use lifecycle hooks for resources that can only be acquired after the root dependency graph exists and must be released before it disappears. `App::run` and `App::serve` share the same envelope, but only `serve` hands a concrete endpoint to a protocol runtime.
+
+## Declare a paired resource lifecycle
+
+<Example title="Start and stop a background worker">
+
+```rust
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
+use upwell::prelude::*;
+
+#[component]
+struct Worker {
+    #[default]
+    task: Mutex<Option<JoinHandle<()>>>,
+}
+```
+
+Record enough state during successful startup for shutdown to be idempotent.
+
+```rust
+#[methods]
+impl Worker {
+    #[hook(Startup)]
+    async fn start(&self) -> Result<(), WorkerError> {
+        let task = tokio::spawn(run_worker());
+        *self.task.lock().await = Some(task);
+
+        Ok(())
+    }
+
+    #[hook(Shutdown)]
+    async fn stop(&self) -> Result<(), WorkerError> {
+        if let Some(task) = self.task.lock().await.take() {
+            task.abort();
+            let _ = task.await;
+        }
+
+        Ok(())
+    }
+}
+```
+
+</Example>
+
+Startup hooks run sequentially in the prepared hook order. A startup error immediately stops the sequence and prevents the serve loop from accepting work.
+
+## Handle partial startup
+
+The application tracks components whose `Startup` hook completed successfully. If a later startup hook fails, shutdown runs only for:
+
+- components with no startup hook, and
+- components whose startup hook completed successfully.
+
+The component whose startup hook returned `Err` is not considered started. Its startup implementation must clean up resources acquired before that error. Earlier successful components receive their normal shutdown hook, so their cleanup must also tolerate a process that never served a request.
+
+Shutdown hook errors are logged and cleanup continues. They are not returned as the final `run` or `serve` result. Startup errors and protocol serve errors are returned to the caller. A panic from the protocol serve future is caught only long enough to stop reload tasks and run shutdown hooks, then resumed.
+
+## Choose `run` or `serve`
+
+`app.run().await` executes startup, waits for Ctrl-C or a programmatic shutdown signal, and then executes shutdown. It does not serve an endpoint.
+
+`app.serve(endpoint).await` executes startup, starts automatic config reload tasks, bridges Ctrl-C into the application's <SymbolRef path="upwell_app/lifecycle/ShutdownSignal">`ShutdownSignal`</SymbolRef>, and gives the runtime, signal, and endpoint to the protocol's <SymbolRef path="upwell/Serve">`Serve&lt;E&gt;`</SymbolRef> implementation.
+
+<Example title="Retain the handle before moving the app">
+
+```rust
+let app = App::builder("catalog-api")
+    .auto_discover()
+    .build()
+    .await?;
+let shutdown = app.shutdown_handle();
+
+tokio::spawn(async move {
+    wait_for_supervisor().await;
+    shutdown.shutdown();
+});
+
+app.serve(listener).await?;
+```
+
+</Example>
+
+The handle is cloneable and can also be injected. Calling `shutdown()` requests graceful termination; it is not process exit and does not skip hooks.
+
+## Drain protocol work before cleanup
+
+The application does not implement one universal drain policy. The selected protocol's `Serve` implementation observes `ShutdownSignal` and owns admission and in-flight work.
+
+The validated RPC runtime stops accepting connections, cancels each connection loop, closes the connection's call table, and waits for connection tasks to finish before returning to the application envelope. WebSocket protocols receive <Symbol path="upwell::axum::WsShutdown" /> and must choose how their framing loop closes or drains connections. Axum's configured graceful timeout is protocol configuration, not a generic lifecycle-hook timeout.
+
+After the protocol returns, the envelope aborts its Ctrl-C bridge, stops automatic reload tasks, and runs shutdown hooks. Therefore hooks should release application resources, not attempt to make a protocol accept one final request.
+
+<Callout type="danger" title="Do not exit from a hook">
+
+`std::process::exit`, an unrecovered panic, or runtime teardown bypasses later cleanup. Return a startup error, request shutdown through the handle, and let the envelope finish.
+
+</Callout>
+
+## Ordering and failure checklist
+
+1. `AppBuilder::prepare` validates registrations, configuration, protocol state, and scope plans.
+2. `PreparedApp::build` constructs root components and the protocol runtime.
+3. Startup hooks run sequentially.
+4. Automatic config triggers start only after successful startup.
+5. `run` waits, or `serve` drives the selected protocol.
+6. Shutdown is requested by Ctrl-C, a handle, endpoint closure, or a protocol error.
+7. The protocol stops and drains according to its contract.
+8. Reload tasks stop.
+9. Eligible shutdown hooks run; errors are logged and later hooks continue.
+
+If shutdown hangs, identify whether the protocol future has returned. If it has not, inspect its connection/task cancellation policy. If it has, inspect a shutdown hook waiting on a task that never received its own cancellation signal.
+
+See <GuideRef slug="framework">the application model</GuideRef>, <GuideRef slug="framework/application/protocol-composition">protocol composition</GuideRef>, and <GuideRef slug="framework/configuration/reload">configuration reload</GuideRef>.

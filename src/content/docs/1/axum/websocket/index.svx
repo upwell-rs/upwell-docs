@@ -1,0 +1,123 @@
+---
+title: WebSocket
+description: Define typed WebSocket controllers, mount endpoints, author protocols, and publish topics.
+order: 20
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
+</script>
+
+# WebSocket
+
+Axum WebSocket owns every server-side concern after the HTTP upgrade: typed controller destinations, endpoint mounting, connection and message scopes, protocol framing, and server publication. Client connection and reconnection lifecycles live under <GuideRef slug="clients/native/websocket">native clients</GuideRef> and <GuideRef slug="clients/browser/websocket-messaging">browser clients</GuideRef>.
+
+Most applications select an existing protocol such as `JsonWs` or `Stomp`; only protocol crates implement <Symbol path="upwell::axum::WebsocketProtocol" />.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| declare typed destinations and mount an upgrade endpoint | this controllers and endpoints guide |
+| define framing, correlation, dispatch, subprotocol, or connection policy | <GuideRef slug="axum/websocket/protocol-authoring">Protocol authoring</GuideRef> |
+| declare typed topics and publish with backpressure or fan-out control | <GuideRef slug="axum/websocket/topics-and-publishing">Topics and publishing</GuideRef> |
+
+## Shared prerequisites
+
+Enable `axum`, `ws`, and the selected protocol feature. Start from a working Axum application and use <GuideRef slug="axum/http/request-context">request context</GuideRef> for upgrade-time extraction; WebSocket connection and message scopes begin only after a successful upgrade.
+
+The <Symbol path="upwell::axum::AxumAppBuilder" /> extension owns endpoint registration. Controller macros only contribute typed message destinations; they do not create an Axum route or choose its URL.
+
+## Use an existing protocol
+
+Start with DTOs and a controller that selects the protocol. The controller remains a singleton; `ws = JsonWs` changes its generated surface from HTTP route collection to WebSocket message collection.
+
+<Example title="Define a JSON WebSocket controller">
+
+```rust
+use upwell::axum::prelude::*;
+
+#[dto]
+struct Greet {
+    who: String,
+}
+
+#[dto]
+struct Greeting {
+    message: String,
+}
+```
+
+Declare the controller against the protocol that frames its messages.
+
+```rust
+#[controller(ws = JsonWs)]
+struct GreetingSocket;
+```
+
+Add destinations in an inherent handler implementation for that same protocol.
+
+```rust
+#[handlers(ws = JsonWs)]
+impl GreetingSocket {
+    #[message("greet")]
+    async fn greet(&self, input: Greet) -> Greeting {
+        Greeting {
+            message: format!("Hello, {}", input.who),
+        }
+    }
+}
+```
+
+</Example>
+
+`#[controller(ws = P)]` and `#[handlers(ws = P)]` must use the identical protocol type. Each `#[message("destination")]` produces a <Symbol path="upwell::axum::WsRoute" />: a destination and an erased handler that receives `P::Payload`. The controller expansion then contributes a <Symbol path="upwell::axum::WsControllerDescriptor" /> and implements <Symbol path="upwell::axum::WebsocketController" />. At application preparation, descriptors for the mounted protocol are collected into its controller route table; duplicate destinations for that protocol fail before the server starts.
+
+A non-unit return infers request/reply. A unit return infers fire-and-forget. Use `#[message("...", request)]` or `#[message("...", send)]` when the method's return type is an outcome or `Result` whose interaction mode is not obvious. The generated client seam, when the Axum macro crate's `client` feature is enabled, exposes matching typed request or send methods for supported handler shapes.
+
+## Mount the endpoint
+
+Register the protocol on the Axum application builder. This is the build and serve lifecycle boundary: registration contributes protocol-owned dependencies before DI validation, `build()` constructs one protocol instance per registered endpoint, and serving mounts the generic upgrade route at the supplied path.
+
+<Example title="Mount the controller protocol">
+
+```rust context
+use upwell::prelude::*;
+use upwell::axum::prelude::*;
+
+#[controller(ws = JsonWs)]
+struct GreetingSocket;
+```
+
+Register the default endpoint options. The path is an HTTP route for the WebSocket upgrade, not a controller path.
+
+```rust
+let app = App::builder("greetings")
+    .register_ws::<JsonWs>("/ws")
+    .build()
+    .await?;
+```
+
+Use explicit endpoint options when the protocol needs configuration. One protocol type may be mounted at multiple distinct paths, each with its own options.
+
+```rust
+let app = App::builder("greetings")
+    .register_ws_with::<Stomp>("/stomp", StompConfig::default())
+    .build()
+    .await?;
+```
+
+</Example>
+
+`register_ws::<P>(path)` requires `P::Options: Default`. `register_ws_with::<P>(path, options)` accepts explicit per-endpoint settings instead. Both calls select only controllers whose generated `WebsocketController::Protocol` is `P`; a controller declaration alone is inert until an endpoint for its protocol is registered. Paths must be absolute and unique across WebSocket mounts.
+
+At connection time, the framework opens one <Symbol path="upwell::axum::WebsocketConnection" /> scope after a successful upgrade. The protocol opens a child <Symbol path="upwell::axum::WebsocketMessage" /> scope for every decoded application message. Resolve connection-wide identity, session state, and upgrade metadata once from the connection scope; resolve message-specific `Inject<T>` dependencies in the message scope. `#[message]` permits one decoded body parameter plus any number of injected values, so application handlers should not parse transport frames or manufacture scopes themselves.
+
+## Reference pages
+
+- <Symbol path="upwell::axum::WebsocketProtocol" />
+- <Symbol path="upwell::axum::AxumAppBuilder" />
+- <Symbol path="upwell::axum::WebsocketController" />
+- <SymbolRef path="upwell_axum_macros/controller"><code>#[controller]</code></SymbolRef>
+- <SymbolRef path="upwell_axum_macros/message"><code>#[message]</code></SymbolRef>

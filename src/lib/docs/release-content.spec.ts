@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -7,9 +8,31 @@ import { createDocsRouteHelpers } from '@upwell/docs-kit/sveltekit';
 import { readManifest } from '@upwell/docs-vite';
 
 import { docsConfig } from '../../../docs.config.ts';
+import { guideRedirects } from './guide-redirects.ts';
 
 const historicalSlugs = ['application-model', 'components', 'http-controllers', 'native-daemon-rpc'];
 const fixtureSlugs = ['framework/new-runtime', 'path-version-selectors'];
+const groupLandingSlugs = [
+	'framework',
+	'framework/application',
+	'framework/dependency-injection',
+	'framework/configuration',
+	'framework/platforms',
+	'framework/extensions',
+	'axum',
+	'axum/http',
+	'axum/websocket',
+	'rpc',
+	'rpc/server',
+	'clients',
+	'clients/native',
+	'clients/browser',
+	'cargo-upwell',
+	'cargo-upwell/cli',
+	'cargo-upwell/programmatic-api',
+	'cargo-upwell/catalog',
+	'cargo-upwell/renderers'
+];
 
 async function catalog() {
 	const manifest = await readManifest(path.resolve(import.meta.dirname, '../../..'));
@@ -33,6 +56,32 @@ function navigationPageIds(nodes: ReturnType<Awaited<ReturnType<typeof catalog>>
 }
 
 describe('release content visibility', () => {
+	it('publishes every nested group landing and resolves authored guide references', async () => {
+		const content = await catalog();
+		const version = docsConfig.framework.root.versions.find((entry) => entry.releaseVersion.raw === '1.0.0')!;
+
+		for (const slug of groupLandingSlugs) {
+			expect(content.findPage(slug, version.releaseVersion), slug).toBeDefined();
+		}
+
+		for (const target of Object.values(guideRedirects)) {
+			expect(content.findPage(target, version.releaseVersion), target).toBeDefined();
+		}
+
+		for (const page of content.pagesFor(version.releaseVersion)) {
+			const source = content.pageSource(page.slug, version.releaseVersion);
+
+			if (!source) continue;
+
+			const contents = await readFile(path.resolve(import.meta.dirname, '../../..', source.slice(1)), 'utf8');
+			const references = [...contents.matchAll(/<GuideRef\s+[^>]*slug="([^"]+)"/g)].map((match) => match[1]);
+
+			for (const reference of references) {
+				expect(content.findPage(reference, version.releaseVersion), `${page.slug} -> ${reference}`).toBeDefined();
+			}
+		}
+	});
+
 	it('keeps the historical guides in 0.20 and removes them from 1.0 navigation', async () => {
 		const content = await catalog();
 		const oldRelease = docsConfig.framework.root.versions.find((version) => version.releaseVersion.raw === '0.20.0')!;

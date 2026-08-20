@@ -21,6 +21,6 @@ The implementation owns endpoint resources and protocol-spawned work. On shutdow
 
 The caller owns the application lifecycle envelope: startup hooks, reload coordination, shutdown initiation, and final cleanup. `Serve` therefore watches the supplied signal rather than owning a `ShutdownHandle`. This boundary allows an application to host one runtime through several endpoint types while preserving one shutdown authority.
 
-Construct the runtime in [`PreparedProtocol::build`](./PreparedProtocol), not in `serve`. See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for a staged serving example.
+Construct the runtime in [`PreparedProtocol::build`](./PreparedProtocol), not in `serve`. See [the custom protocol guide](/docs/latest/framework/extensions/protocol-authoring) for a staged serving example.
 
 <SymbolMembers title="Methods" />

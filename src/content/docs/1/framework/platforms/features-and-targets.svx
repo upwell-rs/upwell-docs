@@ -1,0 +1,113 @@
+---
+title: Features, targets, and backends
+description: Select facade features, direct dependencies, generated client backends, and registration behavior per target.
+order: 50
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, GuideRef } from '#lib/docs';
+</script>
+
+# Features, targets, and backends
+
+Treat the `upwell` facade feature list as a dependency graph, not as a platform promise. Server protocols are native surfaces; client support can retain generated types on Wasm while macros gate native hosting items out.
+
+## Facade feature matrix
+
+| Feature | Adds | Implies or requires |
+|---|---|---|
+| `di-check` | compile-time dependency graph checks | the only facade default feature |
+| `daemon` | native RPC protocol and facade macros | `upwell-rpc` |
+| `axum` | HTTP protocol, controllers, routes | `upwell-axum` |
+| `ws` | generic WebSocket server/controller surface | `axum` |
+| `json-ws` | JSON request/reply protocol | `ws` |
+| `stomp` | STOMP messages and pub/sub | `ws` |
+| `jobs` | scheduled jobs | protocol-neutral |
+| `client` | generated client seams for enabled protocols | no transport by itself |
+| `reqwest` | HTTP backend and browser fetch path | `client`; native and Wasm |
+| `hyper` | pooled native HTTP backend | `client`; plain HTTP in the validated inventory |
+| `tungstenite` | JSON-WS/STOMP WebSocket client transport | `client` + `ws`; native and Wasm runtime paths differ |
+| `multipart` | Axum server extractor and generated body shape | `axum` |
+| `openapi` | schema/operation collection and JSON mounting | `axum`; generated code requires direct `utoipa` |
+| `openapi-*-ui` | one bundled UI | `openapi` |
+| `yaml` | YAML and YML config parsers | TOML remains the config crate default |
+| `watch` | filesystem-driven config reload | native filesystem watcher |
+| `hybrid-registry` | explicit hybrid registration backend selection | advanced target/linker qualification |
+| `wasm-ts` | newer generated TypeScript ABI mode | compatible direct `tsify` version |
+
+The committed facade inventory also includes `uuid` support for templated STOMP topics and `tracing-subscriber` helpers. CLI/tooling behavior is compiled into the native framework/Cargo Upwell surfaces at this revision; there are no public facade features named `cli` or `tooling` in the committed manifest.
+
+## Target matrix
+
+| Surface | Native | Browser Wasm | Mach-O note |
+|---|---|---|---|
+| Build and serve `App<P>` | yes | no native socket/process host | an Apple host auto-selects `inventory`; cross-compilation is explicit |
+| HTTP generated client | Reqwest or Hyper | Reqwest/fetch path | same generated controller definition |
+| RPC TCP/Unix client | yes | no | Unix sockets remain Unix-only |
+| JSON-WS request/reply | `TokioTungsteniteWs<P>` | `connectJsonWs` attach and `disconnectJsonWs` detach with `ws` + `json-ws` + `tungstenite` | do not assume an HTTP client implies a WS transport |
+| STOMP client | native transport | browser `Connection` attach/connect API when generated | browser handshake cannot set arbitrary HTTP headers |
+| Typed application directories | XDG, macOS Application Support, or Windows Known Folder paths | unavailable | exact locations are in the directory guide |
+| Signals and file watching | yes where OS supports them | unavailable | SIGHUP is Unix-only |
+| Link-time descriptor discovery | `linkme` normally | server groups are gated; client code remains | `inventory` is automatic on an Apple proc-macro host; force for cross-compilation |
+
+<Callout type="warning" title="Do not infer a release contract from the label">
+
+The 1.0.0 docs artifact records source package version 0.20.0 and a dirty Git snapshot. The matrices above describe validated public symbols and feature edges in that artifact. Confirm a published crate's `Cargo.toml` before pinning exact versions or relying on a target-specific generated shape.
+
+</Callout>
+
+## Add direct dependencies generated code names
+
+Generated paths resolve in the application crate, so a transitive dependency is insufficient:
+
+| Generated surface | Typical direct dependency |
+|---|---|
+| host entry/runtime | `tokio` |
+| CLI host | `clap` |
+| wire DTOs | `serde` |
+| OpenAPI macros and schema | `utoipa` |
+| browser bindings | `wasm-bindgen`, `wasm-bindgen-futures`, `tsify` |
+
+Use target-specific dependency tables to keep server-only dependencies out of Wasm. See <GuideRef slug="clients/browser/setup-and-http">browser Wasm clients</GuideRef> for a complete manifest shape.
+
+## Select the registration backend
+
+Upwell emits exactly one registration implementation at macro expansion:
+
+- `linkme` is the normal native backend and uses per-type distributed linker sections.
+- `inventory` uses shared constructor-backed collections and avoids Mach-O's approximately 255 custom-sections-per-segment limit.
+- An Apple/Mach-O proc-macro host automatically enables `upwell_hybrid`, so ordinary native macOS builds select `inventory` with no feature.
+- Cross-compiling to an Apple target from a non-Apple host cannot infer the target at proc-macro expansion. Enable `hybrid-registry` or set `UPWELL_HYBRID=1` so generated code uses `inventory`.
+- `UPWELL_HYBRID=0`, `false`, `off`, `no`, or an empty value explicitly restores `linkme` on an Apple host, provided `hybrid-registry` is not also enabled.
+
+The Cargo feature only adds the inventory choice; it does not disable an environment-forced choice. Do not manually register descriptors: code generation emits one backend and `auto_discover()` consumes it through a uniform registry surface.
+
+## Keep one protocol invariant
+
+Cargo features may compile several protocol crates, but <code>App&lt;P&gt;</code> has exactly one selected <Symbol path="upwell::ProtocolDefinition" />. Enabling `daemon` and `axum` does not turn one application value into a mixed dispatcher.
+
+```rust plain
+let rpc = upwell::daemon::App::builder("internal-rpc")
+    .auto_discover()
+    .build()
+    .await?;
+
+let http = upwell::axum::App::builder("public-http")
+    .auto_discover()
+    .build()
+    .await?;
+```
+
+These are separate hosts with separate lifecycle and protocol state. A supervisor can run them side by side, but shared infrastructure must be explicit and each app receives only descriptors appropriate to its protocol.
+
+## Troubleshoot feature failures
+
+- A generated client type missing usually means `client` or the protocol feature was absent when the defining crate compiled.
+- A client method missing can be a backend capability constraint, especially streamed request bodies.
+- `utoipa` unresolved under `openapi` means it is not a direct application dependency.
+- Wasm failures mentioning native sockets, directories, or process signals indicate server bootstrap code leaked into the library target.
+- A controller exists but no endpoint serves it when the protocol was not mounted or the wrong `App<P>` host collected it.
+- Duplicate registration or linker behavior on a special native target should be diagnosed through the selected registration backend rather than fixed by manually calling every descriptor.
+
+Continue with <GuideRef slug="framework/application/protocol-composition">protocol composition</GuideRef>, <GuideRef slug="clients">clients</GuideRef>, and <GuideRef slug="framework/platforms/application-directories">application directories</GuideRef>.

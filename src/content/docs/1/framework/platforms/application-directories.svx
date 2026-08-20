@@ -1,0 +1,126 @@
+---
+title: Application directories
+description: Resolve, inject, create, and validate typed platform directories without unsafe fallbacks.
+order: 51
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Application directories
+
+<Symbol path="upwell::dirs::DirectoriesManager" /> resolves application locations once. The application seeds the manager and one typed <Symbol path="upwell::dirs::Dir" /> for every built-in kind into dependency injection.
+
+## Pick default or explicit roots
+
+<Example title="Use safe platform project directories">
+
+```rust
+use upwell::dirs::DirectoriesManager;
+
+let directories = DirectoriesManager::try_for_app("catalog-api")?;
+```
+
+`try_for_app` returns an error when no home directory can be resolved. It deliberately refuses a predictable fallback under the shared system temporary directory. `for_app` has the same policy but panics; framework builders use the fallible form.
+
+</Example>
+
+Use an explicit root for a test, portable installation, or sandbox:
+
+```rust
+let directories = DirectoriesManager::from_path(test_root);
+
+let app = App::builder("catalog-api")
+    .directories(directories)
+    .auto_discover()
+    .build()
+    .await?;
+```
+
+`from_path` itself does not perform I/O and does not fail. Each directory kind becomes a named child such as `config`, `data`, or `runtime`.
+
+## Know the built-in kinds
+
+| Kind | Purpose | Private |
+|---|---|---|
+| <Symbol path="upwell_dirs::Config" /> | `application.toml` and profile files | yes |
+| <Symbol path="upwell_dirs::Data" /> | persistent application data | yes |
+| <Symbol path="upwell_dirs::Cache" /> | discardable cache | yes |
+| <Symbol path="upwell_dirs::State" /> | logs, history, non-user state | yes |
+| <Symbol path="upwell_dirs::Runtime" /> | sockets and PID files | yes |
+| <Symbol path="upwell_dirs::Tmp" /> | shared system temporary directory | no; not application-scoped |
+
+On platforms without a runtime directory, `Runtime` falls back to the application's cache directory and logs a warning. `State` may fall back to the application's data directory. These are platform-directory fallbacks, not the unsafe shared-temp fallback rejected by `try_for_app`.
+
+## Inject and create a directory
+
+<Example title="Create a private data directory before writing">
+
+```rust
+use upwell::dirs::{Data, Dir};
+use upwell::prelude::*;
+
+#[component]
+struct DocumentStore {
+    data: Dir<Data>,
+}
+
+impl DocumentStore {
+    fn initialize(&self) -> std::io::Result<()> {
+        self.data.ensure()?;
+        let index = self.data.join("index.db");
+
+        open_index(index)
+    }
+}
+```
+
+Resolution does not create anything. <Symbol path="upwell_dirs::Dir::ensure" /> creates the directory and parents, then validates private-directory safety. `path()` borrows the resolved path and `join()` creates a child path without touching disk.
+
+</Example>
+
+On Unix, private validation rejects a symlinked target, a target owned by another user, group/other-writable targets, and unsafe writable ancestors without the sticky bit; it enforces mode `0700`. Root-owned platform alias symlinks may be accepted as ancestors, but the application directory itself may not be a symlink. Windows uses platform access protection and retains guards for private roots. Other native targets reject symlinks and non-directory path components.
+
+## Use paths in configuration
+
+`ConfigManager::load_from` registers all entries as `${@config}`, `${@data}`, `${@cache}`, `${@state}`, `${@runtime}`, and `${@tmp}`. That keeps path selection centralized:
+
+```toml
+[rpc]
+socket = "${@runtime}/catalog.sock"
+
+[database]
+path = "${@data}/catalog.db"
+```
+
+## Platform availability
+
+For `DirectoriesManager::try_for_app("catalog-api")`, the empty qualifier/organization uses the `directories` crate's application-only layout:
+
+| Target | Config | Data | Cache | State | Runtime |
+|---|---|---|---|---|---|
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/catalog-api` | `${XDG_DATA_HOME:-~/.local/share}/catalog-api` | `${XDG_CACHE_HOME:-~/.cache}/catalog-api` | `${XDG_STATE_HOME:-~/.local/state}/catalog-api` | `$XDG_RUNTIME_DIR/catalog-api`, otherwise the cache path |
+| macOS | `~/Library/Application Support/catalog-api` | `~/Library/Application Support/catalog-api` | `~/Library/Caches/catalog-api` | data path fallback | cache path fallback |
+| Windows | `%APPDATA%\catalog-api\config` | `%APPDATA%\catalog-api\data` | `%LOCALAPPDATA%\catalog-api\cache` | data path fallback | cache path fallback |
+| browser Wasm | unavailable | unavailable | unavailable | unavailable | unavailable |
+| `from_path(root)` | `root/config` | `root/data` | `root/cache` | `root/state` | `root/runtime` |
+
+Environment variables in braces follow their platform's normal resolution rules. `Dir<Tmp>` is always the shared `std::env::temp_dir()` and is intentionally outside the application-specific layout.
+
+<Callout type="danger" title="Temporary files are not private application state">
+
+`Dir<Tmp>` points at the shared system temporary directory and is marked non-private. Do not store secrets there merely because it is injectable. Use `Data`, `State`, or `Runtime` and call `ensure()`.
+
+</Callout>
+
+## Troubleshoot directory failures
+
+- Builder preparation failing with `Directories` means the default safe project layout could not be resolved; pass a deliberate `from_path` manager if that deployment owns a safe root.
+- `PermissionDenied` from `ensure` usually indicates ownership, symlink, or write-bit validation, not a missing recursive-create permission alone.
+- A path exists but is a file yields `NotADirectory`.
+- `${@data}` unresolved means configuration was loaded without `load_from` or `with_directories`.
+- A Wasm target must receive storage through browser APIs or host calls; do not conditionally fabricate native `Dir<K>` values.
+
+See <GuideRef slug="framework/configuration/sources-and-bindings">configuration sources</GuideRef> and <GuideRef slug="clients/browser/setup-and-http">browser Wasm clients</GuideRef>.

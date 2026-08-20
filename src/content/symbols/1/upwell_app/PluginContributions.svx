@@ -22,6 +22,6 @@ Use `component` for a type with a static `ComponentDescriptor`, `component_descr
 
 The collector rejects duplicate contributor-local IDs and third-party IDs in the reserved `upwell/` namespace when it is finalized. With the `tooling` feature, `tooling` exposes a separate owner-scoped metadata collector; do not use app-neutral contribution IDs as a substitute for tooling resource identities.
 
-Use [`contribute!`](/docs/latest/symbols/upwell_app/contribute) for literal declarative emissions, and use the [plugin workflow](/docs/latest/extensions/plugins#preserve-provenance-while-contributing) when control flow requires the direct methods.
+Use [`contribute!`](/docs/latest/symbols/upwell_app/contribute) for literal declarative emissions, and use the [plugin workflow](/docs/latest/framework/extensions/plugins#preserve-provenance-while-contributing) when control flow requires the direct methods.
 
 <SymbolMembers />

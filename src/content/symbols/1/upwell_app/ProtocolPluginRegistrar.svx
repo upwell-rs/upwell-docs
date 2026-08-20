@@ -22,6 +22,6 @@ topics: ['framework']
 
 The registrar does not resolve an application graph by itself. It supplies protocol-owned declarations to composition, where application choices and static relations are validated. Application code should not attempt to emulate protocol defaults with late builder plugins.
 
-Follow [Choose protocol defaults deliberately](/docs/latest/extensions/plugins#choose-protocol-defaults-deliberately) for the workflow and use [`ApplicationPluginRegistrar`](/docs/latest/symbols/upwell_app/ApplicationPluginRegistrar) for application-side replacement and suppression.
+Follow [Choose protocol defaults deliberately](/docs/latest/framework/extensions/plugins#choose-protocol-defaults-deliberately) for the workflow and use [`ApplicationPluginRegistrar`](/docs/latest/symbols/upwell_app/ApplicationPluginRegistrar) for application-side replacement and suppression.
 
 <SymbolMembers />

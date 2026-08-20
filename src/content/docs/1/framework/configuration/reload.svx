@@ -1,0 +1,131 @@
+---
+title: Configuration reload
+description: Apply manual or automatic configuration changes as one rejectable transaction.
+order: 31
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Configuration reload
+
+Every built application exposes a cloneable <Symbol path="upwell_config::managed::reload::ConfigReloader" />. A reload re-reads the manager's retained sources in their original merge order, rebinds changed typed values, runs affected hooks against a complete proposal, and commits only if every stage succeeds.
+
+## Enable the required surface
+
+Manual reload is always available. File watching requires the facade's `watch` feature; SIGHUP is a native Unix trigger.
+
+```toml
+[dependencies]
+upwell = { version = "1", features = ["watch"] }
+```
+
+Automatic setup belongs to <Symbol path="upwell_config::managed::source::ConfigManager" />, not to a standalone watcher:
+
+```rust
+use std::time::Duration;
+use upwell::prelude::*;
+
+let config = ConfigManager::load_from(&directories, &profiles)?
+    .watch_config()
+    .reload_on_sighup()
+    .config_reload_debounce(Duration::from_millis(500));
+
+let app = App::builder("catalog-api")
+    .config_source(config)
+    .auto_discover()
+    .build()
+    .await?;
+```
+
+`App::run` and `App::serve` read those manager-owned triggers after startup succeeds, spawn the tasks, and stop them before shutdown hooks run. Without `watch`, `watch_config()` is logged and ignored at startup rather than making file watching available.
+
+## Reload manually
+
+<Example title="Use the application-owned reloader">
+
+```rust
+let reloader = app.config_reloader();
+let report = reloader.reload().await?;
+
+tracing::info!(
+    generation = report.generation,
+    changed = report.changed.len(),
+    "configuration accepted"
+);
+```
+
+The successful report contains the new monotonic generation, changed bindings, and accepting hook reports. An empty `changed` list is a valid successful reload.
+
+</Example>
+
+The same handle is injectable. Use an authenticated administrative route or a deployment control task when the platform has no filesystem notification or signals.
+
+## Validate a proposal with `CfgNext`
+
+<Example title="Reject an unusable pool configuration">
+
+```rust
+#[component]
+struct DatabasePool;
+
+#[methods]
+impl DatabasePool {
+    #[hook(ConfigReload)]
+    async fn reload(
+        &self,
+        next: CfgNext<DatabaseConfig>,
+    ) -> Result<HookOutcome, PoolError> {
+        if next.get().pool_size == 0 {
+            return Err(PoolError::EmptyPool);
+        }
+
+        self.prepare_pool(next.snapshot()).await?;
+
+        Ok(HookOutcome::Reloaded)
+    }
+}
+```
+
+<Symbol path="upwell_config::managed::CfgNext" /> is read-only and exposes the candidate value, its binding path, and an owned snapshot. The proposal contains staged values for every binding, including unchanged bindings, so a hook with several <code>CfgNext&lt;T&gt;</code> parameters sees one coherent candidate generation.
+
+</Example>
+
+## Understand the transaction
+
+The reload phases are:
+
+1. Re-read every retained source from an empty tree in original precedence order.
+2. Seed defaults for every registered binding.
+3. Compare each committed binding's raw subtree and consumed placeholder dependencies.
+4. Deserialize all changed bindings without modifying live slots.
+5. Stage changed and unchanged values into one <Symbol path="upwell_config::managed::reload::ReloadProposal" />.
+6. Run affected `ConfigReload` hooks.
+7. Commit every prepared swap and adopt the new tree only after all hooks accept.
+
+Load, bind, hook rejection, or guarded deserialization panic produces <Symbol path="upwell_config::managed::reload::ConfigReloadError" /> and leaves every live `Cfg<T>` untouched. A hook that performs external side effects must clean up anything it prepared before returning `Err`; the framework can roll back live config slots, not an arbitrary database connection created by user code.
+
+## Debounce and platform behavior
+
+The default debounce is 250 ms. It coalesces bursts of watcher events; it does not make file replacement atomic. Write deployment config through an atomic rename where possible and rely on transactional rejection for partial or malformed reads.
+
+SIGHUP is Unix-only. File watching is a native filesystem facility. Browser Wasm has neither automatic trigger, but code may still call a server endpoint that performs a manual reload in the native host.
+
+<Callout type="warning" title="A notification is not a commit">
+
+Watcher delivery means a source may have changed. Observe the reload result or generation before assuming live values moved. Rejected candidates preserve the previous generation.
+
+</Callout>
+
+## Troubleshoot reloads
+
+- `Load` means a retained source disappeared, became unreadable, or no longer parses.
+- `Bind` means a changed subtree or placeholder cannot deserialize into its registered type.
+- `Hook` identifies a proposal rejected by application logic.
+- `Panicked` protects the process from a panic during user-provided deserialization; panic payloads are omitted because they may contain secrets.
+- No file event usually means `watch` was not compiled, the manager did not request `watch_config`, or the application has not entered `run`/`serve`.
+- A changed environment variable can trigger a new binding value on manual reload even when the source subtree is unchanged, but only placeholders consumed by the prior typed read participate in that dependency check.
+
+See <GuideRef slug="framework/configuration/sources-and-bindings">configuration sources</GuideRef> and <GuideRef slug="framework/application/lifecycle">lifecycle and shutdown</GuideRef>.

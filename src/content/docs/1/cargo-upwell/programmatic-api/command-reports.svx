@@ -1,0 +1,114 @@
+---
+title: Programmatic command reports
+description: Run check or doctor through one stable report envelope and preserve outcome, diagnostics, and exit policy.
+order: 51
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Programmatic command reports
+
+Use <Symbol path="cargo_upwell::run_command" /> when an integration wants the same presentation-neutral `check` or `doctor` policy as the CLI rather than the lower-level complete probe object. The command module is private; the supported command functions and report types are re-exported from the `cargo_upwell` crate root.
+
+## Run a command synchronously
+
+<Example title="Produce a check report">
+
+```rust
+use cargo_upwell::{CancellationToken, CommandKind, run_command};
+use semver::VersionReq;
+
+let cancellation = CancellationToken::new();
+let report = run_command(
+    CommandKind::Check,
+    &request,
+    &cancellation,
+);
+
+let supported = VersionReq::parse("^0.20")?;
+if !report.schema_matches(&supported) {
+    return Err(format!("unsupported report schema {}", report.schema).into());
+}
+
+let json = report.to_json()?;
+std::fs::write("target/upwell/check.json", json)?;
+```
+
+Like `run_probe`, `run_command` is synchronous and takes request/token references. `run_command_with_options` adds `ProbeOptions` for Cargo presentation. The function returns a <Symbol path="cargo_upwell::CommandReport" /> even for command failure so callers can retain structured evidence.
+
+</Example>
+
+## Read the report contract
+
+The report includes:
+
+| Field | Meaning |
+|---|---|
+| `schema` | semantic compatibility version for this command report |
+| `command` | `Check` or `Doctor` |
+| `outcome` | stable presentation-neutral result category |
+| `target` | selected package/binary facts when discovery completed |
+| `application` | generated document identity when the probe responded |
+| `framework_version` | version reported by the target when available |
+| `protocol` | selected protocol when preparation completed |
+| `diagnostics` | canonical structured diagnostics |
+| `checks` | ordered Doctor health checks |
+| `exit_code()` | stable process exit category for CLI-compatible policy |
+
+Call `schema_matches` before depending on fields from another tool version. `to_json()` is deterministic machine-readable report serialization; terminal rendering is not the contract.
+
+## Separate reports from probe envelopes
+
+Use a command report for an operational `check`/`doctor` decision and its exit category. Use a <Symbol path="upwell_tooling_schema::ProbeEnvelope" /> when an artifact collector needs the target's canonical success/failure process envelope. Use a `ToolingDocument` only when preparation succeeded and downstream graph/document work requires the exact application model.
+
+Do not flatten these into one ad hoc JSON type. They have separate schema versions and completeness rules.
+
+## Apply an error policy
+
+The validated CLI policy maps success, validation, command misuse, target selection, Cargo build, probe, and operational failures into stable exit categories. Programmatic consumers should call `report.exit_code()` rather than reproduce numeric mappings from prose.
+
+Preserve diagnostics before branching. A non-success report can still identify the target, include framework/protocol facts, and explain the failure. `Doctor` checks remain ordered execution evidence rather than an unordered map.
+
+<Callout type="warning" title="A report return is not command success">
+
+`run_command` returning a `CommandReport` means command execution produced a report. Check `outcome` or `exit_code()` before continuing a deployment.
+
+</Callout>
+
+## Cancellation
+
+Pass a caller-owned token and cancel it from another owner when the editor request, CI job, or service operation is abandoned:
+
+```rust plain
+use std::sync::mpsc;
+
+let cancellation = CancellationToken::default();
+let worker_token = cancellation.clone();
+let (sender, receiver) = mpsc::sync_channel(1);
+
+std::thread::spawn(move || {
+    let report = run_command(CommandKind::Doctor, &request, &worker_token);
+    let _ = sender.send(report);
+});
+
+if editor_request_was_cancelled() {
+    cancellation.cancel();
+}
+
+let report = receiver.recv()?;
+```
+
+Cancellation is active and cooperative: the process layer kills the running Cargo metadata/build/probe process group and retains bounded output where its typed error permits it. Cancellation while waiting for the invocation lock is reported separately from a build/probe failure. `run_command` converts cancellation into an operational-failure report; lower-level `run_probe` exposes typed cancellation evidence.
+
+## Troubleshoot reports
+
+- CI treats every returned report as success: branch on `exit_code()`.
+- A consumer expects a document on validation failure: retain an envelope/report instead.
+- Numeric exit assumptions drift: call the API rather than hardcoding the table.
+- Missing target facts mean discovery did not complete, not that serialization dropped fields.
+- Report parsing from another version must check semantic schema compatibility first.
+
+See <GuideRef slug="cargo-upwell/programmatic-api/discovery-and-probes">programmatic probes</GuideRef> and <GuideRef slug="cargo-upwell/cli/automation-and-completions">automation and completions</GuideRef>.

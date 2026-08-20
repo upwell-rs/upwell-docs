@@ -29,6 +29,6 @@ Keep definition state cheap to mutate and safe to validate repeatedly: route dec
 
 `auto_discover` should fold only link-time protocol descriptors into the existing definition. It is not a general application discovery hook and must not duplicate registrations already owned by `AppRegistry`.
 
-See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for an example-led lifecycle and [ScopeTopology](./ScopeTopology) for custom-scope ownership.
+See [the custom protocol guide](/docs/latest/framework/extensions/protocol-authoring) for an example-led lifecycle and [ScopeTopology](./ScopeTopology) for custom-scope ownership.
 
 <SymbolMembers title="Associated items" />

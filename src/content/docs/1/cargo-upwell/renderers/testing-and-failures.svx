@@ -1,0 +1,93 @@
+---
+title: Renderer testing and failures
+description: Test compatibility, sandbox limits, response validation, selection, and native fallback behavior.
+order: 61
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Callout, GuideRef } from '#lib/docs';
+</script>
+
+# Renderer testing and failures
+
+Test a renderer as an untrusted presentation component. Success is more than producing expected bytes: the component must load without imports, fit limits, match ABI/tooling schema, preserve response claims, and fail back to native output without losing canonical evidence.
+
+## Build a test matrix
+
+At minimum, cover:
+
+| Case | Expected result |
+|---|---|
+| valid component, matching command/format/schema | component body selected |
+| guest returns `Err` | rejection reported; native fallback used |
+| malformed or core-only Wasm | invalid component; native fallback |
+| any host import | `HostImport`; native fallback |
+| ABI requirement excludes host 0.1.0 | compatibility failure; fallback |
+| tooling schema excluded | compatibility failure; fallback |
+| input/output/component too large | corresponding size failure; fallback |
+| excessive resource IDs/metadata | bounded validation failure; fallback |
+| fuel exhaustion, deadline, trap | typed execution failure; fallback |
+| changed format/media type | response-claim failure; fallback |
+| unselected resource in response | `UnselectedResource`; fallback |
+| invalid UTF-8 with `utf8 = true` | validation failure; fallback |
+
+Use fixture canonical payloads for every command the catalog claims. Include empty resource sets, maximum accepted metadata, malformed application payload data, and output exactly at and just over configured bounds.
+
+## Test through the registry
+
+Component-host unit tests prove sandbox behavior, but integration tests should load the same catalog path and resolve through <Symbol path="cargo_upwell::renderer::RendererRegistry" />. Verify:
+
+1. command-scoped format discovery;
+2. deterministic priority and duplicate rejection;
+3. capability policy for color, pager, and file output;
+4. semantic requirement checks against the document;
+5. fallback to the command's native default;
+6. stderr/diagnostic visibility while canonical stdout/file output remains usable.
+
+Run representative CLI commands with an explicit catalog:
+
+```sh
+cargo upwell inspect \
+  --catalog .upwell/catalog.toml \
+  --format summary
+
+cargo upwell graph \
+  --catalog .upwell/catalog.toml \
+  --format architecture
+```
+
+Also retain a built-in canonical format, such as JSON/export, in test artifacts. Custom output is presentation and may omit details intentionally.
+
+## Understand host limits
+
+<Symbol path="cargo_upwell::renderer::component::ComponentLimits" /> defaults in the validated snapshot include finite component, input, output, metadata, resource, fuel, deadline, memory, table, instance, and compiler-worker bounds. Do not assert copied numeric defaults as an eternal external contract; construct explicit limits in host-level tests where boundary values matter.
+
+Compilation has its own worker deadline and memory controls before guest execution starts. A missing compiler companion executable is a distinct `CompilerMissing` failure. On macOS, compiler isolation/deadline remains important because address-space limits differ from other Unix targets.
+
+## Verify fallback and error policy
+
+An explicitly selected component failure must not silently produce empty output. The command reports the renderer problem and resolves a native fallback. Tests should assert both facts:
+
+- the failure category is observable; and
+- the native output is valid for the command.
+
+If no native renderer exists for a custom format, command-level fallback selects the command's native default, not a fabricated implementation of that custom media type. Keep automation on canonical built-in formats when exact schema preservation matters.
+
+<Callout type="danger" title="Do not make renderer success authoritative">
+
+A renderer can format only the bounded projection supplied by the host. Deployment or CI policy must use canonical diagnostics, command outcome, and schema validation, never the presence of attractive custom output.
+
+</Callout>
+
+## Diagnose failure classes
+
+- File failures: unreadable, special file, symlink/reparse point, or component byte limit.
+- Compile failures: invalid component, worker missing, worker I/O, deadline, or bounded compiler failure.
+- Compatibility failures: renderer ABI or tooling schema requirement.
+- Request failures: oversized input/resources/metadata.
+- Execution failures: rejection, fuel, deadline, trap, or guest memory/table limits.
+- Response failures: oversized output, UTF-8, changed claims, or unselected resources.
+- Registry failures: duplicate IDs/formats/defaults, reserved built-in format, invalid media type/extension, or unsupported capabilities.
+
+See <GuideRef slug="cargo-upwell/renderers/authoring">renderer authoring</GuideRef>, <GuideRef slug="cargo-upwell/catalog/extensions">catalog extensions</GuideRef>, and <GuideRef slug="cargo-upwell/programmatic-api/command-reports">command reports</GuideRef>.

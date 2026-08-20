@@ -38,4 +38,4 @@ app! {
 
 Use the builder chain for values the process owns, including components and protocol integrations. The macro is the application boundary, not a replacement for normal Rust composition inside a component.
 
-This is specifically the 0.20 application declaration. The [1.0 application model](/docs/1.0.0/framework/application-model) uses a named `app!` declaration and documents current lifecycle and protocol guidance.
+This is specifically the 0.20 application declaration. The [1.0 application model](/docs/1.0.0/framework) uses a named `app!` declaration and documents current lifecycle and protocol guidance.

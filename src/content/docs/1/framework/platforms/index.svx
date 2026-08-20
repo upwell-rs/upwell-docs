@@ -1,0 +1,25 @@
+---
+title: Platforms
+description: Choose target-specific features and resolve safe application directories.
+order: 40
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Platforms
+
+Platform guides own compilation-target boundaries and filesystem locations shared across the framework. Client pages own transport construction; server pages own protocol-specific runtime dependencies.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| select facade features, native or Wasm targets, backends, and registration behavior | <GuideRef slug="framework/platforms/features-and-targets">Features and targets</GuideRef> |
+| resolve typed config, data, cache, state, runtime, and log directories | <GuideRef slug="framework/platforms/application-directories">Application directories</GuideRef> |
+
+## Shared prerequisites
+
+Identify the application host and deployment targets first. For a browser build, continue into <GuideRef slug="clients/browser">browser clients</GuideRef> after separating native-only dependencies.

@@ -1,0 +1,25 @@
+---
+title: Configuration
+description: Merge application configuration, bind typed values, and apply reloads transactionally.
+order: 30
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Configuration
+
+Configuration guides own framework source precedence, typed bindings, profiles, substitutions, and reload transactions. Protocol pages own the settings that are specific to their server wire behavior.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| load TOML or YAML, apply profiles and environment substitutions, or bind typed values | <GuideRef slug="framework/configuration/sources-and-bindings">Sources and bindings</GuideRef> |
+| trigger manual, watched-file, or SIGHUP reload and handle rejection | <GuideRef slug="framework/configuration/reload">Configuration reload</GuideRef> |
+
+## Shared prerequisites
+
+Use the application identity and directories established by the <GuideRef slug="framework">application model</GuideRef>. Define and validate the initial source set before enabling automatic reload.
