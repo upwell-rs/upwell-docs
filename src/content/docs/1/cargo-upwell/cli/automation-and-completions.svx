@@ -30,7 +30,7 @@ if ! cargo upwell doctor \
   --package api \
   --bin api-server \
   --format json > target/upwell/doctor.json; then
-  jq '.outcome, .diagnostics[] | {code, severity, message, fix}' target/upwell/doctor.json
+  jq '(.outcome, .diagnostics[]) | {code, severity, message, fix}' target/upwell/doctor.json
   exit 1
 fi
 ```

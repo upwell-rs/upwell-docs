@@ -148,11 +148,14 @@ cargo install --locked wasm-tools --version 1.247.0
 cargo +1.97.1 generate-lockfile
 cargo +1.97.1 build --locked --release --target wasm32-unknown-unknown
 
-wasm-tools component wit \
-  target/wasm32-unknown-unknown/release/summary_renderer.wasm
+wasm-tools component new \
+  target/wasm32-unknown-unknown/release/summary_renderer.wasm \
+  -o components/summary.component.wasm
+
+wasm-tools component wit components/summary.component.wasm
 ```
 
-`wit-bindgen` embeds the component type and emits the canonical ABI around `render`; no separate preview1 adapter or `wasm-tools component new` step is needed for this guest. The inspection output must have no `import` lines and must include:
+`wit-bindgen` emits the component type and canonical ABI around `render`; `wasm-tools component new` packages that core Wasm into the component artifact the catalog registers. Inspect the packaged component, not the core module. The inspection output must have no `import` lines and must include:
 
 ```text
 package upwell:renderer@0.1.0 {
@@ -162,7 +165,7 @@ package upwell:renderer@0.1.0 {
 }
 ```
 
-Commit `Cargo.lock`, the copied WIT file, and the source. Record a digest after copying `target/wasm32-unknown-unknown/release/summary_renderer.wasm` into the catalog-relative component path.
+Commit `Cargo.lock`, the copied WIT file, the source, and `components/summary.component.wasm`. Record a digest for the packaged catalog artifact.
 
 ## Register the artifact
 

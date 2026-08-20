@@ -23,6 +23,7 @@ JSON-WS and STOMP export free functions; they are not methods on `Connection`:
 import init, {
   ChatHandlerClient,
   ChatTopicClient,
+  AlertSocketClient,
   Connection,
   StompConnectOptions,
   connectJsonWs,

@@ -134,6 +134,17 @@ describe("rehypeHeadingAnchors", () => {
 
     expect(indexedDocuments()).toHaveLength(0);
   });
+
+  it("uses a virtual guide's physical filename", () => {
+    run(
+      { type: "root", children: [element("p", [text("RPC prose")])] },
+      "\0/src/content/docs/1/rpc/server/index.svx",
+    );
+
+    expect(indexedDocuments()[0].file).toBe(
+      "/src/content/docs/1/rpc/server/index.svx",
+    );
+  });
 });
 
 describe("recordDocument", () => {

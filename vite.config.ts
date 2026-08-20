@@ -22,13 +22,23 @@ function nestedServerGuides(): Plugin {
     enforce: "pre",
 
     resolveId(id) {
-      return VIRTUAL_GUIDES.has(id) ? `\0${id}` : undefined;
+      const file = VIRTUAL_GUIDES.get(id);
+
+      return file ? `\0/${file}` : undefined;
     },
 
-    load(id) {
-      const file = VIRTUAL_GUIDES.get(id.slice(1));
+    async load(id) {
+      const relative = id.slice(2);
 
-      return file ? readFile(path.join(import.meta.dirname, file), "utf8") : undefined;
+      if (![...VIRTUAL_GUIDES.values()].includes(relative)) {
+        return undefined;
+      }
+
+      const file = path.join(import.meta.dirname, relative);
+
+      this.addWatchFile(file);
+
+      return readFile(file, "utf8");
     },
   };
 }
@@ -43,9 +53,8 @@ export default defineConfig(({ command }) => {
 
   return {
   plugins: [
-    // SvelteKit reserves physical `/server/` directories for private modules. Guide routes use the
-    // same ownership word publicly, so load those SVX files through virtual ids while retaining the
-    // original path for manifest routing and preprocessing.
+    // SvelteKit reserves physical `/server/` directories for private modules. The virtual id keeps
+    // that route public while retaining its physical source filename for preprocessors and search.
     nestedServerGuides(),
 
     docsConfig(),

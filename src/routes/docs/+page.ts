@@ -6,7 +6,7 @@
  * same thing after the next release.
  */
 
-import { dev } from '$app/env';
+import { building, dev } from '$app/env';
 import { redirect } from '@sveltejs/kit';
 import { resolvePrerender } from '@upwell/docs-core/config';
 
@@ -16,4 +16,7 @@ import type { PageLoad } from './$types';
 
 export const prerender = resolvePrerender(docsConfig, 'redirects', dev);
 
-export const load: PageLoad = () => redirect(307, docsRoutes.latestTarget(''));
+export const load: PageLoad = ({ url }) => redirect(
+	307,
+	`${docsRoutes.latestTarget('')}${building ? '' : `${url.search}${url.hash}`}`
+);

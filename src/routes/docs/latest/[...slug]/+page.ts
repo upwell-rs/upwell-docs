@@ -1,4 +1,4 @@
-import { dev } from '$app/env';
+import { building, dev } from '$app/env';
 import { redirect } from '@sveltejs/kit';
 import { resolvePrerender } from '@upwell/docs-core/config';
 
@@ -14,7 +14,7 @@ export const entries: EntryGenerator = () => [
 ];
 
 /** `latest` is a stable redirect alias; all rendered and shared URLs use the explicit release. */
-export const load: PageLoad = ({ params }) => redirect(
+export const load: PageLoad = ({ params, url }) => redirect(
 	308,
-	docsRoutes.latestTarget(guideRedirects[params.slug] ?? params.slug)
+	`${docsRoutes.latestTarget(guideRedirects[params.slug] ?? params.slug)}${building ? '' : `${url.search}${url.hash}`}`
 );
