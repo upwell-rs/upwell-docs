@@ -148,6 +148,8 @@ cargo install --locked wasm-tools --version 1.247.0
 cargo +1.97.1 generate-lockfile
 cargo +1.97.1 build --locked --release --target wasm32-unknown-unknown
 
+mkdir -p components
+
 wasm-tools component new \
   target/wasm32-unknown-unknown/release/summary_renderer.wasm \
   -o components/summary.component.wasm

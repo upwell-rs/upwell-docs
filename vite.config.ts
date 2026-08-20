@@ -12,8 +12,8 @@ import { docsPreprocessors } from "@upwell/docs-tools/render/preprocessors";
 import { docsConfig as siteDocsConfig } from "./docs.config.ts";
 
 const VIRTUAL_GUIDES = new Map([
-  ["virtual:docs-rpc-server-index.svx", "src/content/docs/1/rpc/server/index.svx"],
-  ["virtual:docs-rpc-server-policies.svx", "src/content/docs/1/rpc/server/policies.svx"],
+  ["virtual:docs-rpc-server-index.svx", path.join(import.meta.dirname, "src/content/docs/1/rpc/server/index.svx")],
+  ["virtual:docs-rpc-server-policies.svx", path.join(import.meta.dirname, "src/content/docs/1/rpc/server/policies.svx")],
 ]);
 
 function nestedServerGuides(): Plugin {
@@ -24,17 +24,15 @@ function nestedServerGuides(): Plugin {
     resolveId(id) {
       const file = VIRTUAL_GUIDES.get(id);
 
-      return file ? `\0/${file}` : undefined;
+      return file ? `\0${file}` : undefined;
     },
 
     async load(id) {
-      const relative = id.slice(2);
+      const file = id.slice(1);
 
-      if (![...VIRTUAL_GUIDES.values()].includes(relative)) {
+      if (![...VIRTUAL_GUIDES.values()].includes(file)) {
         return undefined;
       }
-
-      const file = path.join(import.meta.dirname, relative);
 
       this.addWatchFile(file);
 
