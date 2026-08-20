@@ -1,0 +1,25 @@
+---
+title: Catalog
+description: Register templates, metadata-only tools, and renderer components with deterministic precedence.
+order: 30
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Catalog
+
+Catalog owns discovery and registration metadata: where templates come from, which external tools are advertised, which renderer component implements a command format, and how IDs, paths, precedence, and compatibility requirements are validated. Executable renderer guest code belongs under <GuideRef slug="cargo-upwell/renderers">renderers</GuideRef>.
+
+## Choose an entry type
+
+| Task | Guide |
+|---|---|
+| define local or pinned Git templates and understand override precedence | <GuideRef slug="cargo-upwell/catalog/templates">Templates</GuideRef> |
+| declare metadata-only tools or register renderer components and command formats | <GuideRef slug="cargo-upwell/catalog/extensions">Extensions</GuideRef> |
+
+## Shared prerequisites
+
+Use schema `1`, namespaced lowercase IDs, and one explicitly selected catalog in automation. Relative template and component paths resolve from the catalog file, not the shell working directory.

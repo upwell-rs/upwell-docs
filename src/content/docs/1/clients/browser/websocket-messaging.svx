@@ -1,0 +1,85 @@
+---
+title: WebSocket messaging
+description: Attach JSON-WS or STOMP to a browser Connection and manage generated messages and subscriptions.
+order: 20
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Callout, GuideRef } from '#lib/docs';
+</script>
+
+# Browser WebSocket messaging
+
+This page starts after <GuideRef slug="clients/browser/setup-and-http">browser setup and HTTP</GuideRef>. Use the same initialized Wasm package and shared `Connection`; do not create a second package or duplicate target dependency setup for messaging.
+
+Server controller destinations, endpoint mounting, protocol framing, and topic publication remain under <GuideRef slug="axum/websocket">Axum WebSocket</GuideRef>.
+
+## Attach protocol transports
+
+JSON-WS and STOMP export free functions; they are not methods on `Connection`:
+
+```ts plain
+import init, {
+  ChatHandlerClient,
+  ChatTopicClient,
+  Connection,
+  StompConnectOptions,
+  connectJsonWs,
+  connectStomp,
+  disconnectJsonWs,
+  disconnectStomp,
+} from './pkg/catalog_api.js';
+
+await init();
+const connection = new Connection('https://api.example.test');
+
+await connectJsonWs(connection, '/ws');
+const alerts = new AlertSocketClient(connection);
+await alerts.acknowledge({ id: 'alert-42' });
+disconnectJsonWs(connection);
+```
+
+`connectJsonWs` attaches or replaces the `JsonWs` transport; `disconnectJsonWs` detaches it without a protocol-level graceful handshake. `AlertSocketClient` is a schema-shaped example because the committed fixture gates its JSON-WS controller out on Wasm. Use the names in your generated `.d.ts`.
+
+## Connect STOMP and subscribe
+
+```ts plain
+const options = new StompConnectOptions();
+options.setHost('catalog');
+options.setLogin('worker');
+options.setPasscode(secret);
+options.addHeader('tenant', 'acme');
+await connectStomp(connection, '/ws/stomp', options);
+
+const topics = new ChatTopicClient(connection);
+const subscription = await topics.subscribe_chat((message: ChatMessage) => {
+  console.log(message.room, message.text);
+});
+
+const messages = new ChatHandlerClient(connection);
+await messages.on_chat({
+  room: 'general',
+  sender: 'Ada',
+  text: 'hello',
+});
+
+subscription.unsubscribe();
+await disconnectStomp(connection);
+```
+
+`connectStomp` disconnects an existing STOMP transport, performs CONNECT/CONNECTED with the supplied options, and attaches the result. `disconnectStomp` gracefully disconnects and detaches it.
+
+The committed `subscribe_chat` binding returns a `TopicSubscription`. Calling `unsubscribe()` or allowing the handle to be garbage-collected aborts the callback pump and drops that subscription; it does not disconnect the shared STOMP socket.
+
+## Follow the generated ABI
+
+`wasm-bindgen` retains emitted Rust method spellings such as `subscribe_chat` and `on_chat`. Treat the generated `.d.ts` as authoritative for client classes, callback payloads, method casing, and promise results.
+
+<Callout type="warning" title="Browser handshake limits">
+
+Browser WebSocket handshakes cannot set arbitrary headers. Put STOMP credentials and custom headers in CONNECT. Other authentication must use cookies, query parameters, or a server-supported negotiated subprotocol.
+
+</Callout>
+
+For native connection ownership and transport-specific shutdown, use <GuideRef slug="clients/native/websocket">native WebSocket clients</GuideRef>.

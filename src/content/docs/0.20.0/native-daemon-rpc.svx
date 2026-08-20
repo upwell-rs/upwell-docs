@@ -51,4 +51,4 @@ impl Calculator {
 
 </Example>
 
-Register the service through the daemon application builder used by the binary. This page intentionally limits itself to the released service, handler, and payload form; streaming, generated clients, and other daemon features can differ between historical and 1.0 releases. For an upgraded application, use the [1.0 RPC services guide](/docs/1.0.0/rpc/services).
+Register the service through the daemon application builder used by the binary. This page intentionally limits itself to the released service, handler, and payload form; streaming, generated clients, and other daemon features can differ between historical and 1.0 releases. For an upgraded application, use the [1.0 RPC services guide](/docs/1.0.0/rpc/server).

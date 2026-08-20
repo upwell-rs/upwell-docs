@@ -1,0 +1,218 @@
+---
+title: Renderer authoring
+description: Generate guest bindings from the canonical WIT, build a minimal component, and register it safely.
+order: 60
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Callout, GuideRef, SrcRef } from '#lib/docs';
+</script>
+
+# Renderer authoring
+
+A renderer is a presentation-only WebAssembly Component. It imports nothing and exports one typed function from `upwell:renderer/renderer@0.1.0`. Generate guest bindings from the exact committed WIT; never hand-declare canonical ABI core-Wasm symbols. Register command formats and compatibility requirements in <GuideRef slug="cargo-upwell/catalog/extensions">catalog extensions</GuideRef>; this page owns the executable guest.
+
+## Use the canonical contract
+
+The canonical file is <SrcRef path="crates/cargo-upwell/wit/renderer.wit"><code>crates/cargo-upwell/wit/renderer.wit</code></SrcRef>. Its complete contract is:
+
+```text
+package upwell:renderer@0.1.0;
+
+/// Capability-free presentation contract implemented by user renderer components.
+///
+/// Components must import nothing from the host and export the typed `render`
+/// function below. Guest projects should generate bindings from this WIT world
+/// instead of naming canonical-ABI core Wasm symbols directly.
+world renderer {
+    /// Bounded canonical command projection selected and validated by the host.
+    record render-request {
+        abi-version: string,
+        command: string,
+        format: string,
+        media-type: string,
+        tooling-schema: string,
+        resources: list<string>,
+        color: bool,
+        payload: list<u8>,
+    }
+
+    /// Presentation bytes plus claims the host verifies against the request.
+    record render-response {
+        format: string,
+        media-type: string,
+        resources: list<string>,
+        body: list<u8>,
+    }
+
+    /// Required component-level export. An error triggers the native fallback.
+    export render: func(request: render-request) -> result<render-response, string>;
+}
+```
+
+Copy or reference that file in the guest project and use the language's Component Model binding generator. A partial duplicate will drift when fields or package versions change.
+
+## Implement the minimal guest
+
+The framework repository does not contain a renderer guest fixture, so this workflow pins the standard Rust Component Model toolchain used to validate the example: Rust `1.97.1`, `wit-bindgen` `0.57.1`, `wasm-tools` `1.247.0`, and `wasm32-unknown-unknown`. The guest is `no_std` so the result has no WASI imports.
+
+Create this manifest:
+
+```toml
+[package]
+name = "summary-renderer"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "=0.57.1", default-features = false, features = ["macros", "realloc"] }
+wee_alloc = "=0.4.5"
+
+[profile.release]
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = "symbols"
+```
+
+Place the exact contract above at `wit/renderer.wit`, then implement `src/lib.rs` with the generated root-world `Guest` trait and generated `export!` macro:
+
+```rust
+#![no_std]
+
+extern crate alloc;
+
+#[global_allocator]
+static ALLOCATOR: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+mod bindings {
+    wit_bindgen::generate!({
+        path: "wit/renderer.wit",
+        world: "renderer",
+    });
+
+    use super::SummaryRenderer;
+    export!(SummaryRenderer);
+}
+
+use alloc::format;
+use alloc::string::String;
+use bindings::{Guest, RenderRequest, RenderResponse};
+
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
+    core::arch::wasm32::unreachable()
+}
+
+struct SummaryRenderer;
+
+impl Guest for SummaryRenderer {
+    fn render(request: RenderRequest) -> Result<RenderResponse, String> {
+        if request.command != "inspect" {
+            return Err(format!("unsupported command: {}", request.command));
+        }
+
+        let payload = String::from_utf8(request.payload)
+            .map_err(|error| format!("inspect payload is not UTF-8: {error}"))?;
+        let body = format!(
+            "resources: {}\ncanonical-bytes: {}\n",
+            request.resources.len(),
+            payload.len(),
+        )
+        .into_bytes();
+
+        Ok(RenderResponse {
+            format: request.format,
+            media_type: request.media_type,
+            resources: request.resources,
+            body,
+        })
+    }
+}
+```
+
+The guest accepts only `inspect`, treats the command projection as canonical UTF-8 bytes, and echoes the host-selected format, media type, and resource set. A real renderer may decode the command's canonical JSON payload, but it must not fabricate resource identities outside `request.resources`.
+
+## Build a component
+
+Build and inspect the component with the pinned commands:
+
+```sh
+rustup toolchain install 1.97.1 --target wasm32-unknown-unknown
+cargo install --locked wasm-tools --version 1.247.0
+
+cargo +1.97.1 generate-lockfile
+cargo +1.97.1 build --locked --release --target wasm32-unknown-unknown
+
+wasm-tools component wit \
+  target/wasm32-unknown-unknown/release/summary_renderer.wasm
+```
+
+`wit-bindgen` embeds the component type and emits the canonical ABI around `render`; no separate preview1 adapter or `wasm-tools component new` step is needed for this guest. The inspection output must have no `import` lines and must include:
+
+```text
+package upwell:renderer@0.1.0 {
+  world renderer {
+    export render: func(request: render-request) -> result<render-response, string>;
+  }
+}
+```
+
+Commit `Cargo.lock`, the copied WIT file, and the source. Record a digest after copying `target/wasm32-unknown-unknown/release/summary_renderer.wasm` into the catalog-relative component path.
+
+## Register the artifact
+
+```toml
+schema = "1"
+
+[[entries]]
+type = "renderer"
+id = "acme/summary"
+component = "components/summary.component.wasm"
+commands = ["inspect"]
+format = "summary"
+media-type = "text/plain"
+extension = "txt"
+output-file = true
+abi = "^0.1"
+tooling-schema = "^0.20"
+utf8 = true
+```
+
+The host validates the ABI requirement against 0.1.0, the document tooling schema, catalog claims, and component contract before invocation.
+
+Verify catalog selection and host invocation with the format declared above:
+
+```sh
+cargo upwell inspect \
+  --catalog .upwell/catalog.toml \
+  --format summary
+```
+
+If compilation, instantiation, execution, UTF-8 validation, or response-claim validation fails, Cargo Upwell reports the renderer failure and uses the command's native fallback rather than treating renderer output as canonical application data.
+
+## Respect sandbox and response claims
+
+<Symbol path="cargo_upwell::renderer::component::ComponentRendererHost" /> rejects any host import. It bounds component/input/output bytes, resource count, metadata length, fuel, wall-clock execution, guest memory, tables, and instances. Compilation runs in a separate bounded/deadlined worker.
+
+The response must preserve the requested format and media type. Every response resource must have been selected by the host. `utf8 = true` requires a valid UTF-8 body.
+
+<Callout type="warning" title="Presentation only">
+
+A renderer must not discover application facts, modify the tooling document, or perform policy checks hidden from canonical diagnostics. It renders host-selected canonical input. Return `Err` for unsupported input and let the native fallback preserve command usability.
+
+</Callout>
+
+## Troubleshoot authoring
+
+- `InvalidComponent`: verify Component Model output and the exact exported world.
+- `HostImport`: remove WASI/filesystem/network/clock/random imports and runtime initialization that requests them.
+- ABI or tooling-schema mismatch: align catalog requirements with the committed WIT/tooling contract.
+- Response claim failure: echo format/media type exactly and return only selected resources.
+- Invalid UTF-8: emit text or declare `utf8 = false` with an appropriate binary media type.
+
+Continue with <GuideRef slug="cargo-upwell/renderers/testing-and-failures">renderer testing and failures</GuideRef> and <GuideRef slug="cargo-upwell/catalog/extensions">catalog extensions</GuideRef>.

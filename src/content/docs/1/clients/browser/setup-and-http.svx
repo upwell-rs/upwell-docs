@@ -1,0 +1,116 @@
+---
+title: Setup and HTTP
+description: Structure a dual native/Wasm crate, build it with wasm-pack, and call generated HTTP clients.
+order: 10
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Browser setup and HTTP
+
+The committed HTTP fixture uses one Cargo package with a library for controllers/DTOs and a thin native binary for serving. The library compiles on both targets: macros gate server halves out on Wasm and retain generated browser clients.
+
+## Structure the package
+
+```text
+catalog-api/
+  Cargo.toml
+  src/
+    lib.rs       # DTOs and controllers; native + wasm
+    main.rs      # native bootstrap only
+  web/
+    app.ts       # imports pkg output
+```
+
+`lib.rs` must not unconditionally import native-only socket, directory, signal, or server middleware code. Put such modules behind `#[cfg(not(target_family = "wasm"))]` or keep them in `main.rs`.
+
+## Split target dependencies
+
+<Example title="A complete dual-target manifest shape">
+
+```toml plain
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+upwell = { version = "1", default-features = false, features = [
+  "axum", "ws", "json-ws", "stomp", "multipart", "uuid",
+  "reqwest", "hyper", "tungstenite", "tracing-subscriber",
+  "openapi-swagger-ui"
+] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+clap = { version = "4", features = ["derive"] }
+utoipa = "5"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+upwell = { version = "1", default-features = false, features = [
+  "axum", "client", "reqwest", "ws", "json-ws", "stomp", "tungstenite"
+] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+tsify = "0.5.6"
+```
+
+Generated paths require `wasm-bindgen`, `wasm-bindgen-futures`, and `tsify` as direct dependencies. OpenAPI's native generated paths similarly require direct `utoipa`.
+
+</Example>
+
+The validated fixture documents two DTO ABI modes. The default published `tsify` path uses `into_wasm_abi`. The optional `wasm-ts` feature selects a newer `Ts<T>` ABI and may require a compatible newer/unreleased `tsify` revision. Treat those as distinct lockfile choices; do not enable `wasm-ts` while retaining an incompatible `tsify` merely because both compile as transitive dependencies.
+
+## Build and import the package
+
+```sh
+rustup target add wasm32-unknown-unknown
+wasm-pack build --target web
+```
+
+Import from the generated `pkg` directory and initialize the module before constructing exported classes.
+
+The runtime `Connection` is verified in committed source. `GreetControllerClient` is also verified by the committed HTTP fixture; it is safe to use as an example only for that fixture:
+
+```ts plain
+import init, {
+  Connection,
+  GreetControllerClient,
+} from './pkg/catalog_api.js';
+
+await init();
+const connection = new Connection('https://api.example.test');
+const greet = new GreetControllerClient(connection);
+
+// Method spelling and DTO return type come from the fixture's generated .d.ts.
+const response = await greet.greet_path('Ada');
+```
+
+For any other application, replace both class and method with names in that application's generated `.d.ts`. A Rust controller named `UsersController` often suggests a generated client, but this documentation will not present an unverified name as API.
+
+## Use the shared connection
+
+The verified `Connection` owns the base URL, a shared browser HTTP transport when Reqwest is enabled, and protocol-keyed WebSocket transports attached by protocol crates. It exposes HTTP request, response, and error callbacks under the generated JS names `onRequest`, `onResponse`, and `onError`.
+
+## DTO and ABI constraints
+
+`#[dto]` emits TypeScript declarations and Wasm conversion code for supported fields. Keep wire DTOs serializable in both directions needed by the client. Unsupported Rust-only field types, borrowed data, server handles, or platform paths do not become browser ABI values merely because the containing module is public.
+
+<Callout type="warning" title="Inspect generated declarations">
+
+Use the generated `.d.ts` as the exact application ABI: exported class names, JS method casing, promise return types, DTO representation, overloads, and optional values can vary with macros and ABI mode. The docs artifact is a dirty 0.20.0 source snapshot under a 1.0.0 label, so do not extrapolate a stable 1.0 TypeScript shape beyond verified fixture output.
+
+</Callout>
+
+## Browser limits and troubleshooting
+
+- No native application host, filesystem config, typed directories, Unix sockets, SIGHUP, or file watching exists in browser Wasm.
+- CORS, cookies, TLS, CSP, and browser WebSocket policy remain browser/server deployment concerns.
+- `Connection` missing usually means the defining crate did not compile the Axum client Reqwest path for Wasm.
+- A generated client missing means its controller/module was native-gated or client generation was not enabled.
+- TypeScript `any` or conversion errors can indicate an ABI-mode/`tsify` mismatch; inspect Cargo features and generated declarations together.
+- A native dependency leaking into Wasm usually belongs in the target-specific native table or behind `cfg`.
+
+Continue with <GuideRef slug="clients/browser/websocket-messaging">browser WebSocket messaging</GuideRef>. See also <GuideRef slug="clients/native/http">native HTTP clients</GuideRef> and <GuideRef slug="framework/platforms/features-and-targets">features and targets</GuideRef>.

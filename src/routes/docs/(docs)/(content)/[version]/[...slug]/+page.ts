@@ -6,15 +6,26 @@
  * so `/docs/<version>` serves the landing page.
  */
 
-import { docsRoutes } from '#lib/docs/runtime';
+import { docsContent, docsRoutes } from '#lib/docs/runtime';
+import { guideRedirects } from '#lib/docs/guide-redirects';
 import type { PageMetadata } from '#lib/docs/site/metadata';
+import { redirect } from '@sveltejs/kit';
 import { docsConfig } from 'virtual:docs-config';
 import type { EntryGenerator, PageLoad } from './$types';
 
-export const entries: EntryGenerator = () => [...docsRoutes.guideEntries()];
+export const entries: EntryGenerator = () => {
+	return [...docsRoutes.guideEntries()];
+};
 
 export const load: PageLoad = async ({ params, parent, url }) => {
-	const data = await docsRoutes.loadGuide(params, (await parent()).version);
+	const { version } = await parent();
+	const target = guideRedirects[params.slug];
+
+	if (target && docsContent.findPage(target, version.releaseVersion)) {
+		redirect(308, docsContent.pageHref(version.id, target));
+	}
+
+	const data = await docsRoutes.loadGuide(params, version);
 	const metadata: PageMetadata = {
 		title: data.page.title,
 		description: data.page.description ?? `${data.page.title} in the ${docsConfig.framework.name} ${data.version.label} documentation.`,

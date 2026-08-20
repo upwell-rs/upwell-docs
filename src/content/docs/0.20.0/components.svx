@@ -56,4 +56,4 @@ The container owns the constructed component instances. Keep dependencies in the
 
 ## Moving to 1.0
 
-The current [components and injection guide](/docs/1.0.0/di/components) describes the 1.0 component model, including forms and capabilities that are not asserted for 0.20. Apply it while migrating rather than retrofitting its examples to a 0.20 application.
+The current [components and injection guide](/docs/1.0.0/framework/dependency-injection/components) describes the 1.0 component model, including forms and capabilities that are not asserted for 0.20. Apply it while migrating rather than retrofitting its examples to a 0.20 application.

@@ -75,14 +75,14 @@ test('a guide has a Markdown copy with its code and without its components', asy
 });
 
 test('a guide\'s links to its neighbours point at their Markdown copies', async ({ request }) => {
-	const response = await request.get(`/llms/${VERSION}/di/components.md`);
+	const response = await request.get(`/llms/${VERSION}/framework/dependency-injection/components.md`);
 	const body = await response.text();
 
 	// The guide links its neighbour by slug. Served as `components.md`, that neighbour is `advanced.md`;
 	// without the suffix the link resolves to a path only the site serves.
 	expect(body).toContain('](advanced.md)');
 
-	const neighbour = await request.get(`/llms/${VERSION}/di/advanced.md`);
+	const neighbour = await request.get(`/llms/${VERSION}/framework/dependency-injection/advanced.md`);
 
 	expect(neighbour.status()).toBe(200);
 });

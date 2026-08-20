@@ -1,0 +1,25 @@
+---
+title: Programmatic API
+description: Discover application targets, execute probes, and consume stable command reports from Rust.
+order: 20
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Programmatic API
+
+The `cargo-upwell` library exposes the same target discovery and isolated probe boundary as the CLI without requiring terminal parsing. This section owns Rust integration; CLI rendering and shell exit behavior remain under <GuideRef slug="cargo-upwell/cli">CLI</GuideRef>.
+
+## Choose an API level
+
+| Task | Guide |
+|---|---|
+| construct discovery input, run a probe, retain `ProbeEnvelope`, or query the canonical graph | <GuideRef slug="cargo-upwell/programmatic-api/discovery-and-probes">Discovery and probes</GuideRef> |
+| run presentation-neutral `check` or `doctor` policy and consume one `CommandReport` | <GuideRef slug="cargo-upwell/programmatic-api/command-reports">Command reports</GuideRef> |
+
+## Shared prerequisites
+
+Mirror Cargo target and feature selection exactly, move synchronous calls to a blocking worker in async applications, and validate semantic schema requirements before consuming persisted or remote evidence.

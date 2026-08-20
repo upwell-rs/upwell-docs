@@ -1,17 +1,26 @@
 ---
 title: RPC services
 description: Build an RPC service with typed requests, injected dependencies, and streaming when needed.
-order: 100
+order: 10
 topics: ['rpc']
 ---
 
 <script lang="ts">
-	import { Example, SymbolRef } from '#lib/docs';
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
 </script>
 
 # RPC services
 
 Use an RPC service when another process needs typed request/reply operations. Define the wire types, declare a service, then expose async methods from a handler implementation.
+
+This server group owns service and runtime policy. Use <GuideRef slug="clients/native/rpc">native RPC clients</GuideRef> for generated call APIs, channel construction, Unix or TCP connection lifecycle, and client-side errors.
+
+## Choose a server task
+
+| Task | Guide |
+|---|---|
+| define service operations and streaming shapes | this RPC services guide |
+| tune admission, limits, deadlines, and shutdown | <GuideRef slug="rpc/server/policies">Server policies</GuideRef> |
 
 ## Define a service and one operation
 

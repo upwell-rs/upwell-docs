@@ -1,0 +1,157 @@
+---
+title: Native WebSocket clients
+description: Use JSON-WS request/reply and STOMP messaging with their distinct ownership and disconnect contracts.
+order: 133
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Native WebSocket clients
+
+JSON-WS and STOMP share an RFC 6455 transport but expose different contracts. Do not apply STOMP's handshake, subscription, receipt, or disconnect APIs to the generic correlated JSON-WS transport.
+
+```toml
+[dependencies]
+upwell = { version = "1", features = [
+  "axum", "ws", "client", "tungstenite", "json-ws", "stomp"
+] }
+```
+
+## Connect JSON-WS request/reply
+
+Use <Symbol path="upwell_axum::client::websocket::tungstenite::TokioTungsteniteWs" />, parameterized by the protocol type:
+
+<Example title="Open a JSON-WS transport">
+
+```rust
+use upwell::axum::{JsonWs, client::TokioTungsteniteWs};
+
+let socket = TokioTungsteniteWs::<JsonWs>::connect(
+    "ws://127.0.0.1:3000/ws",
+).await?;
+```
+
+Use `connect_with_options` to offer RFC 6455 subprotocols. The actor assigns protocol-defined correlation keys, writes frames, and routes replies to pending calls.
+
+</Example>
+
+The committed `Sock` fixture emits `SockClient`, and its value-returning `greet` message emits a request/reply method:
+
+```rust plain
+// Emitted names from the committed fixture, not universal framework names.
+let client = SockClient::new(socket.clone());
+let greeting = client
+    .greet(Who {
+        who: String::from("Ada"),
+    })
+    .await?;
+
+println!("{}", greeting.message);
+
+// Schema-shaped emitted SEND: this handler was declared with
+// #[message("audit", send)] async fn audit(&self, event: AuditEvent).
+AuditSocketClient::new(socket.clone())
+    .audit(AuditEvent {
+        action: String::from("catalog.view"),
+    })
+    .await?;
+```
+
+`SockClient::greet` is a committed emitted request name. `AuditSocketClient`, `audit`, and `AuditEvent` are a schema-shaped emitted SEND based on the declaration in the comment; replace them with your generated names. A unit-returning method is backed by `MessageSend<JsonWs>` and a value-returning method by `MessageRequest<JsonWs>`. For transport-level work, `send_message(destination, payload)` is the exact uncorrelated API and `WebsocketClient::websocket_call` is the exact correlated capability.
+
+`TokioTungsteniteWs` clones share the actor and socket. Dropping one clone only releases that owner; dropping a pending request future removes its local reply slot, and dropping every owner closes the actor because no sender remains. There is no generic `disconnect` method and no JSON-WS wire-level disconnect operation comparable to STOMP `DISCONNECT`.
+
+## Connect STOMP with authentication
+
+<Example title="Perform the STOMP CONNECT handshake">
+
+```rust
+use std::time::Duration;
+use upwell::axum::{StompClientTransport, StompConnectOptions};
+
+let options = StompConnectOptions::new()
+    .with_host("catalog")
+    .with_login("worker")
+    .with_passcode(secret)
+    .with_header("tenant", "acme")
+    .with_request_timeout(Some(Duration::from_secs(10)));
+
+let transport = StompClientTransport::connect_with_options(
+    "ws://127.0.0.1:3000/stomp",
+    options,
+).await?;
+```
+
+These credentials and custom headers belong to the STOMP CONNECT frame. They are distinct from arbitrary HTTP WebSocket handshake headers. The shown dependency set has no TLS backend, so the minimal workflow uses `ws://`; terminate TLS upstream or document and pin a compatible direct TLS transport dependency before changing it to `wss://`.
+
+</Example>
+
+The committed fixture validates the complete generated flow:
+
+```rust plain
+use futures::StreamExt;
+
+// Emitted names from the committed ChatHandler/ChatTopic declarations.
+let messages = ChatHandlerClient::new(transport.clone());
+let topics = ChatTopicClient::new(transport.clone());
+let mut chat = topics.subscribe_chat().await?;
+
+messages
+    .on_chat(ChatMessage {
+        room: String::from("general"),
+        sender: String::from("Ada"),
+        text: String::from("hello"),
+    })
+    .await?; // generated SEND: the handler returns ()
+
+let count = messages
+    .count(ChatMessage {
+        room: String::from("general"),
+        sender: String::from("Ada"),
+        text: String::from("count this"),
+    })
+    .await?; // generated request/reply: the handler returns RoomCount
+
+let delivered = chat.next().await.transpose()?;
+```
+
+`subscribe_room(String::from("general"))` is the fixture's typed templated-topic variant. The names above are emitted application names; another controller or topic enum emits its own `{Controller}Client`, method, and `{Topics}Client` names.
+
+## Own subscriptions and transport lifetime
+
+Generated topic methods return <Symbol path="upwell_axum::client::messaging::Subscription" />, a decoded `Stream`. Keep it alive while consuming events. Dropping it calls best-effort unsubscribe. Clones of `StompClientTransport` share one actor and connection, including clones held by generated clients and subscriptions.
+
+Dropping one `StompClientTransport` clone does not disconnect while generated clients, subscriptions, or other clones remain. Dropping the last shared owner queues a best-effort STOMP `DISCONNECT`; it cannot report whether the frame flushed. When the owner controls shutdown, call `transport.disconnect().await`: it is idempotent, waits for the actor's acknowledgement, and closes the actor for every clone. `disconnect_now()` starts the same close without waiting. These wire-level disconnect semantics are STOMP-specific.
+
+## Compare failure and cancellation
+
+| Behavior | JSON-WS | STOMP |
+|---|---|---|
+| Request/reply | correlated protocol frames | generated message request capability |
+| Fire-and-forget | `send_message` or generated send method | STOMP SEND/generated method |
+| Pub/sub | not generic | generated topic subscription |
+| Authentication shown here | WebSocket URL/subprotocol options | STOMP CONNECT login/passcode/custom headers |
+| Explicit disconnect in validated API | none on generic transport | `disconnect` / `disconnect_now` |
+| Fatal remote protocol error | actor/connection closes | STOMP `ERROR` is fatal |
+| Handler error | protocol status for one call | non-fatal `StompStatus::Handler` |
+
+Dropping a pending request future cancels local interest, not remote execution. Dropping a subscription deregisters future delivery but does not retract events already published.
+
+<Callout type="warning" title="Browser constraints differ">
+
+Browser `WebSocket` cannot add arbitrary HTTP handshake headers. Browser STOMP can send credentials and custom values in the STOMP CONNECT frame; cookie, query, and subprotocol authentication must be designed at the server boundary.
+
+</Callout>
+
+## Troubleshoot WebSocket clients
+
+- Protocol negotiation fails: offer a subprotocol accepted by the mounted endpoint or use `connect` only when none is required.
+- A generated method hangs: configure the protocol's request timeout where supported and inspect correlation/error frames.
+- One STOMP disconnect breaks all clients: expected, because clones share one connection.
+- Messages stop after a local variable leaves scope: retain the `Subscription` owner.
+- Custom HTTP headers work natively but not in browser: move authentication to a browser-supported mechanism.
+
+See <GuideRef slug="axum/websocket">WebSocket protocols</GuideRef> and <GuideRef slug="clients/browser/websocket-messaging">browser WebSocket clients</GuideRef>.

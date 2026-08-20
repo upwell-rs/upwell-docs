@@ -194,7 +194,7 @@ The host discovers linked declarations, so `Greeter` and `GreetController` need 
 
 <Callout type="info" title="An item, not an expression">
 
-`app!` declares a type. Do not assign it to a variable or invoke it inside `main`; when a process must own its own startup, assemble the application with `App::<Axum>::builder(...)` instead. See <GuideRef slug="framework/application-model">the application model</GuideRef> for that path.
+`app!` declares a type. Do not assign it to a variable or invoke it inside `main`; when a process must own its own startup, assemble the application with `App::<Axum>::builder(...)` instead. See <GuideRef slug="framework">the application model</GuideRef> for that path.
 
 </Callout>
 
@@ -226,10 +226,10 @@ The generated CLI is part of the host: `cargo run -- --help` lists the commands 
 
 ## Where to go next
 
-- <GuideRef slug="framework/application-model">Application model</GuideRef> — the assembled <code>App&lt;P&gt;</code>, its lifecycle, and when to use the builder instead of a generated host.
-- <GuideRef slug="di/components">Components and injection</GuideRef> — construction, providers, and lifetimes beyond a plain singleton.
+- <GuideRef slug="framework">Application model</GuideRef> — the assembled <code>App&lt;P&gt;</code>, its lifecycle, and when to use the builder instead of a generated host.
+- <GuideRef slug="framework/dependency-injection/components">Components and injection</GuideRef> — construction, providers, and lifetimes beyond a plain singleton.
 - <GuideRef slug="axum/http">HTTP controllers</GuideRef> — extraction, request scope, and streaming responses.
-- <GuideRef slug="framework/app-macro">The <code>app!</code> macro</GuideRef> — configuration callbacks, plugins, and CLI commands on the host.
+- <GuideRef slug="framework/application/app-macro">The <code>app!</code> macro</GuideRef> — configuration callbacks, plugins, and CLI commands on the host.
 - <GuideRef slug="cargo-upwell">Cargo Upwell</GuideRef> — the optional command-line tool that validates and inspects an application.
 
 <Callout type="info" title="Project layout">

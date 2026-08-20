@@ -1,0 +1,26 @@
+---
+title: Native clients
+description: Construct native HTTP, RPC, and WebSocket transports and use generated client methods.
+order: 10
+topics: ['web', 'rpc']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Native clients
+
+Native client guides own transport construction, connection reuse, generated method invocation, streaming handles, and client shutdown. Server route, service, and message definitions remain under Axum and RPC.
+
+## Choose a transport
+
+| Task | Guide |
+|---|---|
+| call Axum controllers with Reqwest or Hyper | <GuideRef slug="clients/native/http">Native HTTP</GuideRef> |
+| call native RPC services over TCP or Unix streams | <GuideRef slug="clients/native/rpc">Native RPC</GuideRef> |
+| connect JSON-WS or STOMP and manage requests, sends, and subscriptions | <GuideRef slug="clients/native/websocket">Native WebSocket</GuideRef> |
+
+## Shared prerequisites
+
+Enable `client` with the protocol and backend features you use. Generate clients from the server declarations first, and keep the transport handle alive for as long as streams or subscriptions depend on it.

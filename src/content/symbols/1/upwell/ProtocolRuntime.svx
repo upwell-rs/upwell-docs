@@ -19,6 +19,6 @@ It intentionally does not prescribe an endpoint type or endpoint loop. Implement
 
 The runtime's error type covers protocol dispatch and serving construction errors as defined by the implementation. Application startup, reload coordination, and final cleanup remain application lifecycle concerns.
 
-See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for serving and shutdown ownership.
+See [the custom protocol guide](/docs/latest/framework/extensions/protocol-authoring) for serving and shutdown ownership.
 
 <SymbolMembers title="Associated items" />

@@ -1,0 +1,25 @@
+---
+title: Dependency injection
+description: Construct components, expose providers, and choose scope or resolution behavior.
+order: 20
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Dependency injection
+
+This section owns framework component construction and provider selection. Transport scopes such as HTTP requests and WebSocket messages are created by their server integrations, which link back here for lifetime rules.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| define a component, inject fields, customize construction, or expose a trait | <GuideRef slug="framework/dependency-injection/components">Components and injection</GuideRef> |
+| select qualified providers, collections, non-singleton lifetimes, live values, or delayed resolution | <GuideRef slug="framework/dependency-injection/advanced">Advanced dependency injection</GuideRef> |
+
+## Shared prerequisites
+
+Begin with an assembled <GuideRef slug="framework">application</GuideRef>. Prefer ordinary singleton dependencies first; use advanced selection or lifetime tools only when the ownership model requires them.

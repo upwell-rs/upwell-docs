@@ -1,0 +1,26 @@
+---
+title: Application
+description: Declare an application host, control its lifecycle, and compose protocol processes.
+order: 10
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Application
+
+Application guides own the process-level model: the generated host, direct builder control, startup and shutdown, and the one-protocol runtime invariant. They do not define HTTP, WebSocket, or RPC wire behavior.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| let Upwell own `main`, CLI setup, and tooling discovery | <GuideRef slug="framework/application/app-macro">The `app!` macro</GuideRef> |
+| acquire resources, roll back startup, and drain shutdown | <GuideRef slug="framework/application/lifecycle">Lifecycle and graceful shutdown</GuideRef> |
+| run HTTP, RPC, jobs, or custom protocols as deliberate hosts | <GuideRef slug="framework/application/protocol-composition">Protocol composition</GuideRef> |
+
+## Shared prerequisites
+
+Start with the <GuideRef slug="framework">application model</GuideRef>. Decide whether Upwell owns the process boundary before adding hooks or multiple hosts, and keep reusable dependencies in <GuideRef slug="framework/dependency-injection">dependency injection</GuideRef> rather than global process state.

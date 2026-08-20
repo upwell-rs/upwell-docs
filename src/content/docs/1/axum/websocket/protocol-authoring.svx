@@ -1,0 +1,96 @@
+---
+title: Protocol authoring
+description: Implement WebsocketProtocol to own framing, dispatch, endpoint state, and subprotocol negotiation.
+order: 20
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Example, GuideRef } from '#lib/docs';
+</script>
+
+# WebSocket protocol authoring
+
+Implement <Symbol path="upwell::axum::WebsocketProtocol" /> in a protocol crate when an existing protocol cannot represent the frames, correlation behavior, authentication handshake, backpressure policy, or endpoint state you need. It is not the trait to implement merely to add a controller; use the <GuideRef slug="axum/websocket">controllers and endpoints guide</GuideRef> for that.
+
+## Declare protocol-owned state
+
+<Example title="Declare the wire and endpoint contract">
+
+```rust context
+use std::sync::Arc;
+
+use upwell::axum::prelude::*;
+use upwell::axum::axum::extract::ws::WebSocket;
+```
+
+```rust
+struct AcmeProtocol;
+
+impl WebsocketProtocol for AcmeProtocol {
+    type Payload = AcmePayload;
+    type Outcome = AcmeOutcome;
+    type Options = AcmeOptions;
+    type BuildError = AcmeBuildError;
+
+    const SUBPROTOCOLS: &'static [&'static str] = &["acme.v1"];
+    const REQUIRE_SUBPROTOCOL: bool = true;
+
+    fn register(registry: &mut AppRegistry) {
+        AcmeSession::register(registry);
+    }
+}
+```
+
+</Example>
+
+`register` runs before the root dependency graph is validated. Contribute protocol-owned components and scope seeds there. Keep endpoint options in `Options`; one protocol type can be mounted more than once with distinct values.
+
+## Build each endpoint
+
+`build` runs once for each `register_ws` or `register_ws_with` entry after controller descriptors have been prepared. Index destinations here and retain only the runtime state needed to open connection and message scopes.
+
+```rust
+impl WebsocketProtocol for AcmeProtocol {
+    // Associated types, constants, and register omitted.
+
+    fn build(
+        controllers: &[WsControllerDescriptor],
+        runtime: &AppRuntime,
+        options: Self::Options,
+    ) -> Result<Self, Self::BuildError> {
+        Self::from_controllers(controllers, runtime.clone(), options)
+    }
+}
+```
+
+Do not make construction infallible by panicking. `BuildError` is the typed startup failure channel for invalid options, duplicate protocol state, and endpoint preparation failures.
+
+## Own framing and dispatch
+
+```rust
+impl WebsocketProtocol for AcmeProtocol {
+    // Associated types and construction omitted.
+
+    fn serve(
+        self: Arc<Self>,
+        socket: WebSocket,
+        connection: Arc<ScopeContainer>,
+        shutdown: WsShutdown,
+    ) -> impl Future + Send {
+        async move {
+            self.run(socket, connection, shutdown).await;
+        }
+    }
+}
+```
+
+`serve` reads raw frames, validates connection state, decodes a destination and `Payload`, opens a message scope under the supplied connection scope, and invokes the matching <Symbol path="upwell::axum::WsRoute" />. It then frames the handler `Outcome` or dispatch failure according to the wire contract.
+
+Race socket input with <Symbol path="upwell::axum::WsShutdown" /> so graceful shutdown can close or drain long-lived connections deliberately. <Symbol path="upwell::axum::WsIdle" /> supports protocols with probe-and-timeout idle handling.
+
+## Negotiate subprotocols deliberately
+
+`SUBPROTOCOLS` lists accepted RFC 6455 tokens in server preference order. The selected token and request metadata are exposed through <Symbol path="upwell::axum::WebsocketUpgradeMeta" />. With `REQUIRE_SUBPROTOCOL = true`, reject an upgrade that offers no accepted token; otherwise the protocol may continue without one.
+
+Keep serializer selection and handshake validation in protocol connection state, not application controllers. Add <GuideRef slug="axum/websocket/topics-and-publishing">topic support</GuideRef> only when the protocol can frame typed subscriber publications.

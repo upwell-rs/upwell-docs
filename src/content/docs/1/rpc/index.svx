@@ -1,0 +1,25 @@
+---
+title: RPC
+description: Define and operate native RPC servers, with generated calls documented under native clients.
+order: 120
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# RPC
+
+RPC owns the native server: service declarations, handlers, call scopes, transport limits, admission, deadlines, and shutdown. Generated calls and client transport lifecycle remain canonical under <GuideRef slug="clients/native/rpc">native RPC clients</GuideRef> and are not duplicated here.
+
+## Choose a server task
+
+| Task | Guide |
+|---|---|
+| declare a service, add unary or streaming operations, and inject call dependencies | <GuideRef slug="rpc/server">RPC services</GuideRef> |
+| configure admission, limits, deadlines, connection handling, and graceful shutdown | <GuideRef slug="rpc/server/policies">Server policies</GuideRef> |
+
+## Shared prerequisites
+
+Start with an application using the `daemon` feature and a configured endpoint. Use <GuideRef slug="framework/application/lifecycle">application lifecycle</GuideRef> for process resources that surround the RPC runtime rather than one call.

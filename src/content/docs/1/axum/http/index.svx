@@ -1,17 +1,31 @@
 ---
 title: HTTP controllers
 description: Build an HTTP controller with typed DTOs, routes, extraction, and streaming when needed.
-order: 110
+order: 10
 topics: ['web']
 ---
 
 <script lang="ts">
-	import { Example, SymbolRef } from '#lib/docs';
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
 </script>
 
 # HTTP controllers
 
 Use a controller to group related Axum routes under one base path. Define the values that cross the wire, declare the controller, then add route methods in an inherent handler implementation.
+
+This HTTP group owns server routes, extraction, request state, bodies, responses, and OpenAPI. Native and browser client construction lives under <GuideRef slug="clients">generated clients</GuideRef>.
+
+## Choose an HTTP task
+
+| Task | Guide |
+|---|---|
+| define a controller, route, DTO, extraction, or simple streamed shape | this controllers and routes guide |
+| access headers, URI, connection metadata, or request-scoped state | <GuideRef slug="axum/http/request-context">Request context</GuideRef> |
+| enforce upload limits and process multipart fields | <GuideRef slug="axum/http/multipart-uploads">Multipart uploads</GuideRef> |
+| consume or return incremental bodies | <GuideRef slug="axum/http/streaming">Streaming</GuideRef> |
+| generate and serve the OpenAPI document or UI | <GuideRef slug="axum/http/openapi">OpenAPI</GuideRef> |
+
+Enable `axum` first. Add `multipart` or `openapi` only for pages that require those integrations.
 
 ## Define a controller and its first route
 
@@ -58,14 +72,14 @@ Register or auto-discover the controller in the Axum application configuration. 
 
 ## Add input and dependencies to a route
 
-Use `Query<T>` for URL parameters, `Json<T>` for a JSON body, and `Inject<T>` for an application dependency. <Symbol path="upwell::axum::HttpRequest" /> is the request scope marker: components declared in that scope are created for one HTTP request and can depend on request-scoped state without leaking it across requests.
+Use `Query<T>` for URL parameters, `Json<T>` for a JSON body, and `Inject<T>` for an application dependency. `upwell::axum::scope::Request` is the source-validated request scope marker: components declared in that scope are created for one HTTP request and can depend on request-scoped state without leaking it across requests.
 
 <Example title="Keep request state in the HTTP request scope">
 
 ```rust
 use upwell::axum::prelude::*;
 
-#[component(scope = HttpRequest)]
+#[component(scope = Request)]
 struct RequestAudit;
 ```
 

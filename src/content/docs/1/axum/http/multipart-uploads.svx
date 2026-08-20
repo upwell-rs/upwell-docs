@@ -1,0 +1,148 @@
+---
+title: Multipart uploads
+description: Receive multipart fields, build native and browser upload bodies, and enforce explicit limits.
+order: 115
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Multipart uploads
+
+Enable `multipart` for Axum's server extractor and `client` plus an HTTP backend for generated calls. The server and generated client use different types named `Multipart`: the server extractor reads incoming fields, while <Symbol path="upwell_axum::client::body::Multipart" /> constructs an outgoing body.
+
+```toml
+[dependencies]
+upwell = { version = "1", features = ["axum", "multipart", "client", "reqwest"] }
+```
+
+## Receive fields and files
+
+<Example title="Validate and store one uploaded file">
+
+```rust
+use upwell::axum::axum::extract::Multipart;
+use upwell::axum::prelude::*;
+
+#[post("/uploads")]
+async fn upload(
+    &self,
+    mut multipart: Multipart,
+) -> Result<StatusCode, UploadError> {
+    while let Some(field) = multipart.next_field().await? {
+        let name = field.name().unwrap_or_default().to_owned();
+        let filename = field.file_name().map(str::to_owned);
+        let content_type = field.content_type().map(str::to_owned);
+
+        validate_part(&name, filename.as_deref(), content_type.as_deref())?;
+
+        let bytes = field.bytes().await?;
+        store_part(name, filename, bytes).await?;
+    }
+
+    Ok(StatusCode::CREATED)
+}
+```
+
+`field.bytes().await` buffers the complete field. It is convenient only after server-wide body limits and application part limits make the allocation safe. For large files, consume field chunks incrementally and enforce a running byte count before writing to a temporary file or object store.
+
+</Example>
+
+## Enforce policy before storage
+
+Check at least:
+
+- total request bytes at the Axum boundary;
+- number of fields and files;
+- per-file and aggregate bytes while consuming chunks;
+- accepted field names;
+- filename handling after stripping path semantics;
+- declared content type plus content sniffing where security requires it;
+- destination quota and cleanup after cancellation or write failure.
+
+Do not treat a client-supplied filename or MIME type as trusted metadata. A malformed multipart boundary, body-limit rejection, chunk transport failure, or storage error should terminate the request and remove partial output.
+
+## Build a native request body
+
+The committed public body API is inventory-backed:
+
+```rust
+use upwell::axum::client::Multipart;
+
+let mut body = Multipart::new();
+body.text(String::from("album"), String::from("summer"));
+body.file(
+    String::from("photos"),
+    String::from("beach.jpg"),
+    String::from("image/jpeg"),
+    std::fs::read("beach.jpg")?,
+);
+body.file(
+    String::from("photos"),
+    String::from("mountain.jpg"),
+    String::from("image/jpeg"),
+    std::fs::read("mountain.jpg")?,
+);
+```
+
+Repeated names represent a multi-file field. The client encodes the complete multipart payload into bytes before the transport sends it. Its fixed boundary is checked against every part; an exact delimiter collision returns a codec error instead of emitting malformed framing.
+
+The committed extractor fixture declares `Extras::upload` and therefore emits this concrete native call:
+
+```rust plain
+use upwell::axum::client::{Multipart, ReqwestClient};
+
+let client = ExtrasClient::new(ReqwestClient::new("http://127.0.0.1:3000"));
+let mut upload = Multipart::new();
+upload.text(String::from("greeting"), String::from("hello"));
+upload.file(
+    String::from("doc"),
+    String::from("note.txt"),
+    String::from("text/plain"),
+    b"multipart body bytes".to_vec(),
+);
+
+let response = client.upload(upload).await?;
+println!("status={} summary={}", response.status(), response.body());
+```
+
+`ExtrasClient` and `upload` are emitted fixture names. Your controller emits its own client and method names, but the argument remains the client-side `Multipart` body and the result remains the generated `HttpResponse<T>` envelope.
+
+## Build a browser request body
+
+On Wasm with the Reqwest backend, the same exported `Multipart` class accepts `File` or `Blob` values:
+
+```ts plain
+const extras = new ExtrasClient(connection);
+const upload = new Multipart();
+upload.text('album', 'summer');
+await upload.file('photos', firstFile);
+await upload.files('photos', Array.from(fileInput.files ?? []));
+
+// Fixture-emitted browser method; headers is the optional final argument.
+const summary = await extras.upload(upload, undefined);
+```
+
+The browser overload reads each blob into bytes, derives the filename from `File` unless overridden, and defaults an empty MIME type to `application/octet-stream`. `files` emits one repeated part per blob in order. This is not a streaming `FormData` bridge; blob reading and multipart encoding buffer data in the Wasm/client path.
+
+<Callout type="warning" title="Generated names vary">
+
+`ExtrasClient.upload` is a committed fixture shape. Inspect your `wasm-pack` declarations for the controller-specific class, JS method spelling, return DTO, and optional per-call header parameter.
+
+</Callout>
+
+## Cancellation and expected behavior
+
+Dropping a native future or aborting browser work stops local waiting, but bytes already accepted by the transport or server are not recalled. Server chunk loops must observe body errors, abandon writes, and clean up partial files. Idempotency keys or resumable upload protocols are application-level features, not multipart behavior.
+
+## Troubleshoot uploads
+
+- An immediate extractor error often indicates a malformed or missing multipart `Content-Type` boundary.
+- Memory spikes with `bytes()` mean the per-field buffer is too large; switch to chunk consumption.
+- A browser `FileList` must be converted to an array before `files`.
+- A generated method missing can mean `multipart`, `client`, or the selected HTTP backend was not enabled in the defining crate.
+- Repeated files arriving as one value usually means the application collapsed repeated field names after extraction.
+
+See <GuideRef slug="axum/http">HTTP controllers</GuideRef>, <GuideRef slug="clients/native/http">native HTTP clients</GuideRef>, and <GuideRef slug="clients/browser/setup-and-http">browser Wasm clients</GuideRef>.

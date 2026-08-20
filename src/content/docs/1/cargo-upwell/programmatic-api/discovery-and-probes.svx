@@ -1,0 +1,165 @@
+---
+title: Programmatic discovery and probes
+description: Construct DiscoveryRequest directly, run a synchronous probe with cancellation, and validate its canonical envelope.
+order: 50
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Programmatic discovery and probes
+
+Use the `cargo-upwell` library when an editor, build service, or integration needs selected-target and probe evidence without parsing terminal output. <Symbol path="cargo_upwell::run_probe" /> is synchronous and accepts references to a <Symbol path="cargo_upwell::DiscoveryRequest" /> and <Symbol path="cargo_upwell::CancellationToken" />.
+
+## Construct discovery input
+
+`DiscoveryRequest` is a public struct with these fields:
+
+```rust
+use std::path::PathBuf;
+use cargo_upwell::{
+    CancellationToken, CargoExecutable, DiscoveryRequest, FeatureSelection,
+};
+
+let request = DiscoveryRequest {
+    current_dir: Some(PathBuf::from("/workspace")),
+    manifest_path: Some(PathBuf::from("apps/api/Cargo.toml")),
+    package: Some(String::from("api")),
+    binary: Some(String::from("api-server")),
+    features: FeatureSelection {
+        features: vec![String::from("metrics")],
+        all_features: false,
+        no_default_features: false,
+    },
+    target: Some(String::from("x86_64-unknown-linux-gnu")),
+    cargo: CargoExecutable::from_environment(),
+};
+```
+
+There is no validated `DiscoveryRequest::for_manifest` constructor. Set the public fields or use a constructor actually present in the version compiled by your integration.
+
+`manifest_path` is interpreted like Cargo and is relative to `current_dir` when not absolute. Package and binary selection use Cargo metadata and deterministic ambiguity rules; never infer the binary from a directory name.
+
+## Run the probe
+
+<Example title="Execute with caller-owned cancellation">
+
+```rust
+let cancellation = CancellationToken::new();
+
+let probe = cargo_upwell::run_probe(&request, &cancellation)?;
+
+println!(
+    "selected {}:{}",
+    probe.target.package_name,
+    probe.target.binary_name,
+);
+```
+
+`run_probe_with_options` additionally accepts <Symbol path="cargo_upwell::ProbeOptions" />, currently including whether Cargo's human output is shown on stderr. Both APIs block the calling thread while discovery, isolated build, and target-local probe execution proceed. Move them to a blocking worker when integrating with an async UI/runtime.
+
+</Example>
+
+## Preserve and validate probe evidence
+
+<Symbol path="cargo_upwell::ToolingProbe" /> contains workspace facts, selected target, Cargo build result/diagnostics, and the validated target-local probe result/process evidence. The process response is a <Symbol path="upwell_tooling_schema::ProbeEnvelope" /> containing target identity and either a canonical <Symbol path="upwell_tooling_schema::ToolingDocument" /> or typed failure.
+
+Before consuming a document:
+
+1. check the envelope's semantic schema with `schema_matches`;
+2. call `validate` after decoding untrusted JSON;
+3. require `is_success()` before assuming a document exists;
+4. verify target identity matches the selected package/binary;
+5. preserve diagnostics and process evidence on failure.
+
+Use `to_json()` for canonical envelope JSON and `ToolingDocument::to_canonical_json()` for deterministic document bytes. Do not serialize a human renderer and call it canonical data.
+
+One success/failure branch can validate the exact process envelope and preserve canonical evidence:
+
+```rust plain
+use semver::VersionReq;
+use upwell_tooling_schema::ProbeOutcome;
+
+let envelope = &probe.probe.envelope;
+let supported = VersionReq::parse("^0.20")?;
+
+if !envelope.schema_matches(&supported) {
+    return Err(format!("unsupported envelope schema {}", envelope.schema).into());
+}
+
+envelope.validate()?;
+std::fs::write("target/upwell/probe.json", envelope.to_json()?)?;
+
+match &envelope.outcome {
+    ProbeOutcome::Success { document } => {
+        document.validate()?;
+        std::fs::write(
+            "target/upwell/document.json",
+            document.to_canonical_json()?,
+        )?;
+    }
+    ProbeOutcome::Failure { failure } => {
+        for diagnostic in &failure.diagnostics {
+            eprintln!("{}: {}", diagnostic.code, diagnostic.message);
+        }
+    }
+}
+```
+
+`run_probe` already decodes with `ProbeEnvelope::from_json`, validates target identity against the selected Cargo package/binary, and checks process status against success/failure outcome. Calling `validate()` again at a persistence or trust boundary is cheap and makes the consumer's contract explicit.
+
+## Query the canonical graph
+
+<Symbol path="cargo_upwell::GraphQuery" /> executes exact resource/plugin/contributor selectors over a cloned, canonicalized, validated document. Selection errors distinguish not found, ambiguous name, and invalid document. <Symbol path="cargo_upwell::ResourceExplanation" /> builds one deterministic explanation with the resource, incoming/outgoing relationships, diagnostics, CLI ownership, and source metadata:
+
+```rust plain
+use cargo_upwell::{
+    GraphDirection, GraphQuery, GraphRelationFamily, ResourceExplanation,
+};
+
+let document = match &probe.probe.envelope.outcome {
+    ProbeOutcome::Success { document } => document.as_ref(),
+    ProbeOutcome::Failure { .. } => return Err("no complete graph".into()),
+};
+
+let query = GraphQuery {
+    resources: vec![String::from("component:catalog")],
+    family: GraphRelationFamily::Dependencies,
+    direction: GraphDirection::Both,
+    ..GraphQuery::default()
+};
+let graph = query.execute(document)?;
+std::fs::write("target/upwell/graph.json", graph.to_canonical_json()?)?;
+
+let explanation = ResourceExplanation::query(document, "component:catalog")?;
+std::fs::write(
+    "target/upwell/explanation.json",
+    explanation.to_canonical_json()?,
+)?;
+```
+
+For a failed preparation envelope, `GraphQuery::execute_failure` can project diagnostic-only data with `complete = false` semantics rather than inventing missing edges.
+
+## Cancellation and error policy
+
+Call `CancellationToken::cancel()` from another thread or owner. Cancellation is cooperative across lock waits and child-process work. `LockCancelled` is distinct from discovery, Cargo build, and probe-process failure.
+
+<Callout type="warning" title="Cancellation can leave partial evidence">
+
+Treat cancellation as operational state. Keep diagnostics and completed build/probe evidence, mark the result incomplete, and do not convert cancellation into a schema-validation error.
+
+</Callout>
+
+`ProbeRequestError` categories are `Discovery`, `Build`, `Lock`, `LockCancelled`, and `Probe`. A successful Rust function return still requires inspecting the probe/envelope outcome; process evidence and a typed failure can be the useful result.
+
+## Troubleshoot programmatic probes
+
+- An async executor stalls: `run_probe` is synchronous; run it on a blocking worker.
+- The wrong binary is selected: fill both package and binary for multi-target workspaces.
+- A feature-gated binary is absent: mirror Cargo feature selection exactly.
+- JSON consumers break across versions: validate semantic schema requirements before field use.
+- Graph names are ambiguous: use stable resource IDs from the document.
+
+See <GuideRef slug="cargo-upwell/programmatic-api/command-reports">programmatic command reports</GuideRef> and <GuideRef slug="cargo-upwell/cli/inspect-and-graph">inspect and graph</GuideRef>.

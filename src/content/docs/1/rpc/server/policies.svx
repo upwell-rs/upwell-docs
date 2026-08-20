@@ -1,0 +1,118 @@
+---
+title: RPC server policies
+description: Register services explicitly or automatically, order policy layers, and bound server admission.
+order: 105
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# RPC server policies
+
+Build the service contract first, then decide how the application discovers it and which cross-cutting policies wrap dispatch. The RPC builder methods come from <Symbol path="upwell_rpc::plugin::RpcAppBuilder" /> and are available through the daemon prelude.
+
+## Register services deliberately
+
+```toml
+[dependencies]
+upwell = { version = "1", features = ["daemon"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+```
+
+<Example title="Choose one registration mode">
+
+```rust
+use upwell::daemon::prelude::*;
+
+let discovered = App::builder("catalog-rpc")
+    .auto_discover()
+    .build()
+    .await?;
+```
+
+Automatic discovery merges link-time service descriptors and their component factories. Use it when every linked service for this binary belongs on the endpoint.
+
+```rust
+let explicit = App::builder("catalog-rpc")
+    .service::<CatalogService>()
+    .build()
+    .await?;
+```
+
+`service::<T>()` registers the service descriptor and constructs `T` from its component descriptor. `with_service(value)` instead installs a pre-built singleton and its service identity. `service_descriptor` is the lower-level raw-descriptor path.
+
+</Example>
+
+Preparation rejects duplicate service IDs, duplicate RPC names or paths, and empty services before accepting a transport.
+
+## Order middleware and guards
+
+<Example title="Wrap dispatch with an outer trace and an auth guard">
+
+```rust
+let app = App::builder("catalog-rpc")
+    .service::<CatalogService>()
+    .middleware(trace_layer)
+    .guard(auth_guard)
+    .error_handler(error_handler)
+    .rpc_limits(RpcLimits::new(1024, 256))
+    .build()
+    .await?;
+```
+
+The first registered Tower layer is outermost. A guard is adapted into a layer that checks <Symbol path="upwell_rpc::descriptors::RpcCallContext" /> before calling the inner service. Therefore registration order determines whether a custom layer observes guard rejection and whether it runs before or after authentication.
+
+</Example>
+
+The terminal router builds a request scope and dispatches the matched generated handler. Layer `Service::ready` backpressure is honored. A guard returning `Err(ErrorResponse)` short-circuits the handler but still produces an outgoing RPC error response.
+
+## Map outgoing failures globally
+
+<Symbol path="upwell_rpc::middleware::ErrorHandler" /> receives the path and every outgoing <Symbol path="upwell_rpc::extract::ErrorResponse" />. It can log, enrich, or remap the response. There is one global handler.
+
+The handler sees:
+
+- a guard rejection;
+- a route or extraction/DI failure;
+- a typed application error converted through `ResponseError`;
+- a response-stream error;
+- an internal response synthesized after request-scope, handler, stream, or error-handler panic.
+
+It does not turn startup, listener accept, connection-scope construction, or transport write failures into application error bodies. Those are outside the call-response boundary. If the global error handler panics, the server substitutes a sanitized internal error.
+
+## Configure actual `RpcLimits`
+
+<Symbol path="upwell_rpc::protocol::RpcLimits" /> controls only:
+
+| Setting | Effect |
+|---|---|
+| `max_connections` | stops calling `accept` while the live connection task set is full |
+| `max_calls_per_connection` | closes a connection when a new inbound call would exceed its in-flight task limit |
+| `with_accept_backoff(initial, maximum)` | exponential retry delay for transient listener/resource-exhaustion accept errors |
+
+Defaults in the validated inventory are 1024 connections and 256 in-flight calls per connection. Both constructor limits must be nonzero; the backoff initial duration must be nonzero and the maximum must not be smaller.
+
+<Callout type="warning" title="Admission is not a complete resource policy">
+
+`RpcLimits` does not set payload bytes, frame bytes, stream item count, handler timeout, or a global call total. Configure framing with the transport's frame configuration, enforce application timeouts in middleware or handlers, and bound streams in their own contracts.
+
+</Callout>
+
+## Failure and cancellation boundaries
+
+Each accepted connection gets a connection scope. Each call gets a request scope, a cancellation token, and its own task. When a connection closes or server shutdown arrives, the call table is dropped and in-flight call tokens are cancelled; handler tasks still winding down are aborted.
+
+A transient `accept` error backs off while continuing to observe shutdown. A terminal accept error stops admission, cancels connection loops, waits for tasks, and returns an error from `serve`. A connection-scope build failure closes only that connection. A request-scope build failure returns an error to that call when possible.
+
+## Troubleshoot server policy
+
+- A guard running before expected tracing usually means the tracing layer was registered inside it; remember first middleware is outermost.
+- A custom application error bypassing the global handler likely never became `ErrorResponse`; implement the expected response conversion.
+- Connections closing at load while global capacity remains can indicate the per-connection call limit.
+- Large payload failures are not configured through `RpcLimits`; inspect transport frame limits.
+- A duplicate route error is a preparation failure and cannot be repaired by an error handler.
+
+Continue with <GuideRef slug="rpc/server">RPC services</GuideRef>, <GuideRef slug="clients/native/rpc">native RPC clients</GuideRef>, and <GuideRef slug="framework/application/lifecycle">lifecycle and shutdown</GuideRef>.

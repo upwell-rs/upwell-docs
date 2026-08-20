@@ -1,0 +1,96 @@
+---
+title: Catalog templates
+description: Define required template metadata, choose local or pinned Git sources, and understand catalog precedence.
+order: 40
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef, SrcRef } from '#lib/docs';
+</script>
+
+# Catalog templates
+
+Cargo Upwell starts with built-in templates, then overlays one user catalog by stable ID. A template entry requires `id`, `description`, and exactly one source: `path` or `git`.
+
+## Select the catalog
+
+Precedence from highest to lowest is:
+
+1. the explicit path supplied by the caller, including CLI `--catalog`;
+2. `UPWELL_CATALOG_PATH`;
+3. the platform default from <Symbol path="cargo_upwell::init::catalog::default_catalog_path" />;
+4. built-ins alone when no default path exists or the implicit default file is absent.
+
+An explicitly selected or environment-selected file must exist and validate. The platform defaults are `~/Library/Application Support/org.upwell-rs.Upwell/catalog.toml` on macOS, `${XDG_CONFIG_HOME:-~/.config}/upwell/catalog.toml` on Linux, and `%APPDATA%\upwell-rs\Upwell\config\catalog.toml` on Windows. Use `cargo upwell templates` to inspect the effective result and pass `--catalog` in automation rather than relying on a user's machine path.
+
+## Define a local template
+
+<Example title="Register a repository-local template">
+
+```toml
+schema = "1"
+
+[[entries]]
+type = "template"
+id = "acme/service"
+description = "Acme HTTP service with deployment defaults"
+path = "templates/service"
+```
+
+Relative paths resolve from the catalog file's directory, not the process working directory. Absolute paths remain absolute.
+
+</Example>
+
+For a one-off template outside a catalog, `cargo upwell init --template-path ../template` selects it directly. That mode conflicts with `--template` and `--catalog`; it is an explicit override, not another catalog layer.
+
+## Define a pinned Git template
+
+```toml
+[[entries]]
+type = "template"
+id = "acme/protocol"
+description = "Acme protocol crate and macro workspace"
+git = "https://github.com/acme/upwell-template-protocol.git"
+revision = "4f7d7f6c7d6c2f96b66b8d7f9cbf28fd7282ea6e"
+```
+
+Git sources accept at most one of `branch`, `tag`, or `revision` (`rev` is accepted as an alias for `revision`). A repository without a reference follows upstream default-branch movement. A branch is convenient but mutable. Use a tag only when your release process protects it; use an exact revision for reproducible generation.
+
+## Understand merging and collisions
+
+The catalog validates namespaced lowercase IDs. A user template can replace a built-in template with the same ID; this is how an organization deliberately overrides `upwell/application`. Duplicate IDs within the user document are rejected.
+
+Tools and renderers cannot reuse an effective template ID. A template must not specify both `path` and `git`, neither source, a Git selector with a local path, or multiple Git selectors. Empty source/reference values are rejected. TOML unknown fields are rejected by the schema.
+
+<Callout type="warning" title="Description is required">
+
+Every template entry must include a human-readable `description`. It is not inferred from the repository and omitting it is a catalog parse failure.
+
+</Callout>
+
+## Generate reproducibly
+
+```sh
+cargo upwell templates --catalog .upwell/catalog.toml
+
+cargo upwell init apps/payments \
+  --catalog .upwell/catalog.toml \
+  --template acme/service \
+  --name payments \
+  --no-vcs
+```
+
+Pin the catalog and Git revision in source control, pass the template ID explicitly, and record `--define` inputs in automation. If workspace registration fails, the generator rolls back the generated directory, but external template hooks and network effects are outside that filesystem rollback.
+
+The canonical schema implementation is available in <SrcRef path="crates/cargo-upwell/src/init/catalog.rs">the committed catalog source</SrcRef>.
+
+## Troubleshoot templates
+
+- `UnknownTemplate` includes effective IDs; run `templates` against the same catalog selector.
+- `InvalidTemplateSource` means the entry did not specify exactly one source or mixed local/Git fields.
+- `ConflictingGitReferences` means more than one branch/tag/revision was set.
+- A relative path resolves unexpectedly when the catalog file moved; paths are catalog-relative.
+- Generation changes between runs when a Git source is unpinned or a template consumes unrecorded inputs.
+
+See <GuideRef slug="cargo-upwell/catalog/extensions">catalog extensions</GuideRef> and <GuideRef slug="cargo-upwell/cli/automation-and-completions">automation and completions</GuideRef>.

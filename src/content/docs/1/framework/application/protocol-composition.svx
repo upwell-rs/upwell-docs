@@ -1,0 +1,93 @@
+---
+title: Protocol composition and host qualification
+description: Keep the one-protocol App invariant while running HTTP, RPC, jobs, and plugins deliberately.
+order: 52
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, GuideRef } from '#lib/docs';
+</script>
+
+# Protocol composition and host qualification
+
+The generic <code>App&lt;P&gt;</code> is assembled around one <Symbol path="upwell::ProtocolDefinition" />. Components and plugins may be protocol-neutral, but the prepared protocol state and built <Symbol path="upwell::ProtocolRuntime" /> are singular.
+
+## Understand the invariant
+
+Preparation follows one protocol type:
+
+1. `P::register` contributes protocol-owned descriptors and scopes.
+2. The application registry and DI graph are validated.
+3. `P::prepare` validates routes, services, endpoint metadata, or other protocol state.
+4. Root components are built.
+5. <Symbol path="upwell::PreparedProtocol::build" /> creates exactly one runtime.
+6. `App::serve(endpoint)` requires that runtime to implement <code>Serve&lt;E&gt;</code> for the endpoint.
+
+Features decide which protocol definitions can compile. They do not merge prepared definitions.
+
+## Run qualified hosts side by side
+
+```rust plain
+let rpc_app = upwell::daemon::App::builder("catalog-rpc")
+    .auto_discover()
+    .build()
+    .await?;
+let rpc_shutdown = rpc_app.shutdown_handle();
+
+let http_app = upwell::axum::App::builder("catalog-http")
+    .auto_discover()
+    .build()
+    .await?;
+let http_shutdown = http_app.shutdown_handle();
+
+let rpc_task = tokio::spawn(rpc_app.serve(rpc_transport));
+let http_task = tokio::spawn(http_app.serve(http_listener));
+```
+
+Each host has its own root container, configuration bindings, startup/shutdown sequence, protocol admission limits, and shutdown signal. If one host's failure should stop the other, the supervisor must call the sibling handle and await both tasks.
+
+Do not assume auto-discovery makes every linked controller or service active in both apps. Protocol-specific discovery folds in only variants for the selected definition. Stable IDs and duplicate-path validation remain local to that host's prepared surface.
+
+## Share infrastructure explicitly
+
+Ways to share state include:
+
+- pass pre-built singleton handles into each builder with `with_component`;
+- place shared state behind an external database, broker, or service;
+- register the same protocol-neutral plugin independently in each app;
+- keep jobs in the host whose lifecycle and failure policy should own them.
+
+Avoid sharing a component that assumes one root container or request scope across two roots. A singleton handle may be cloneable while its framework resolution context is not.
+
+## Compose plugins within one host
+
+<Symbol path="upwell_app::Plugin" /> and the application/protocol plugin registrars compose descriptors before validation. They extend one selected protocol; they do not create another runtime. Use explicit plugin registration when ordering or options matter, and inspect the effective plugin plan when contributions collide.
+
+## Qualify endpoint and client code
+
+Side-by-side hosts need separate addresses, paths, and client transports:
+
+```text
+public HTTP  -> https://api.example.test
+internal RPC -> unix:///run/catalog/catalog.sock
+STOMP        -> ws://127.0.0.1:3000/stomp (or wss:// behind a documented TLS deployment)
+```
+
+WebSocket protocols are endpoint plugins of the Axum runtime, so registering JSON-WS or STOMP does not violate the one `App<P>` invariant: the selected host is still `App<Axum>`, and Axum owns the upgrades and nested connection/message scopes.
+
+<Callout type="warning" title="No automatic cross-host transaction">
+
+Starting two apps concurrently does not create atomic startup. If the second build or startup fails, explicitly request shutdown for the first and await its cleanup. The per-app partial-startup rollback cannot reach a sibling app.
+
+</Callout>
+
+## Troubleshoot composition
+
+- A service not found in an HTTP host is expected; it belongs to the RPC protocol variant.
+- A WebSocket controller is inert until its protocol is mounted on the Axum builder.
+- Duplicate route or service failures occur during the corresponding host's preparation, before serving.
+- A shutdown request affecting only one listener means the handles were not coordinated by the supervisor.
+- A shared resource released too early usually has one app's shutdown hook owning state still used by the other; move ownership to the supervisor or externalize it.
+
+See <GuideRef slug="framework/platforms/features-and-targets">features and targets</GuideRef>, <GuideRef slug="framework/application/lifecycle">lifecycle and shutdown</GuideRef>, <GuideRef slug="rpc/server/policies">RPC server policies</GuideRef>, and <GuideRef slug="axum/websocket">WebSocket protocols</GuideRef>.

@@ -19,6 +19,6 @@ Build a topology with `ScopeTopology::new` and static [`ScopeBoundary`](./ScopeB
 
 `prepare` rejects duplicate and reserved IDs, missing parents, self-parenting, cycles, and invalid lifetime-rank ordering. At runtime, open only a declared boundary beneath its declared parent. Components may use a custom scope only when that scope appears in the prepared topology.
 
-See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for a connection/request topology.
+See [the custom protocol guide](/docs/latest/framework/extensions/protocol-authoring) for a connection/request topology.
 
 <SymbolMembers title="Associated items" />

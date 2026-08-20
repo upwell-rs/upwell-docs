@@ -16,7 +16,7 @@ Treat 1.0 as a migration, not a mechanical import rename. Upwell `0.20.0` alread
 
 ## Start with the application boundary
 
-Replace the 0.20 builder-form host declaration with the 1.0 named application declaration, then follow the current [application model](/docs/1.0.0/framework/application-model) and [`app!` guide](/docs/1.0.0/framework/app-macro) for the complete 1.0 model.
+Replace the 0.20 builder-form host declaration with the 1.0 named application declaration, then follow the current [application model](/docs/1.0.0/framework) and [`app!` guide](/docs/1.0.0/framework/application/app-macro) for the complete 1.0 model.
 
 <Example title="Move the app declaration">
 
@@ -43,12 +43,12 @@ The 1.0 host has a different declaration shape and can introduce protocol-specif
 
 ## Migrate by feature area
 
-- Rebuild components and dependency injection from the [1.0 components guide](/docs/1.0.0/di/components).
+- Rebuild components and dependency injection from the [1.0 components guide](/docs/1.0.0/framework/dependency-injection/components).
 - Rework HTTP code using the [1.0 HTTP controllers guide](/docs/1.0.0/axum/http).
-- Rework daemon RPC code using the [1.0 RPC services guide](/docs/1.0.0/rpc/services).
+- Rework daemon RPC code using the [1.0 RPC services guide](/docs/1.0.0/rpc/server).
 
 Historical features can differ in their generated integration, scopes, and accepted macro forms. This guide records the 0.20 forms shown here, but does not claim compatibility for forms not documented for that release.
 
 ## Reference availability
 
-The preserved 0.20 artifact has its own legacy symbol identity, so this site does not publish cross-version symbol-reference pages for it. Use these authored 0.20 guides for the historical package and macro forms; use the [current 1.0 reference](/docs/1.0.0/framework/application-model) only after migrating to 1.0.
+The preserved 0.20 artifact has its own legacy symbol identity, so this site does not publish cross-version symbol-reference pages for it. Use these authored 0.20 guides for the historical package and macro forms; use the [current 1.0 reference](/docs/1.0.0/framework) only after migrating to 1.0.

@@ -1,0 +1,25 @@
+---
+title: Renderers
+description: Implement and test capability-free WebAssembly presentation components.
+order: 40
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Renderers
+
+Renderers owns executable guest implementation: generating bindings from the canonical WIT, building a component without host imports, validating response claims, and testing sandbox failures and native fallback. Registration, command format metadata, paths, and priority remain canonical under <GuideRef slug="cargo-upwell/catalog/extensions">catalog extensions</GuideRef>.
+
+## Choose a task
+
+| Task | Guide |
+|---|---|
+| generate bindings, implement `render`, build a component, and verify its WIT | <GuideRef slug="cargo-upwell/renderers/authoring">Authoring</GuideRef> |
+| test compatibility, limits, selection, response validation, and fallback | <GuideRef slug="cargo-upwell/renderers/testing-and-failures">Testing and failures</GuideRef> |
+
+## Shared prerequisites
+
+Start with a renderer entry registered in the catalog and the exact committed `renderer.wit`. Treat output as presentation only; retain a canonical built-in format for automation and diagnostics.

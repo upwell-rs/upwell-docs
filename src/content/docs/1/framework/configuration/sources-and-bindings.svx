@@ -1,0 +1,133 @@
+---
+title: Configuration sources and bindings
+description: Load TOML or YAML, apply profiles and substitutions, and bind live typed values.
+order: 30
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Configuration sources and bindings
+
+Use <Symbol path="upwell_config::managed::source::ConfigManager" /> when an application needs one typed view over defaults, files, profiles, environment values, and application directories. The manager owns the merged tree, the resolver chain, the source list, every registered binding, and the automatic-reload settings later consumed by the application.
+
+<Callout type="warning" title="Validated snapshot">
+
+The committed reference artifact is labeled 1.0.0 but was produced from a dirty 0.20.0 source snapshot. This guide uses public symbols present in that inventory and avoids claiming behavior not represented there.
+
+</Callout>
+
+## Choose formats and features
+
+TOML support is the `upwell-config` default. Add `yaml` to accept `application.yaml` and `application.yml`. A dynamic manager tries enabled parsers in this order: TOML, YAML, then YML. When more than one file for the same stem exists, each later parser's document overlays the earlier document.
+
+```toml
+[dependencies]
+upwell = { version = "1", features = ["yaml"] }
+serde = { version = "1", features = ["derive"] }
+```
+
+All formats normalize to <Symbol path="upwell_config::value::ConfigValue" />. Tables deep-merge by key; a scalar or array replaces the previous value wholesale.
+
+## Load base and profile files
+
+<Example title="Load from application directories">
+
+```rust
+use upwell::dirs::DirectoriesManager;
+use upwell::prelude::*;
+
+let directories = DirectoriesManager::try_for_app("catalog-api")?;
+let profiles = vec![String::from("production")];
+let config = ConfigManager::load_from(&directories, &profiles)?;
+```
+
+`load_from` searches the manager's config directory and also installs the directory resolver used by `${@runtime}`, `${@data}`, and the other typed directories.
+
+</Example>
+
+For `load_in(dir, profiles)`, precedence from lowest to highest is:
+
+1. `application.toml`, then enabled `application.yaml` and `application.yml`.
+2. Profiles from comma-separated `UPWELL_PROFILES`, in listed order.
+3. Profiles supplied by the caller, in slice order.
+4. For each profile, the enabled formats in parser order.
+5. Typed `#[default = "..."]` values fill only leaves still missing after the file merge.
+
+`load_in_explicit` skips `UPWELL_PROFILES`; use it when a generated CLI or another higher-precedence caller already computed the complete profile list. `load_file` instead requires one exact base file and overlays only sibling `<stem>-<profile>.<ext>` files of that same format.
+
+Missing discovered files and missing profile files are skipped. A malformed present file, unreadable required file, or unsupported exact-file extension is an error.
+
+## Resolve placeholders
+
+The default <Symbol path="upwell_config::resolve::ResolverChain" /> consults environment variables. Placeholders also read absolute dotted paths from the same merged tree:
+
+```toml
+[network]
+host = "${APP_HOST:127.0.0.1}"
+port = 8080
+
+[service]
+origin = "http://${network.host}:${network.port}"
+socket = "${@runtime}/service.sock"
+```
+
+`${KEY}` requires a resolver value, while `${KEY:default}` supplies a literal fallback. `${service.other}` reads a config path, and `${@runtime}` uses the directory namespace installed by `load_from` or `with_directories`. Resolution happens during typed deserialization, not while files are merged.
+
+Failures include missing placeholders, cycles, depth or work-budget exhaustion, unknown directory keys, non-string interpolation into an incompatible value, type mismatches, and numeric range failures. <Symbol path="upwell_config::error::TemplateError" /> normally includes the dotted node path.
+
+For deterministic tests, replace ambient environment access with `ResolverChain::empty()` or an explicit <Symbol path="upwell_config::resolve::MapResolver" />. Resolver order is left to right; the first resolver with a value wins.
+
+## Declare and bind a type
+
+<Example title="Auto-discovered live configuration">
+
+```rust
+use serde::Deserialize;
+use upwell::prelude::*;
+
+#[config(path = "database")]
+#[derive(Deserialize)]
+struct DatabaseConfig {
+    #[default = "${DATABASE_URL}"]
+    url: String,
+    #[default = "16"]
+    pool_size: usize,
+}
+```
+
+The `#[config]` attribute must appear above `#[derive(Deserialize)]`. Supplying `path` registers one auto-discoverable binding. Without `path`, bind the type explicitly with `AppBuilder::config::<DatabaseConfig>("database")` or `ConfigManager::with_config`; that explicit form is required when one type is bound at multiple paths.
+
+</Example>
+
+<Example title="Read the current accepted value">
+
+```rust
+#[component]
+struct Repository {
+    #[config("database")]
+    database: Cfg<DatabaseConfig>,
+}
+
+impl Repository {
+    fn pool_size(&self) -> usize {
+        self.database.get().pool_size
+    }
+}
+```
+
+<Symbol path="upwell_config::managed::Cfg" /> points to a shared live slot. `get()` returns a short-lived guard; `snapshot()` returns an owned <code>Arc&lt;T&gt;</code> pinned to that generation. Do not cache a field from either if later requests must observe reloads.
+
+</Example>
+
+## Troubleshoot loading and binding
+
+- `MissingPath` means neither the merged tree nor the type's defaults materialized the bound subtree.
+- `UnsupportedFormat` means the exact file's extension has no enabled parser; enable `yaml` or select TOML.
+- A value that works in the shell but fails in tests usually indicates an unintended environment resolver; use an explicit chain.
+- `${@runtime}` failing under `load_in` means no directory resolver was installed; prefer `load_from` or call `with_directories`.
+- `#[config]` without `path` is not auto-discovered. Add a path or register it explicitly.
+
+Continue with <GuideRef slug="framework/configuration/reload">configuration reload</GuideRef> and <GuideRef slug="framework/platforms/application-directories">application directories</GuideRef>.

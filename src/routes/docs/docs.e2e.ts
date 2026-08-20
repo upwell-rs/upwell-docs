@@ -79,7 +79,7 @@ test('versioned guide visibility uses normalized routes without a root Guides gr
 
 	await page.goto('/docs/0.20.0/components');
 	await expect(page.getByRole('heading', { level: 1, name: 'Components and dependency injection' })).toBeVisible();
-	await page.goto('/docs/1.0.0/di/components');
+	await page.goto('/docs/1.0.0/framework/dependency-injection/components');
 	await expect(page.getByRole('heading', { level: 1, name: 'Components and injection' })).toBeVisible();
 
 	const legacyOnly = await page.goto('/docs/1.0.0/migration-to-1-0');
@@ -118,7 +118,7 @@ test('the site root is the documentation', async ({ page }) => {
 });
 
 test('a guide renders with navigation', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
 
@@ -129,8 +129,15 @@ test('a guide renders with navigation', async ({ page }) => {
 	await expect(sidebar.getByRole('link', { name: 'Components and injection' })).toHaveAttribute('aria-current', 'page');
 });
 
+test('moved guide routes redirect permanently to their canonical hierarchy', async ({ request }) => {
+	const response = await request.get(`/docs/${VERSION}/di/components`, { maxRedirects: 0 });
+
+	expect(response.status()).toBe(308);
+	expect(response.headers().location).toBe(`/docs/${VERSION}/framework/dependency-injection/components`);
+});
+
 test('the skip link is the first keyboard control and focuses the reading pane', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const skip = page.getByRole('link', { name: 'Skip to documentation' });
 	const main = page.locator('#docs-main');
@@ -143,7 +150,7 @@ test('the skip link is the first keyboard control and focuses the reading pane',
 
 	await page.keyboard.press('Enter');
 
-	await expect(page).toHaveURL(`/docs/${VERSION}/di/components#docs-main`);
+	await expect(page).toHaveURL(`/docs/${VERSION}/framework/dependency-injection/components#docs-main`);
 	await expect(main).toBeFocused();
 });
 
@@ -154,9 +161,9 @@ test('a guide publishes one canonical social metadata set for its explicit URL',
 		throw new Error('Playwright baseURL must be configured for metadata coverage.');
 	}
 
-	const url = `${new URL(baseURL).origin}/docs/${VERSION}/di/components`;
+	const url = `${new URL(baseURL).origin}/docs/${VERSION}/framework/dependency-injection/components`;
 
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 	await expect(page).toHaveURL(url);
 
 	const title = await page.title();
@@ -185,7 +192,7 @@ test('a guide publishes one canonical social metadata set for its explicit URL',
 });
 
 test('code blocks carry symbol metadata resolved at build time', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const symbol = page.locator('[data-symbol="upwell::prelude::component"]').first();
 
@@ -198,7 +205,7 @@ test('code blocks carry symbol metadata resolved at build time', async ({ page }
 });
 
 test('clicking a documented code symbol navigates to its canonical authored reference', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const linked = page.locator('a[data-symbol="upwell::prelude::component"]').first();
 
@@ -210,7 +217,7 @@ test('clicking a documented code symbol navigates to its canonical authored refe
 });
 
 test('a symbol without an authored reference links to its generated declaration page', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/framework/application-model`);
+	await page.goto(`/docs/${VERSION}/framework`);
 
 	const annotated = page.locator('[data-symbol="upwell::axum::App"]').first();
 
@@ -220,7 +227,7 @@ test('a symbol without an authored reference links to its generated declaration 
 });
 
 test('hovering a symbol shows its card', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	const symbol = page.locator('[data-symbol="upwell::prelude::component"]').first();
@@ -240,7 +247,7 @@ test('hovering a symbol shows its card', async ({ page }) => {
 });
 
 test('the card survives the pointer moving into it, so its links can be used', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await page.locator('a[data-symbol="upwell::prelude::component"]').first().hover();
 
@@ -271,7 +278,7 @@ test('a symbol referenced in prose gets the same treatment as one in code', asyn
 });
 
 test('clicking a documented inline symbol navigates to its authored reference', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const linked = page.locator('code.symbol-ref a[data-symbol="upwell::prelude::component"]').first();
 
@@ -281,7 +288,7 @@ test('clicking a documented inline symbol navigates to its authored reference', 
 });
 
 test('a documented symbol card keeps View source on GitHub', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	await page.locator('a[data-symbol="upwell::prelude::component"]').first().hover();
@@ -359,7 +366,7 @@ test('moving between pages keeps the current sidebar entry in view', async ({ pa
 });
 
 test('sidebar state survives navigation, because the shell is a layout', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const group = page
 		.getByRole('navigation', { name: 'Documentation' })
@@ -371,7 +378,7 @@ test('sidebar state survives navigation, because the shell is a layout', async (
 
 	// A layout is not remounted between pages that share it, so the collapsed group stays collapsed.
 	await page.getByRole('link', { name: 'Advanced dependency injection' }).first().click();
-	await expect(page).toHaveURL(`/docs/${VERSION}/di/advanced`);
+	await expect(page).toHaveURL(`/docs/${VERSION}/framework/dependency-injection/advanced`);
 	await expect(group).not.toHaveAttribute('open', '');
 });
 
@@ -379,7 +386,7 @@ test('path-derived navigation opens every visible-directory ancestor without a r
 	await page.goto(`/docs/${VERSION}/axum/http`);
 
 	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
-	const ancestors = ['guides:axum'];
+	const ancestors = ['guides:axum', 'guides:axum/http'];
 
 	for (const id of ancestors) {
 		await expect(sidebar.locator(`details[data-group-id="${id}"]`)).toHaveAttribute('open', '');
@@ -407,7 +414,7 @@ test('visible directory groups persist independently by normalized path id', asy
 });
 
 test('topic filtering retains matching ancestors and the current page branch', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
 
@@ -452,7 +459,7 @@ test('the symbol index renders a window of its thousands of rows', async ({ page
 });
 
 test('guides and symbols have explicit, independent navigation', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const guideSidebar = page.getByRole('navigation', { name: 'Documentation' });
 
@@ -479,7 +486,7 @@ test('guides and symbols have explicit, independent navigation', async ({ page }
 });
 
 test('client navigation retains the docs frame while route-group areas exchange', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const header = page.locator('.header');
 	const marker = `docs-frame-${Date.now()}`;
@@ -591,7 +598,7 @@ test('an unknown symbol answers with a 404', async ({ page }) => {
 });
 
 test('letter shortcuts move between adjacent path-derived pages', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/advanced`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/advanced`);
 
 	// Shortcuts are registered on mount, so the page has to be interactive before a key means
 	// anything. Waiting on a hydration-dependent element is more honest than a fixed delay.
@@ -602,22 +609,22 @@ test('letter shortcuts move between adjacent path-derived pages', async ({ page 
 	// unmodified and the matcher — which compares modifiers exactly — would never fire.
 	await page.keyboard.press('p');
 
-	await expect(page).toHaveURL(`/docs/${VERSION}/di/components`);
+	await expect(page).toHaveURL(`/docs/${VERSION}/framework/dependency-injection/components`);
 });
 
 test('Alt+arrow moves between pages too', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 	await page.locator('body').click({ position: { x: 5, y: 5 } });
 
 	await page.keyboard.press('Alt+ArrowRight');
 
-	await expect(page).toHaveURL(`/docs/${VERSION}/di/advanced`);
+	await expect(page).toHaveURL(`/docs/${VERSION}/framework/dependency-injection/advanced`);
 });
 
 test('page navigation follows the rendered sidebar leaf order', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const sidebar = page.getByRole('navigation', { name: 'Documentation' });
 	const sidebarLeaves = await sidebar.locator('.tree__link').evaluateAll((links) =>
@@ -625,7 +632,7 @@ test('page navigation follows the rendered sidebar leaf order', async ({ page })
 			.filter((link) => !link.getAttribute('href')?.includes('/symbols/'))
 			.map((link) => new URL(link.getAttribute('href')!, window.location.origin).pathname)
 	);
-	const current = `/docs/${VERSION}/di/components`;
+	const current = `/docs/${VERSION}/framework/dependency-injection/components`;
 	const position = sidebarLeaves.indexOf(current);
 
 	expect(position).toBeGreaterThan(0);
@@ -635,7 +642,7 @@ test('page navigation follows the rendered sidebar leaf order', async ({ page })
 });
 
 test('search finds a guide by a word in its body', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
 	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('choose one provider');
@@ -649,7 +656,7 @@ test('search finds a guide by a word in its body', async ({ page }) => {
 });
 
 test('a kind filter narrows search to that kind', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
 	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('trait:Component');
@@ -661,7 +668,7 @@ test('a kind filter narrows search to that kind', async ({ page }) => {
 });
 
 test('a documented symbol appears once, under its own kind, linking to its page', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
 	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('macro:component');
@@ -675,7 +682,7 @@ test('a documented symbol appears once, under its own kind, linking to its page'
 });
 
 test('Escape closes the search dialog', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
 
@@ -692,7 +699,7 @@ test('Escape closes the search dialog', async ({ page }) => {
 });
 
 test('arrowing through results keeps the highlighted one in view', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await page.getByRole('button', { name: 'Search' }).click();
 	await page.getByRole('combobox', { name: /^Search .+ documentation$/ }).fill('component');
@@ -727,7 +734,7 @@ test('arrowing through results keeps the highlighted one in view', async ({ page
 });
 
 test('search opens with a keyboard shortcut and navigates with Enter', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 	await page.locator('body').click({ position: { x: 5, y: 5 } });
 
@@ -744,11 +751,11 @@ test('search opens with a keyboard shortcut and navigates with Enter', async ({ 
 	await expect(results.getByRole('option').first()).toBeVisible();
 	await page.keyboard.press('Enter');
 
-	await expect(page).toHaveURL(new RegExp(`/docs/${VERSION}/di/advanced`));
+	await expect(page).toHaveURL(new RegExp(`/docs/${VERSION}/framework/dependency-injection/advanced`));
 });
 
 test('a macro invocation resolves, even though its name is lowercase', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/framework/app-macro`);
+	await page.goto(`/docs/${VERSION}/framework/application/app-macro`);
 
 	// `app!` is reached through a glob import and is lowercase, so the caution that stops a bare
 	// lowercase name being linked applies to it — but the `!` means it cannot be a local, which is
@@ -760,7 +767,7 @@ test('a macro invocation resolves, even though its name is lowercase', async ({ 
 });
 
 test('a local whose type the build worked out carries it', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const local = page.locator('[data-variable-type]').first();
 
@@ -784,7 +791,7 @@ test('search matches a camel-case name from separate words', async ({ page }) =>
 });
 
 test('search highlights what matched', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 	await expect(page.locator('.header[data-hydrated]')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Search' }).click();
@@ -825,7 +832,7 @@ test('a phone reaches search and release selection through the menu', async ({ p
 
 test('narrow viewports get navigation, which the sidebar cannot provide', async ({ page }) => {
 	await page.setViewportSize({ width: 420, height: 800 });
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	// Below 60rem the sidebar is not laid out at all, so without this the site is readable but not
 	// navigable — there is no way to reach another page.
@@ -838,14 +845,14 @@ test('narrow viewports get navigation, which the sidebar cannot provide', async 
 	await expect(menu).toBeVisible();
 	await menu.getByRole('link', { name: 'Advanced dependency injection' }).click();
 
-	await expect(page).toHaveURL(`/docs/${VERSION}/di/advanced`);
+	await expect(page).toHaveURL(`/docs/${VERSION}/framework/dependency-injection/advanced`);
 	// The layout survives navigation, so nothing else would have dismissed the menu.
 	await expect(menu).toBeHidden();
 });
 
 test('a phone keeps its header and navigation reachable after a long scroll', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 780 });
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 	await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -862,7 +869,7 @@ test.describe('touch navigation', () => {
 	test.use({ hasTouch: true, viewport: { width: 390, height: 780 } });
 
 	test('copy controls are discoverable without hover', async ({ page }) => {
-		await page.goto(`/docs/${VERSION}/di/components`);
+		await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 		expect(await page.evaluate(() => matchMedia('(hover: none), (pointer: coarse)').matches)).toBe(true);
 
@@ -876,7 +883,7 @@ test.describe('touch navigation', () => {
 });
 
 test('copying a code block confirms it, and the toaster loads only then', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 
 	// The toast library is a chunk of its own, fetched on the first notification rather than shipped
@@ -942,7 +949,7 @@ test('a trait page lists its implementors, which is the useful direction', async
 });
 
 test('a name declared in one block of an example is jumpable from another', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	// `AuditSink` is declared in the first block of the example and used in the second. The jump
 	// target is a line in a different block, which is why the declaration carries its own block id.
@@ -957,7 +964,7 @@ test('a name declared in one block of an example is jumpable from another', asyn
 });
 
 test('a type from another crate is marked and links to its own documentation', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const arc = page.locator('[data-external="alloc::sync::Arc"]').first();
 
@@ -971,7 +978,7 @@ test('a type from another crate is marked and links to its own documentation', a
 });
 
 test('an external trait is distinguishable from an external type', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	// The kind is most of what the reduced external tier buys, and it is the part that needs no
 	// documentation of the other crate at all.
@@ -989,7 +996,7 @@ test("a snippet's own imports decide which of two same-named types it means", as
 });
 
 test('a local produced from a component field carries its type', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	const database = page.locator('[data-variable="database"]').first();
 
@@ -1005,7 +1012,7 @@ test('the external table never reaches the browser', async ({ page }) => {
 		}
 	});
 
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 	await expect(page.getByRole('navigation', { name: 'Documentation', exact: true })).toBeVisible();
 
 	// Annotation happens at build time, so what a reader downloads is finished markup — never the
@@ -1014,7 +1021,7 @@ test('the external table never reaches the browser', async ({ page }) => {
 });
 
 test("another crate's type carries that crate's documentation on its card", async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	// The summary comes from the standard library's own rustdoc output, when the toolchain has the
 	// `rust-docs-json` component. Without it the card shows the path and the link and nothing else.
@@ -1024,7 +1031,7 @@ test("another crate's type carries that crate's documentation on its card", asyn
 });
 
 test('a let binding takes the type of the expression that produced it', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/di/components`);
+	await page.goto(`/docs/${VERSION}/framework/dependency-injection/components`);
 
 	// `Arc<Database>` is the expression's outer type, rather than the handwritten field spelling.
 	await expect(page.locator('[data-variable="database"]').first()).toHaveAttribute('data-variable-type', 'alloc::sync::Arc');
@@ -1060,7 +1067,7 @@ test('an extractor pattern binds what it actually hands over', async ({ page }) 
 });
 
 test('annotated identifiers are coloured by what the build resolved them to', async ({ page }) => {
-	await page.goto(`/docs/${VERSION}/extensions/plugins`);
+	await page.goto(`/docs/${VERSION}/framework/extensions/plugins`);
 
 	// Shiki colours a token by what it looks like; these are coloured by what they are, which is
 	// knowable only because the build resolved them. The plugin declaration includes a constant, a

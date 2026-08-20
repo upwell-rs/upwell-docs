@@ -1,17 +1,31 @@
 ---
-title: Application model
+title: Framework
 description: Assemble an Upwell application, run its lifecycle, and choose between a generated host and direct control.
 order: 20
 topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example, SymbolRef } from '#lib/docs';
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
 </script>
 
-# Application model
+# Framework application model
 
 An `App<P>` is the assembled dependency graph and runtime for one protocol `P`. It owns configuration, directories, hooks, shutdown, and the selected protocol's dispatch surface. Most binaries declare that runtime through `app!`; use the builder when the surrounding process needs direct control.
+
+This framework section owns the application model and the framework-wide facilities used by every transport. Axum owns HTTP and WebSocket server behavior, RPC owns its server, and generated connection code lives under clients.
+
+## Choose a framework task
+
+| Task | Guide |
+|---|---|
+| declare the host, control lifecycle, or compose protocol processes | <GuideRef slug="framework/application">Application</GuideRef> |
+| construct components, select providers, or choose lifetimes | <GuideRef slug="framework/dependency-injection">Dependency injection</GuideRef> |
+| merge configuration sources or reload typed bindings | <GuideRef slug="framework/configuration">Configuration</GuideRef> |
+| choose Cargo features, compilation targets, or application directories | <GuideRef slug="framework/platforms">Platforms</GuideRef> |
+| package behavior as a plugin or author an application protocol | <GuideRef slug="framework/extensions">Extensions</GuideRef> |
+
+All framework tasks assume a working application crate and the facade import shown in <GuideRef slug="getting-started">getting started</GuideRef>. Choose server and client features before relying on a protocol-specific prelude.
 
 ## Assemble an application
 

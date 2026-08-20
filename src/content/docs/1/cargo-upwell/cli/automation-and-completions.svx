@@ -1,0 +1,71 @@
+---
+title: Automation and completions
+description: Use stable JSON and exit codes in automation, then configure cached shell completions.
+order: 30
+topics: ['tooling']
+---
+
+<script lang="ts">
+	import { Example, GuideRef } from '#lib/docs';
+</script>
+
+# Automation and completions
+
+Use structured output and explicit targets rather than parsing terminal text. This guide builds on a validated application from <GuideRef slug="cargo-upwell/cli">Cargo Upwell CLI</GuideRef>. Template and renderer declarations belong under <GuideRef slug="cargo-upwell/catalog">catalog</GuideRef>; executable renderer implementation belongs under <GuideRef slug="cargo-upwell/renderers">renderers</GuideRef>.
+
+## Automate validation
+
+Write a JSON report before branching on the process status. A failed validation can still produce structured diagnostics that belong in a CI artifact.
+
+<Example title="Keep a doctor report in CI">
+
+```sh
+mkdir -p target/upwell
+```
+
+Run `doctor` with the same explicit target selection used by your build:
+
+```sh
+if ! cargo upwell doctor \
+  --package api \
+  --bin api-server \
+  --format json > target/upwell/doctor.json; then
+  jq '.outcome, .diagnostics[] | {code, severity, message, fix}' target/upwell/doctor.json
+  exit 1
+fi
+```
+
+</Example>
+
+`check --format json` and `doctor --format json` emit one versioned command report with `schema`, `command`, `outcome`, `exit_code`, target facts when available, and canonical diagnostics. Treat those fields as the machine contract.
+
+Exit code `0` is success; `1` is validation failure; `2` is CLI misuse; `3` is target selection failure; `4` is Cargo build failure; `5` is probe failure; and `6` is an operational failure such as cancellation or a lock. Retain both the exit category and diagnostics. For a failed `export --format envelope` or graph JSON, preserve stdout before handling its nonzero exit status.
+
+### Keep compatibility checks explicit
+
+`doctor` compares the selected application's framework version with the installed `cargo-upwell` release. Keep that comparison in automation rather than deriving compatibility from a documentation label. Tooling documents and probe envelopes also carry a semantic tooling-schema version; consumers should validate it with a semantic-version requirement, and a renderer must declare matching renderer-ABI and tooling-schema requirements before Cargo Upwell invokes it.
+
+## Make local completion useful
+
+Install the shell integration once, then refresh the private workspace cache after changing packages, binaries, or features.
+
+<Example title="Enable Zsh completion for one workspace">
+
+```sh
+cargo upwell completions generate zsh > ~/.zfunc/_cargo-upwell
+```
+
+Refresh resource-aware values for the intended binary:
+
+```sh
+cargo upwell completions refresh \
+  --package api \
+  --bin api-server \
+  --features metrics
+```
+
+</Example>
+
+Bash, Elvish, Fish, PowerShell, and Zsh are supported. Source the generated registration from the shell startup configuration; for Fish, write it below `~/.config/fish/conf.d/`. Regenerate after upgrading Cargo Upwell.
+
+Completion never runs Cargo or application code while you press Tab. Workspace-aware values come from the cache, which successful inspection commands also refresh on a best-effort basis. Use the absolute `UPWELL_COMPLETION_CACHE_DIR` path to isolate state in CI or separate development environments.

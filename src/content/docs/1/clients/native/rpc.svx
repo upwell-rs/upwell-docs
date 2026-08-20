@@ -1,0 +1,164 @@
+---
+title: Native RPC clients
+description: Connect generated RPC clients over TCP or Unix sockets and handle unary, streaming, cancellation, and errors.
+order: 132
+topics: ['rpc']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Native RPC clients
+
+Enable the daemon protocol and generated client surface. The client uses Tokio byte streams, so it is native-only.
+
+```toml
+[dependencies]
+upwell = { version = "1", features = ["daemon", "client"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+```
+
+## Connect over TCP
+
+<Symbol path="upwell_rpc::client::connect_tcp" /> returns a ready <Symbol path="upwell_rpc::client::StreamClientTransport" />:
+
+```rust plain
+use upwell::daemon::client::connect_tcp;
+
+let transport = connect_tcp("127.0.0.1:9000").await?;
+
+// Emitted-name shape: replace InventoryClient/get_item/GetItem with your service schema.
+let client = InventoryClient::new(transport.clone());
+let response = client
+    .get_item(GetItem { sku: String::from("A-42") })
+    .await?;
+```
+
+No committed fixture in this documentation artifact verifies a concrete application RPC client name, so `InventoryClient`, `get_item`, and `GetItem` above are labeled emitted-name placeholders, not copy-paste API. `connect_tcp` and the transport construction are exact public APIs.
+
+## Connect over a Unix socket
+
+<Example title="Build the exact Unix transport">
+
+```rust
+use upwell::dirs::{Dir, Runtime};
+use upwell::daemon::client::connect_unix;
+
+let runtime: Dir<Runtime> = runtime_directory();
+let transport = connect_unix(runtime.join("catalog.sock")).await?;
+```
+
+Here `runtime` is a `Dir<Runtime>` resolved from the application directory manager. Unix sockets are available only where Tokio exposes `tokio::net::UnixStream`; ensure both processes agree on the resolved path and permissions.
+
+</Example>
+
+## Understand transport ownership
+
+The transport is cheaply cloneable. One background task owns and demultiplexes the read half by call ID; one writer actor serializes accepted outbound frames. Generated clients and returned response streams retain clones, so keep at least those handles alive until calls finish.
+
+`StreamClientTransport::new(read, write)` can adapt any reliable ordered async byte stream. `with_frame_config` additionally sets frame-size and idle-read limits when using a manually split stream.
+
+## Use unary and streaming shapes
+
+Generated methods reflect the service declaration:
+
+| Server shape | Client behavior |
+|---|---|
+| payload to one response | future resolving to decoded response |
+| request stream to one response | consumes a stream argument and resolves once |
+| one request to response stream | returns <Symbol path="upwell_rpc::client::RpcResponses" /> |
+| bidirectional streams | pumps request items while decoding correlated response items |
+
+The protocol codec owns item decoding. A response stream remains tied to the transport clone and call ID until it ends or is dropped.
+
+The following staged calls show the exact generated method shapes. All application identifiers are placeholders, while `StreamExt`, the transport, response-stream behavior, and error/cancellation contracts are exact:
+
+```rust plain
+use futures::{StreamExt, stream};
+
+// 1. Unary: request value -> decoded response value.
+let item: Item = client
+    .get_item(GetItem { sku: String::from("A-42") })
+    .await?;
+
+// 2. Server streaming: request value -> RpcResponses<_, Item, InventoryErrorBody>.
+let mut items = client.watch_items(WatchItems { warehouse: 7 }).await?;
+while let Some(item) = items.next().await {
+    let item: Item = item?;
+    apply(item);
+}
+
+// 3. Client streaming: Into<StreamArg<Adjustment>> -> one response.
+let summary: AdjustmentSummary = client
+    .apply_adjustments(stream::iter([
+        Adjustment { sku: String::from("A-42"), delta: 2 },
+        Adjustment { sku: String::from("B-10"), delta: -1 },
+    ]))
+    .await?;
+
+// 4. Bidirectional: request stream -> RpcResponses<_, Acknowledgement, InventoryErrorBody>.
+let mut acknowledgements = client
+    .sync(stream::iter(adjustment_batch))
+    .await?;
+while let Some(acknowledgement) = acknowledgements.next().await {
+    persist(acknowledgement?);
+}
+```
+
+Generated RPC methods pass unary/server-stream request values directly, accept `impl Into<StreamArg<T>>` for client/bidirectional input, and return <Symbol path="upwell_rpc::client::RpcResponses" /> for server/bidirectional output. Inspect the defining service's generated Rust API for its concrete client, method, DTO, and typed error-body names.
+
+## Cancellation and errors
+
+Dropping a call future removes local interest. The writer actor finishes a frame it already accepted, so cancellation cannot prove the request was never sent. Dropping an active `RpcResponses` sends the call's `StreamCancel` frame through the same FIFO after already accepted data, then releases pending state. This is active remote cancellation, not only local stream abandonment:
+
+```rust plain
+let mut updates = client.watch_items(WatchItems { warehouse: 7 }).await?;
+
+if let Some(update) = updates.next().await.transpose()? {
+    apply(update);
+}
+
+drop(updates); // removes the local route and queues StreamCancel for this call ID
+```
+
+The server observes that cancellation through its call token when the frame arrives. Work already completed before cancellation is not rolled back.
+
+`ClientError<StatusCode, E>` separates transport, encode, decode, remote status/body, connection closure, and timeout. A generated method re-types `E` to the service-declared error body. Inspect it without losing raw evidence:
+
+```rust plain
+use upwell::client::ClientError;
+
+match client.get_item(GetItem { sku }).await {
+    Ok(item) => use_item(item),
+    Err(ClientError::Remote(body)) => {
+        let status = body.code();
+        let raw = body.raw();
+        let typed: InventoryErrorBody = body.deserialize(&transport)?;
+
+        report_remote(status, raw, typed);
+    }
+    Err(ClientError::ConnectionClosed) => schedule_reconnect(),
+    Err(error) => return Err(error.into()),
+}
+```
+
+`ErrorBody::deserialize` uses the same transport codec and retains the body; `into_deserialized` avoids the clone when raw fallback is unnecessary.
+
+There is no generic RPC `disconnect` API in the validated inventory. Transport lifetime ends when its clones and streams are dropped or the underlying connection closes. Coordinate application shutdown by dropping client owners and awaiting tasks that retain them.
+
+<Callout type="warning" title="Server admission is separate">
+
+Client frame/idle configuration does not change server <Symbol path="upwell_rpc::protocol::RpcLimits" />. The server independently limits connections and in-flight calls per connection.
+
+</Callout>
+
+## Troubleshoot native RPC
+
+- Connection closes under concurrency: inspect the server's per-connection call admission limit.
+- Large call fails before dispatch: align client and server frame-size configuration.
+- Unix connect fails: validate the typed runtime directory, socket existence, ownership, and platform.
+- A generated streaming method is absent: confirm the `#[rpc]` shape and `client` feature in the defining crate.
+- A cancelled future still caused side effects: design idempotency/cancellation into the operation; local drop is not remote rollback.
+
+See <GuideRef slug="rpc/server">RPC services</GuideRef>, <GuideRef slug="rpc/server/policies">RPC server policies</GuideRef>, and <GuideRef slug="framework/platforms/application-directories">application directories</GuideRef>.

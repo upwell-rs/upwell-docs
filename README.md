@@ -9,7 +9,7 @@ bun install
 bun run dev
 ```
 
-The site is immediately usable without a Rust framework checkout. One version directory selector gates a content candidate without appearing in URLs, navigation, breadcrumbs, search paths, or Rust symbol paths. `1` matches stable `>=1.0.0, <2.0.0`; `1.4` matches stable `>=1.4.0, <1.5.0`; full selectors such as `1.4.0` and `1.4.0-rc.1` replace a candidate at their lower bound and carry forward. For example, `src/content/docs/1/framework/application-model.svx` serves `/docs/1.0.0/framework/application-model`; the selector may appear at any directory depth. Partial prereleases, build metadata, legacy `@` directories, and paths with multiple selectors are rejected. Shared unversioned files are the baseline. A path-selected candidate must not also declare frontmatter `since`.
+The site is immediately usable without a Rust framework checkout. One version directory selector gates a content candidate without appearing in URLs, navigation, breadcrumbs, search paths, or Rust symbol paths. `1` matches stable `>=1.0.0, <2.0.0`; `1.4` matches stable `>=1.4.0, <1.5.0`; full selectors such as `1.4.0` and `1.4.0-rc.1` replace a candidate at their lower bound and carry forward. For example, `src/content/docs/1/framework/application/app-macro.svx` serves `/docs/1.0.0/framework/application/app-macro`; the selector may appear at any directory depth. Partial prereleases, build metadata, legacy `@` directories, and paths with multiple selectors are rejected. Shared unversioned files are the baseline. A path-selected candidate must not also declare frontmatter `since`.
 
 Before publishing, update the placeholder values in `src/lib/docs/config.ts`:
 

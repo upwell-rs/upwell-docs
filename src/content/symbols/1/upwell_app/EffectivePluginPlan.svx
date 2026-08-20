@@ -22,6 +22,6 @@ topics: ['framework', 'tooling']
 
 Read the plan from `PreparedApp::plugin_plan` or `App::plugin_plan`; do not reconstruct selection from registration calls. Cargo Upwell projects the same preparation facts into `inspect`, `explain`, graph, and export workflows.
 
-Use [Inspect the effective plan](/docs/latest/extensions/plugins#inspect-the-effective-plan) for command-line diagnosis and [Inspect and query an application](/docs/latest/cargo-upwell/inspect-and-graph) for selectors and machine output.
+Use [Inspect the effective plan](/docs/latest/framework/extensions/plugins#inspect-the-effective-plan) for command-line diagnosis and [Inspect and query an application](/docs/latest/cargo-upwell/cli/inspect-and-graph) for selectors and machine output.
 
 <SymbolMembers />

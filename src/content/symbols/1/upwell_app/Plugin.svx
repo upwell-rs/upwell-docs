@@ -26,7 +26,7 @@ An implementation is `Send + 'static`. Use `PluginWithOptions` when a reusable p
 
 The resolver canonicalizes relations and validates requirements, conflicts, replacements, suppressions, and ordering before `contribute` runs. A plugin that is not effective does not contribute. Contributions retain their `PluginId` plus each `ContributionId`, so a later diagnostic can name both the installed extension and the emission that produced a payload.
 
-Follow the [plugin composition workflow](/docs/latest/extensions/plugins) for installation phases, slots, and diagnostics. Use [`PluginContributions`](/docs/latest/symbols/upwell_app/PluginContributions) for the collector contract and [`PluginRelation`](/docs/latest/symbols/upwell_app/PluginRelation) for static graph declarations.
+Follow the [plugin composition workflow](/docs/latest/framework/extensions/plugins) for installation phases, slots, and diagnostics. Use [`PluginContributions`](/docs/latest/symbols/upwell_app/PluginContributions) for the collector contract and [`PluginRelation`](/docs/latest/symbols/upwell_app/PluginRelation) for static graph declarations.
 
 <SymbolMembers />
 <SymbolImpls />

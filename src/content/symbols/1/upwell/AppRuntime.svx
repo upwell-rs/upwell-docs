@@ -20,6 +20,6 @@ topics: ['framework']
 
 Use `AppRuntime` only after the application has been prepared. Protocol implementations can retain or clone the runtime handle for dispatch work, but registrations, component topology, and plugin composition are already fixed at this point.
 
-See [Author a custom application protocol](/docs/latest/extensions/protocols/authoring) for the protocol lifecycle and [`PreparedProtocol`](./PreparedProtocol) for the build contract that receives this runtime.
+See [Author a custom application protocol](/docs/latest/framework/extensions/protocol-authoring) for the protocol lifecycle and [`PreparedProtocol`](./PreparedProtocol) for the build contract that receives this runtime.
 
 <SymbolMembers />

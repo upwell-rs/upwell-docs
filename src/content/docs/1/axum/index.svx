@@ -1,0 +1,25 @@
+---
+title: Axum
+description: Build HTTP and WebSocket servers while keeping client connection code separate.
+order: 110
+topics: ['web']
+---
+
+<script lang="ts">
+	import { GuideRef } from '#lib/docs';
+</script>
+
+# Axum
+
+Axum owns server-side HTTP and WebSocket wire behavior: routes, extraction, request scopes, multipart and streaming bodies, OpenAPI, WebSocket controllers, endpoint mounting, protocol framing, and publication. Constructing clients and managing their connections belongs under <GuideRef slug="clients">generated clients</GuideRef>.
+
+## Choose a server task
+
+| Task | Guide |
+|---|---|
+| define controllers and routes, extract requests, upload multipart data, stream bodies, or publish OpenAPI | <GuideRef slug="axum/http">HTTP</GuideRef> |
+| define WebSocket destinations, mount endpoints, author a protocol, or publish typed topics | <GuideRef slug="axum/websocket">WebSocket</GuideRef> |
+
+## Shared prerequisites
+
+Start with the <GuideRef slug="framework">application model</GuideRef>, enable the `axum` facade feature, and add only the optional `multipart`, `openapi`, `ws`, `json-ws`, or `stomp` features required by the selected server surface.

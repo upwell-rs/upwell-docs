@@ -22,6 +22,6 @@ topics: ['framework']
 
 Relations describe structure before plugin code runs. They must not be used to conditionally probe runtime state or to model a contribution-level dependency. The resolver reports missing requirements, conflicts, and cycles as composition diagnostics.
 
-See [Express composition statically](/docs/latest/extensions/plugins#express-composition-statically) for the authoring workflow and inspect `kind` and `target` when explaining a resolved plan programmatically.
+See [Express composition statically](/docs/latest/framework/extensions/plugins#express-composition-statically) for the authoring workflow and inspect `kind` and `target` when explaining a resolved plan programmatically.
 
 <SymbolMembers />

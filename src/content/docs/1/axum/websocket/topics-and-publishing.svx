@@ -1,0 +1,76 @@
+---
+title: Topics and publishing
+description: Declare typed destinations and publish server events with explicit backpressure and fan-out behavior.
+order: 30
+topics: ['web']
+---
+
+<script lang="ts">
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
+</script>
+
+# Topics and publishing
+
+Topics are an optional WebSocket server extension. A protocol that carries typed publications implements <Symbol path="upwell::axum::MessagingProtocol" /> for its body and default codec, and <Symbol path="upwell::axum::PubSubProtocol" /> for subscriber framing. Applications declare destinations once and inject <Symbol path="upwell::axum::Publisher" /> where events originate.
+
+Start with a mounted protocol and controller from <GuideRef slug="axum/websocket">controllers and endpoints</GuideRef>. Generated subscription clients are transport-specific and documented under <GuideRef slug="clients">clients</GuideRef>.
+
+## Declare static and templated topics
+
+<Example title="Declare STOMP notification topics">
+
+```rust context
+use upwell::axum::prelude::*;
+
+#[dto]
+struct RoomEvent {
+    message: String,
+}
+```
+
+```rust
+#[topics(protocol = Stomp)]
+enum Notifications {
+    #[topic("/topic/system")]
+    System(RoomEvent),
+
+    #[topic("/topic/rooms/{room}")]
+    Room {
+        room: String,
+        #[content]
+        event: RoomEvent,
+    },
+}
+```
+
+</Example>
+
+A static topic is a one-payload tuple variant. A templated topic is a struct variant: every `{hole}` has a same-named routing field and exactly one `#[content]` field provides the encoded body. The enum implements <Symbol path="upwell::axum::Topic" /> for the selected protocol.
+
+## Publish from application handlers
+
+<Example title="Publish a system event">
+
+```rust
+#[handlers(ws = Stomp)]
+impl GreetingSocket {
+    #[message("/app/announce", send)]
+    fn announce(&self, Inject(publisher): Inject<Publisher<Notifications>>) {
+        let _ = publisher.emit(Notifications::System(RoomEvent {
+            message: String::from("hello"),
+        }));
+    }
+}
+```
+
+</Example>
+
+Use `emit` when a full subscriber buffer may drop an event. Use `publish` when the sender must wait for backpressure, and `publish_to::<N>` to bound fan-out concurrency. Choose this policy at the event source instead of hiding it in a controller-global queue.
+
+When client support is enabled, `#[topics]` generates typed `subscribe_<variant>` methods. Their connection ownership, callback lifetime, and unsubscribe behavior remain client concerns.
+
+## Reference pages
+
+- <Symbol path="upwell::axum::Topic" />
+- <Symbol path="upwell::axum::Publisher" />
+- <SymbolRef path="upwell_axum_macros/topics"><code>#[topics]</code></SymbolRef>

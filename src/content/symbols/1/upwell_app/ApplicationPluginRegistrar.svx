@@ -22,6 +22,6 @@ topics: ['framework']
 
 Use this registrar from a generated application host declaration when a plugin must be visible to generated CLI setup or participate in early composition. Do not use it as an ad hoc runtime service locator. Runtime-selected instances belong on the direct builder and are monotonic late additions.
 
-Follow [Install through the correct boundary](/docs/latest/extensions/plugins#install-through-the-correct-boundary) for the host-versus-builder workflow. The protocol counterpart is [`ProtocolPluginRegistrar`](/docs/latest/symbols/upwell_app/ProtocolPluginRegistrar).
+Follow [Install through the correct boundary](/docs/latest/framework/extensions/plugins#install-through-the-correct-boundary) for the host-versus-builder workflow. The protocol counterpart is [`ProtocolPluginRegistrar`](/docs/latest/symbols/upwell_app/ProtocolPluginRegistrar).
 
 <SymbolMembers />

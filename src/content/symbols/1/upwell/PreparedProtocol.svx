@@ -25,6 +25,6 @@ Do not repeat descriptor or scope-topology validation in `build`; those concerns
 
 `tooling` reports stable protocol-owned metadata retained by prepared state. It must not require a live listener, connection, task, or endpoint. This keeps tooling deterministic and available before serving begins.
 
-The associated `Runtime` type implements [`ProtocolRuntime`](./ProtocolRuntime). See [the custom protocol guide](/docs/latest/extensions/protocols/authoring) for the full definition-to-runtime lifecycle.
+The associated `Runtime` type implements [`ProtocolRuntime`](./ProtocolRuntime). See [the custom protocol guide](/docs/latest/framework/extensions/protocol-authoring) for the full definition-to-runtime lifecycle.
 
 <SymbolMembers title="Associated items" />
