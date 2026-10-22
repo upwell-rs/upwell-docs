@@ -6,7 +6,7 @@ topics: ['framework']
 ---
 
 <script lang="ts">
-	import { Example, SymbolRef } from '#lib/docs';
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
 </script>
 
 # Advanced dependency injection
@@ -64,6 +64,8 @@ struct Notifications {
 ```
 
 </Example>
+
+To make a provider exist only while configuration enables it, see <GuideRef slug="framework/dependency-injection/conditions">Conditional components</GuideRef>.
 
 An unqualified single dependency needs one unambiguous provider. A qualifier is more precise than `primary`; it names the implementation the component expects. See <SymbolRef path="upwell_macros/component">`#[component]`</SymbolRef> and <SymbolRef path="upwell_macros/injectable">`#[injectable]`</SymbolRef> for provider declarations and ordering controls.
 

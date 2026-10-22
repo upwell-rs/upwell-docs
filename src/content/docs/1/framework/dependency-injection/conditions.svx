@@ -1,0 +1,175 @@
+---
+title: Conditional components
+description: Gate a component on configuration or on another component with #[when], and predict which provider is selected.
+order: 40
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example, GuideRef } from '#lib/docs';
+</script>
+
+# Conditional components
+
+A conditional component exists only while its condition holds. Use one when configuration chooses an implementation, such as a built-in authenticator and an application-specific one, or when an optional feature should construct nothing at all while it is switched off. Prefer an ordinary component when the value is always needed and only its behavior varies; a field read at runtime is simpler than a graph change.
+
+The condition is written with `#[when(...)]` below the component macro. It is evaluated when the application is built and again on every <GuideRef slug="framework/configuration/reload">configuration reload</GuideRef>, so the set of active components follows the configuration in both directions.
+
+## Declare a condition
+
+`#[when]` sits **below** `#[component]` (or `#[service]` or `#[controller]`), which reads it. Placed alone or above the component macro it is a compile error. The argument is an ordinary Rust `bool` expression with no extra syntax.
+
+<Example title="Select an authenticator from configuration">
+
+```rust
+use serde::Deserialize;
+use upwell::prelude::*;
+
+#[injectable]
+trait Authenticator: Send + Sync {
+    fn accepts(&self, token: &str) -> bool;
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum AuthMode {
+    Default,
+    Custom,
+}
+```
+
+Bind the configuration the condition reads. The condition itself binds this type at its declared path, so no component has to inject it.
+
+```rust
+#[config(path = "auth")]
+#[derive(Deserialize)]
+struct AuthConfig {
+    mode: AuthMode,
+}
+```
+
+Leave the fallback unconditional and gate the application's own provider. Marking the gated provider `primary` makes it win whenever it is eligible.
+
+```rust
+#[component(provide = dyn Authenticator)]
+struct DefaultAuthenticator;
+
+impl Authenticator for DefaultAuthenticator {
+    fn accepts(&self, token: &str) -> bool {
+        !token.is_empty()
+    }
+}
+
+#[component(provide = dyn Authenticator, primary)]
+#[when(AuthConfig.mode == AuthMode::Custom)]
+struct CustomAuthenticator;
+
+impl Authenticator for CustomAuthenticator {
+    fn accepts(&self, token: &str) -> bool {
+        token.starts_with("custom:")
+    }
+}
+```
+
+</Example>
+
+With `auth.mode = "default"` only `DefaultAuthenticator` exists. With `auth.mode = "custom"` both are eligible and the primary provider is selected.
+
+## What a condition can read
+
+The framework derives a condition's inputs from the syntax of the expression and leaves the rest of it as plain Rust.
+
+| Written as | Reads |
+|---|---|
+| `AuthConfig.mode`, `AuthConfig.audit` | a field of a `#[config(path = ...)]` type, as staged from the candidate configuration |
+| `AuditTransport.eligible()` | whether another component is currently eligible |
+| `resolve("features.audit_export")` | a raw configuration path that no type binds, as `Option<T>` |
+
+A receiver must be an UpperCamelCase type that is a `#[config(path = ...)]` type or a component. Any other type is rejected with a "not a condition input" error. The fields you read must be visible where the condition is written; a private field is an ordinary privacy error pointing at the field.
+
+`resolve` takes a string literal so the path is declared statically, and it is imported from `upwell::condition`. A missing key yields `None`. A present value that does not deserialize into the requested type rejects the whole candidate configuration instead of silently evaluating to `false`, and the error names the path and target type but never the value.
+
+<Example title="Combine a typed field, another component and a raw path">
+
+```rust
+use serde::Deserialize;
+use upwell::condition::resolve;
+use upwell::prelude::*;
+
+#[config(path = "auth")]
+#[derive(Deserialize)]
+struct AuthConfig {
+    audit: bool,
+}
+
+#[component]
+#[when(AuthConfig.audit)]
+struct AuditTransport;
+```
+
+Operators are whatever Rust accepts on the compared values: `==`, `!=`, `&&`, `||`, and `!`. Stacked attributes combine with AND, in any order.
+
+```rust
+#[component]
+#[when(AuthConfig.audit && AuditTransport.eligible())]
+#[when(resolve("features.audit_export") == Some(true))]
+struct AuditExporter;
+```
+
+Give a condition a stable name with `id = "..."` when tooling output should not depend on the expression text.
+
+```rust
+#[component]
+#[when(id = "audit-mode", AuthConfig.audit)]
+struct AuditSummary;
+```
+
+</Example>
+
+Asking for `.eligible()` creates a dependency between the two components' availability, not a construction dependency. Eligibility is decided before anything is built, so the exporter above never constructs the transport just to check it.
+
+## Evaluation, reloads, and determinism
+
+Conditions are evaluated against the candidate configuration after sources are merged, defaults and placeholders are applied, and typed values are deserialized and validated. They run at startup and on every reload. A reload that changes the outcome of a condition adds or removes the component in the same transaction that applies the new configuration, and a failure anywhere rolls the whole transition back to the previous state.
+
+Consumers cross a switch in different ways, depending on how they hold the dependency:
+
+| Holds | When the selected provider changes |
+|---|---|
+| `Arc<dyn Trait>` | reconstructed by its ordinary factory |
+| `Dep<dyn Trait>` | keeps its instance; the live handle is rebound in place |
+
+See <GuideRef slug="framework/dependency-injection/advanced">Advanced dependency injection</GuideRef> for choosing between the two.
+
+A condition is trusted code that the framework runs, so it must be deterministic: no I/O, no blocking, no panics, no reading the environment or global state. Read everything through the declared inputs. Evaluation order is by stable condition id, never by declaration order, so reordering attributes cannot change the outcome.
+
+Availability must not be circular. If component A's condition asks about B and B's condition asks about A, directly or through a longer chain, validation rejects the graph with an availability-cycle error that names each component and condition. This applies even when the cycle sits on a branch that is currently unreachable. Remove one of the dependencies so eligibility stops depending on itself.
+
+## How eligibility affects provider selection
+
+A condition filters candidates; it does not introduce a second selection algorithm. A provider is eligible exactly when its concrete component is, and the existing qualifier, `primary`, and ordering rules then choose among the eligible providers.
+
+| Eligible providers | Result |
+|---|---|
+| exactly one | it is selected, primary or not |
+| several, one `primary` | the primary provider is selected |
+| several, none or more than one tied | the build fails with `upwell_di::Error::AmbiguousProvider` |
+| none, for a required single dependency | the usual missing-dependency error |
+
+The ambiguity error carries `candidates`, the stable ids of every eligible provider the consumer can see, and its message lists the ways out: mark exactly one provider `primary`, give them distinct priorities, or inject `Vec<Arc<dyn Trait>>` to receive all of them. The default and custom authenticators above rely on the first row while the condition is false and on the second while it is true. Without `primary` on the custom provider, switching the configuration would turn a working application into an ambiguous one.
+
+A missing or mistyped configuration value rejects the candidate rather than falling back to the default provider.
+
+## Limits
+
+- Only factory-backed singleton components can be conditional. A `#[component(scope = transient)]` or other non-singleton component with `#[when]` fails to compile.
+- A component without a factory, such as a manually seeded instance, cannot be conditional and is rejected with `ConditionalManualComponent`. A manual registration also cannot override a conditional component.
+- A condition applies to the whole component. It cannot gate one provider mapping of a component that provides several traits; give each trait its own component.
+- Already-open scopes keep the generation they opened with; later scopes use the current one.
+- `upwell::condition`, including `resolve`, is native-only and is not available when building for WebAssembly.
+
+## Failures from tooling-prepared applications
+
+Tooling that prepares an application without running it never executes trusted code. A condition made only of field reads, comparisons against literals or enum variants, `&&`, `||`, `!`, `.eligible()`, and `resolve(...)` is evaluated over the staged configuration. Any other condition, for example one that calls a function or macro, is left undecided and so are the components that depend on it.
+
+Building such a preparation fails with `upwell_app::Error::UndecidedConditionsBuild`. If the graph tooling can decide is invalid, validation reports `upwell_app::Error::UndecidedConditionGraph`, whose `not_evaluated` field lists the undecided component ids. Neither occurs in an application started normally, where every condition runs.
