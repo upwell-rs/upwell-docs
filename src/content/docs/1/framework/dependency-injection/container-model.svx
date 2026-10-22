@@ -35,7 +35,7 @@ A provider's qualifier defaults to the component ID. `primary`, `priority`, `bef
 
 Descriptors reach the application through link-time collections, one element per descriptor. The default backend appends each to a `linkme` distributed slice: the global `COMPONENTS` and `PROVIDERS` slices, plus a per-type slice of factories and hooks. That per-type slice holds <SymbolRef path="upwell/Registration">`Registration`</SymbolRef> values, an enum of `Factory` and `Hook`, so one type needs only one linker section.
 
-On Apple targets, or with the `hybrid-registry` feature, the macros emit `inventory` submissions instead. There each descriptor is wrapped in <SymbolRef path="upwell/DescriptorFor">`DescriptorFor<T, D>`</SymbolRef>, and <SymbolRef path="upwell/RegistryFor">`RegistryFor`</SymbolRef> supplies the per-type bucket that makes the wrapper collectable. The choice is made while the macro expands, so generated code never contains a feature `cfg`. See <GuideRef slug="framework/platforms/features-and-targets">Features and targets</GuideRef> for selecting the backend.
+On an Apple host, or with the `hybrid-registry` feature, only the per-type collections change: factories and hooks are emitted as `inventory` submissions, each wrapped as `DescriptorFor<Type, ComponentFactoryDescriptor>` or `DescriptorFor<Type, HookDescriptor>`, and <SymbolRef path="upwell/RegistryFor">`RegistryFor`</SymbolRef> supplies the per-type bucket that makes the wrapper collectable (see <SymbolRef path="upwell/DescriptorFor">`DescriptorFor`</SymbolRef>). The global `COMPONENTS` and `PROVIDERS` slices stay `linkme` slices on every backend, and `auto_discover()` always reads them. The choice is made while the macro expands, so it follows the machine running the compiler rather than the compile target, and generated code never contains a feature `cfg`. Cross-compiling to Apple from another host needs `hybrid-registry`. See <GuideRef slug="framework/platforms/features-and-targets">Features and targets</GuideRef> for selecting the backend.
 
 ### Discovery and explicit registration
 
@@ -93,7 +93,7 @@ impl Component for StartedAt {
 }
 ```
 
-Register a value you built yourself. Consumers inject `Arc<StartedAt>` like any other component.
+Register a value you built yourself. Consumers inject `Arc<StartedAt>` like any other component. With the default `di-check` feature a consumer also needs `impl Provide<StartedAt> for Wiring {}`, because nothing macro-generated provides this type; see "Declare an externally provided dependency" below.
 
 ```rust
 let app = App::builder("uptime")
@@ -159,7 +159,7 @@ The same macro option exists as `#[component(by_value)]`, with `retainable` to a
 
 ## Write a custom `FromContainer` parameter
 
-A factory is an async function whose parameters are all <SymbolRef path="upwell/FromContainer">`FromContainer`</SymbolRef>. Field injection and `#[init]` use the same trait, so a custom parameter works in both. An implementation supplies two things: the dependency edge the parameter contributes, which validation and ordering read, and an async function that resolves the value from a <SymbolRef path="upwell/ComponentConstructionContext">`ComponentConstructionContext`</SymbolRef>.
+A factory is an async function whose parameters are all <SymbolRef path="upwell/FromContainer">`FromContainer`</SymbolRef>. A custom implementation is accepted as a parameter of an `#[init]` constructor, of a `factory = path` function, and of the functions you pass to `factories!`. It is not accepted as a `#[component]` field: fields are limited to injectable handle shapes (`Arc<T>`, `Dep<T>`, `Option`, `Vec`, `HashMap`, `Cfg` through `#[config]`, and by-value injectables). An implementation supplies two things: the dependency edge the parameter contributes, which validation and ordering read, and an async function that resolves the value from a <SymbolRef path="upwell/ComponentConstructionContext">`ComponentConstructionContext`</SymbolRef>.
 
 The context offers `resolve` for one handle, `resolve_qualified`, `resolve_all` for every provider, and `resolve_keyed` for providers by qualifier. A factory may return the component or a `Result` of it; any `Error + Send + Sync` is accepted.
 
@@ -202,6 +202,7 @@ Use the parameter anywhere a constructor takes dependencies.
 ```rust
 #[component]
 struct Roster {
+    #[default]
     names: Vec<String>,
 }
 
@@ -225,8 +226,10 @@ The built-in parameters are all implementations of this trait, which is a useful
 | `Option<Arc<T>>` | one optional value | the same lookup; absence is `None` |
 | `Vec<Arc<dyn Trait>>` | a collection | `resolve_all`; empty is valid |
 | `HashMap<String, Arc<dyn Trait>>` | a keyed collection | `resolve_keyed`; empty is valid |
-| `Dir<K>` and other by-value injectables | one value | any `Injectable` whose `Target` is itself resolves through a blanket impl |
+| `Dir<K>` and other by-value injectables | one value | any `Injectable` whose `Target` is itself resolves through a blanket impl; the value is read from its slot and cloned |
 | `Cfg<T>` | a config edge, observed live | not the container: the config store, an external resolver, reached through the context |
+
+`Dir<K>` shows the by-value shape end to end. It implements `Component` with itself as the handle and `Injectable` with itself as `Target` and `Stored`, with `snapshot_stored` returning a clone so a reload carries it. The application builder seeds one `Dir<K>` per kind (`Config`, `Data`, `Cache`, `State`, `Runtime`, `Tmp`) as a singleton instance, registered through `ComponentDescriptor::of` with no factory, and under `di-check` a `Provide<Dir<K>>` impl tells the checker it always exists. Nothing constructs it at resolution time; a consumer's `Dir<Data>` field or parameter simply reads and clones the seeded slot.
 
 `Cfg<T>` shows how an extension lives outside the DI crate. It is `Injectable` with `T` as its `Target`, and the config crate implements `FromContainer` for it, flagging the edge as a config edge so the component graph skips it and the config layer validates it against bindings instead. The container itself never learns about configuration.
 
@@ -333,7 +336,7 @@ Errors name components by display name or stable ID. The same IDs appear in `car
 The descriptors the macros generate can be declared by hand with `const` builders. Use them in a plugin that cannot rely on macros, or when a type is built elsewhere. The pieces are:
 
 - `ComponentDescriptor::of::<T>()`, taking the ID and name from `T: Component`, with `with_factories`, `with_scope`, `with_condition`, `with_hooks`, and `without_retention`.
-- `factories!`, which turns async functions into the factory list. A bare `path` is named `factory:<path>`, and `"id" => path` sets the name. Several entries need exactly one explicit choice, written `default "id" => path`.
+- `factories!`, which turns async functions into the factory list. A bare `path` is named `factory:<path>`, and `"id" => path` sets the name. A single entry is the effective recipe. With several entries, at most one may be marked `default "id" => path` as the fallback, and the one non-default (explicit) entry wins; the fallback is used only when no explicit recipe exists. More than one explicit entry is an `ambiguous factory` error.
 - `ProviderDescriptor::of::<T, dyn Trait>("dyn Trait")`, which requires an `impl ProviderOf<dyn Trait> for T`, with `primary`, `qualifier`, `priority`, and `ordering`.
 
 A factory's parameters are its dependencies, so the edges come from the signature rather than from anything you write twice.
@@ -440,9 +443,43 @@ let app = App::builder("greeter")
 
 A plugin contributes the same descriptors through `PluginContributions::component_descriptor` and `provider`, each under its own contribution ID; see <GuideRef slug="framework/extensions/plugins">Compose plugins</GuideRef>.
 
-A component built with `of` is retainable across a reload. Call `without_retention()` to force a rebuild every time while keeping live consumers rebindable. A descriptor registered with `with_component` is a raw instance with no snapshot adapter, so a transition that would keep it requires a restart. Prefer a descriptor with a factory when the value should survive reloads.
+A component built with `of` installs the typed snapshot adapter, so it is retainable across a reload when its `Handle` implements `snapshot_stored`, as `Arc<T>` does. A by-value handle that keeps the default `snapshot_stored` cannot be carried, and a transition that would retain it requires a restart. Call `without_retention()` to force a rebuild every time while keeping live consumers rebindable. A descriptor registered with `with_component` is a raw instance with no snapshot adapter, so a transition that would keep it requires a restart. Prefer a descriptor with a factory when the value should survive reloads.
 
-Hooks and conditions attach through `with_hooks` and `with_condition`. A hook is itself a hand-buildable descriptor, but writing one by hand is rarely worth the call plumbing; keep hooks on `#[methods]` and reserve hand-built descriptors for components and providers.
+Hooks and conditions attach through `with_hooks` and `with_condition`, and both are hand-buildable with `const` builders.
+
+### Build a condition by hand
+
+`with_condition` takes a `&'static` `ConditionDescriptor`. Every builder takes a node ID first, and composite nodes borrow `'static` children, so a tree is a set of `static` items.
+
+| Builder | Holds when |
+|---|---|
+| `config_bool(id, fact)` | the boolean config fact, named by a `ConfigFactId`, is `true` |
+| `config_equals(id, fact, expected)` | the string config fact equals `expected` |
+| `config_matches(id, fact, literal)` | the config fact equals a `ConditionScalarLiteral` of any scalar kind |
+| `component_eligible(id, component)` | the component with that stable ID is eligible |
+| `provider_eligible(id, mapping)` | the `ProviderMappingId` is eligible |
+| `callback(id, &CALLBACK)` | a trusted `ConditionCallback` returns `true` for its declared inputs |
+| `all(id, &[..])`, `any(id, &[..])`, `not(id, &NODE)` | every, at least one, or none of the children hold |
+
+```rust
+use upwell::{ComponentDescriptor, ConfigFactId, factories};
+use upwell::condition::ConditionDescriptor;
+
+const ENABLED: ConfigFactId = ConfigFactId::new("GreeterConfig", "greeter", "enabled");
+
+static ENABLED_CONDITION: ConditionDescriptor =
+    ConditionDescriptor::config_bool("greeter-enabled", ENABLED);
+
+static ENGLISH: ComponentDescriptor = ComponentDescriptor::of::<English>()
+    .with_factories(factories![english])
+    .with_condition(&ENABLED_CONDITION);
+```
+
+`ConditionExpression` is not a builder. It is the static tooling metadata, source text and the inputs it reads, that describes a callback written as an expression.
+
+### Build a hook by hand
+
+`with_hooks` takes a function returning `&'static [HookDescriptor]`. `HookDescriptor` is `#[non_exhaustive]`, so it is built with `HookDescriptor::new(ordinal, component_ty, kind, kind_ty, dependencies, call)`, or with `HookDescriptor::of::<K>(ordinal, component_ty, call)` for a hook kind `K` that takes no inputs. Refine it with `with_dependencies` for the kind's input edges, `with_role` for `HookRole::Participant` or `Observer`, `with_routing` for `HookRouting::Targeted` or `Always`, and `with_source` to record the declaration. The `ordinal` keeps a type's hooks in source order on every registration backend, and `call` is the erased `HookCall` that receives the resolver and the component. That plumbing is why hooks usually stay on `#[methods]`; reach for a hand-built hook only when a plugin must attach one without macros.
 
 ## Reference pages
 
