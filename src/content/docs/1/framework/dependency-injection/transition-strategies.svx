@@ -49,9 +49,9 @@ A live rebind needs a single, eagerly resolved dependency on a singleton compone
 
 ## Choose the handle that matches the contract
 
-How a consumer injects a changing provider decides its strategy. The conditional example switches an `Authenticator` provider on `auth.mode`; three consumers show the common outcomes.
+How a consumer injects a changing provider decides its strategy. The conditional example switches an `Authenticator` provider on `auth.mode`; three consumers show the common outcomes. The complete, runnable version lives in `examples/conditional` of the framework repository.
 
-<Example title="Two consumers of one switching provider">
+<Example title="The switching provider and two of its consumers">
 
 ```rust
 use std::sync::Arc;
@@ -63,6 +63,36 @@ pub trait Authenticator: Send + Sync {
     fn accepts(&self, token: &str) -> bool;
 }
 ```
+
+Two providers implement it. The default is unconditional; the custom one is primary only while `auth.mode` is `custom`, so changing the config value flips which provider is eligible.
+
+```rust
+use serde::Deserialize;
+use upwell::{config, when};
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMode {
+    Default,
+    Custom,
+}
+
+#[derive(Deserialize)]
+#[config(path = "auth")]
+pub struct AuthConfig {
+    pub mode: AuthMode,
+    pub max_sessions: usize,
+}
+
+#[component(provide = dyn Authenticator)]
+pub struct DefaultAuthenticator;
+
+#[component(provide = dyn Authenticator, primary)]
+#[when(AuthConfig.mode == AuthMode::Custom)]
+pub struct CustomAuthenticator;
+```
+
+Both providers also implement `Authenticator`; the trait bodies are in the example crate.
 
 `LoginGate` holds a live handle. A provider switch rebinds it in place, so the gate instance survives every reload.
 
@@ -102,23 +132,17 @@ Inject `Dep<dyn T>` when the consumer should keep its instance and read the curr
 
 ## Carry state with `Previous<Self>`
 
-Reconstruction starts from a blank instance. `SessionLedger`, the third consumer, holds state that must outlive the switch, so it declares a `#[replace]` recipe in its `#[methods]` block. Its first parameter must be `Previous<Self>`, the immutable snapshot of the active instance; the remaining parameters are injected from the candidate generation.
+Reconstruction starts from a blank instance. `SessionLedger`, the third consumer, holds state that must outlive the switch, so it declares a `#[replace]` recipe in its `#[methods]` block. Its first parameter must be `Previous<Self>`, the immutable snapshot of the active instance; the remaining parameters are injected from the candidate generation, and must be a subset of the dependencies the ordinary factory declares.
 
 <Example title="Carry open sessions into the replacement">
 
 ```rust
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use upwell::{Cfg, Previous, component, config, methods};
-
-#[derive(serde::Deserialize)]
-#[config(path = "auth")]
-pub struct AuthConfig {
-    pub max_sessions: usize,
-}
+use upwell::{Cfg, Previous, component, methods};
 ```
 
-Define the error the recipe can fail with. Any error type that implements `std::error::Error` works.
+`AuthConfig` is the configuration section declared above. Define the error the recipe can fail with. Any type that implements `std::error::Error + Send + Sync + 'static` works; a non-`Send` error does not compile.
 
 ```rust
 #[derive(Debug)]
@@ -194,7 +218,9 @@ The recipe returns either `Self` or a `Result`. Here it refuses to carry more se
 ### Other recipes
 
 - `#[hot_update]` keeps the instance. Its first parameter is `Previous<Self>`; it returns `HotUpdate<Self>` or `Result<HotUpdate<Self>, E>`. Do the fallible work while preparing, and move the result into `HotUpdate::new(|component: &Self| { ... })`, which runs at commit and cannot fail. Only components stored as `Arc<Self>` can declare one, so it fits the default component shape but not a by-value component.
-- `#[transition]` is a synchronous method that takes `&ComponentChange` and returns `Option<OneShot<Self>>`. It chooses a one-shot factory for this transition only, or returns `None` to decline. The one-shot factory can read `Previous<Self>` but may resolve only the dependencies the ordinary factory declares; any other dependency rejects the transition.
+- `#[transition]` is a synchronous method that takes `&ComponentChange` and returns `Option<OneShot<Self>>`. It chooses a one-shot factory for this transition only, or returns `None` to decline. The one-shot factory can read `Previous<Self>` but, like every recipe, may resolve only the dependencies the ordinary factory declares.
+
+Every recipe needs an ordinary factory to go with it (`#[init]` or the field-injection default); otherwise registry validation fails with `upwell_di::Error::TransitionRecipeWithoutFactory`. A recipe parameter the ordinary factory does not declare fails the transition with `UndeclaredTransitionDependency`, so declare the dependency on the ordinary factory as well.
 
 A method carries at most one of `#[init]`, `#[replace]`, `#[transition]` and `#[hot_update]`, and a component declares at most one recipe of each kind.
 
@@ -231,9 +257,27 @@ A reload that leaves every component's eligibility unchanged shares the previous
 
 ## Generations and retirement
 
-Each committed generation has a stable `RuntimeGenerationId`, and every reload attempt has a `TransitionAttemptId`. Every singleton the commit constructs again or removes is displaced and receives the `ComponentRetired` hook. Retained, rebound-in-place and hot-updated instances are never displaced; a rebound component that had to be constructed again is displaced like any other.
+Each committed generation has a stable `RuntimeGenerationId`, and every reload attempt has a `TransitionAttemptId`. Every singleton the commit constructs again or removes is displaced and receives the `ComponentRetired` hook. `Dep<T>` is an alias of `Live<T>`, so the live rebind described above applies to either name; the prepared republication behind it is `LiveRebind`, an internal type you never construct. Retained, rebound-in-place and hot-updated instances are never displaced; a rebound component that had to be constructed again is displaced like any other.
 
-Displacement is logical. A pinned `RuntimeView`, an open scope, or any other holder of the old root keeps that generation's instances alive and usable. `Previous<Self>` and retained handles are shared `Arc`s, never mutable aliases. When the last holder lets go, the old root drops with its retired instances and a `displaced runtime generation released` event is traced on `upwell::transition`. `AppRuntime::displaced_generations()` lists the `DisplacedGeneration` entries still waiting to be released.
+Displacement is logical. A pinned `RuntimeView`, an open scope, or any other holder of the old root keeps that generation's instances alive and usable. `Previous<Self>` and retained handles are shared `Arc`s, never mutable aliases. When the last holder lets go, the old root drops with its retired instances and a `displaced runtime generation released` event is traced on `upwell::transition`. `AppRuntime::displaced_generations()` lists the `DisplacedGeneration` entries still waiting to be released. Each has the displaced `generation`, the `attempt` whose commit displaced it, and the `displaced_at` instant. The generation ID type is not re-exported from `upwell`; read it from the entry rather than naming it.
+
+### React to retirement
+
+Declare a `ComponentRetired` hook on the component to learn it was displaced. The hook's `&self` is the displaced instance, and a `ComponentRetirement` parameter carries the `RetirementReason` (`Replaced` when a new instance was built, `Removed` when the component left the generation), the attempt and both generation IDs.
+
+```rust
+use upwell::{ComponentRetired, ComponentRetirement, methods};
+
+#[methods]
+impl CustomAuthenticator {
+    #[hook(ComponentRetired)]
+    async fn retired(&self, retirement: ComponentRetirement) {
+        self.stop_accepting_new_sessions();
+    }
+}
+```
+
+The hook must leave the instance usable. Pinned views, open scopes and other holders can keep reading it, so stop taking new work or schedule cleanup rather than invalidating state. A failing hook is traced and never affects the published generation.
 
 ## Preview a transition
 
@@ -244,3 +288,5 @@ cargo upwell explain 'dyn my_app::Authenticator' --set auth.mode=default
 ```
 
 It runs the same stage, evaluate and plan steps as a reload against the proposed configuration and stops before construction. It reports each affected component's action and chosen strategy and the components a commit would displace. Trusted condition callbacks are not run, so a component they gate shows as not evaluated.
+
+See also <GuideRef slug="framework/configuration/reload">Configuration reload</GuideRef> for the reload trigger and transaction.

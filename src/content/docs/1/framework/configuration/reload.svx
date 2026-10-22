@@ -135,3 +135,5 @@ Watcher delivery means a source may have changed. Observe the reload result or g
 - A changed environment variable can trigger a new binding value on manual reload even when the source subtree is unchanged, but only placeholders consumed by the prior typed read participate in that dependency check.
 
 See <GuideRef slug="framework/configuration/sources-and-bindings">configuration sources</GuideRef> and <GuideRef slug="framework/application/lifecycle">lifecycle and shutdown</GuideRef>.
+
+To predict whether components keep, rebind or rebuild their instances when a reload changes configuration, see <GuideRef slug="framework/dependency-injection/transition-strategies">Component transition strategies</GuideRef>.
