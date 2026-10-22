@@ -77,6 +77,11 @@ export function robots(): string {
 	return robotsTxt(siteOrigin, ['/docs/*/search.json', '/docs/*/symbols.json', '/api/']);
 }
 
+/** Path of the machine-readable symbol inventory for one release, as the `symbols.json` route serves it. */
+export function symbolInventoryPath(versionId: string): string {
+	return `/docs/${docsContent.config.framework.root.crate}/${versionId}/symbols.json`;
+}
+
 export function llms(): string {
 	const latest = latestVersion(docsContent.config);
 	const guides = guideEntries().filter((entry) => entry.version === latest.id);
@@ -87,7 +92,7 @@ export function llms(): string {
 		summary: `Documentation for ${name} ${latest.label}: guides written for people, and a generated API reference for every symbol in the release.`,
 		notes: [
 			`Every guide below links to its Markdown source. The rendered page is the same path under \`/docs\`, without the \`.md\`.`,
-			`The API reference is large and machine-readable elsewhere: \`/docs/${latest.id}/symbols.json\` lists every documented symbol, and \`/docs/${latest.id}/search.json\` is the full search index.`
+			`The API reference is large and machine-readable elsewhere: \`${symbolInventoryPath(latest.id)}\` lists every documented symbol, and \`/docs/${latest.id}/search.json\` is the full search index.`
 		],
 		sections: [
 			{
