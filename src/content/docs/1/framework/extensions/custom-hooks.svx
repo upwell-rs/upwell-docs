@@ -174,7 +174,7 @@ impl ChangeFreeze {
 
 </Example>
 
-A return of `Result<T, E>` is unwrapped, and any `E: Error + Send + Sync + 'static` becomes `HookError::Other`. The success type is checked against `Output` for a participant and against `()` for an observer, so a mismatched return is a compile error and an observer can never return an action. `#[hook]` methods must be `async`, and the receiver must be `&self`.
+A return of `Result<T, E>` is unwrapped, and any `E: Error + Send + Sync + 'static` becomes `HookError::Other`. The success type is checked against `Output` for a participant and against `()` for an observer, so a mismatched return is a compile error and an observer can never return an action. `#[hook]` methods must be `async`; the receiver, if present, must be `&self` (a hook may omit `self` entirely). Hook receivers are resolved from the root scope, so declare hooks on singleton components. A receiver that is not root-scoped reports `HookError::MissingReceiver` when the hook fires.
 
 The two flags are independent. `observe` chooses the role, which is the hook's authority over the outcome. `always` chooses the routing, which is whether the firing site's selection applies.
 
@@ -245,7 +245,7 @@ impl Deployer {
 | `fire_streamed(cx, select)` | as `fire` | a `Stream` of `FiredHook<K>` as each hook completes |
 | `fire_all_streamed(cx)` | as `fire_all` | a `Stream` of `FiredHook<K>` |
 
-The selection predicate receives each `&HookDescriptor`, which exposes the declaring `component_ty`, the kind `kind`, its `role` and `routing`, and the parameter `dependencies`. Use it to target the components an event concerns. `component_participates::<K>(type_id)` reports whether a component declares a participant of the kind.
+The selection predicate receives each `&HookDescriptor`, which exposes the declaring `component_ty`, `kind` (the kind's `NAME` string), the declared `role` and `routing`, and `dependencies()`, a function that returns the parameter dependencies. The `role` is the declared role only: every hook of an `ObserversOnly` kind is an observer regardless, so use `component_participates::<K>` for the effective participant check. Use it to target the components an event concerns. `component_participates::<K>(type_id)` reports whether a component declares a participant of the kind.
 
 ```rust
 use std::any::TypeId;
@@ -281,9 +281,9 @@ Dropping the stream cancels the event: hooks that have not started never run.
 - **Observers run concurrently, after the event settles.** They start only once every participant has accepted, so an observer never sees an event a participant can still change or one that was ended. `fire` returns them back in registration order; the streamed forms yield them in completion order.
 - **Failures are fail-closed for participants and advisory for observers.** An observer's error is reported in the outcome and never ends or alters the event.
 - **Panics are isolated and redacted.** A panicking hook becomes `HookError::Panicked { hook, component }` carrying the kind name and component but never the panic payload, because payloads can contain secrets. A participant panic ends the event under the default `ends_event`.
-- **Other framework failures are outcomes too.** A receiver that cannot be resolved is `MissingReceiver`, an extraction that fails is `MissingParam` or `Other`, and a manager whose generation has gone away reports `ResolverUnavailable`.
+- **Other framework failures are outcomes too.** A receiver that cannot be resolved from the root scope, such as one on a connection-scoped, request-scoped or transient component, is `MissingReceiver`, an extraction that fails is `MissingParam` or `Other`, and a manager whose generation has gone away reports `ResolverUnavailable`.
 - **Targeting is separate from role.** A targeted hook runs only when the firing site's selection includes it. An `always` hook runs on every event of its kind, which suits policies that must see everything.
-- **The manager is generation-local.** Each runtime generation builds its own manager over its own components. `App::hook_manager` returns the one for the currently committed generation, and a component that injects `HookManager` is reconstructed whenever a config reload builds a new generation, so it always fires against live instances. Do not cache a manager obtained from `App::hook_manager` across reloads; ask for it at the firing site. See <GuideRef slug="framework/configuration/reload">Configuration reload</GuideRef> for what a reload rebuilds.
+- **The manager is generation-local.** Each runtime generation builds its own manager over its own components. `App::hook_manager` returns the one for the currently committed generation, and a component that injects `HookManager` is reconstructed on a reload that changes bindings, since it depends on the generation-local manager, so it always fires against live instances. Do not cache a manager obtained from `App::hook_manager` across reloads; ask for it at the firing site.
 
 <Callout type="warning" title="Context is borrowed by every hook">
 
