@@ -1,0 +1,296 @@
+---
+title: Define custom hook kinds
+description: Declare your own hook event, subscribe components to it, extract event inputs, and fire it through the hook manager.
+order: 40
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef, SymbolRef } from '#lib/docs';
+</script>
+
+# Define custom hook kinds
+
+A hook is an `async` method on a component that the framework calls when an event of a given kind occurs. `Startup`, `Shutdown`, and config reload are ordinary kinds built on the same system, so any crate can define its own event, let components subscribe to it, and fire it from application code. Use a custom kind when several independent components must react to or veto the same event and the code that raises it should not know who they are.
+
+## Choose a hook or something else
+
+| Need | Use |
+|---|---|
+| prepare one component after its dependencies exist | `#[init]` on that component |
+| wrap every request or call with cross-cutting behavior | middleware or guards from the protocol |
+| swap one implementation behind a trait | a trait provider injected into the consumer |
+| start or stop resources with the process | the built-in `Startup` and `Shutdown` kinds, see <GuideRef slug="framework/application/lifecycle">Application lifecycle</GuideRef> |
+| let any number of components veto, contribute to, or observe one event | a custom <SymbolRef path="upwell/HookKind">`HookKind`</SymbolRef> |
+
+A hook is a one-to-many broadcast with a typed result, not a single dependency. If exactly one collaborator is expected, inject it instead.
+
+## Declare the kind
+
+A kind is a marker type that owns the event contract. `Output` is what each participant returns, `Cx` is the owned context one firing carries, and `NAME` identifies the kind in diagnostics and errors.
+
+<Example title="Define a deployment approval kind">
+
+```rust
+use upwell::prelude::*;
+use upwell::{HookKind, HookResult};
+
+struct DeployRequest {
+    target: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    Approve,
+    Veto(&'static str),
+}
+```
+
+Implement the kind. The default `ends_event` stops only on an error, so override it when an accepted-looking value can still end the event:
+
+```rust
+struct ApproveDeploy;
+
+impl HookKind for ApproveDeploy {
+    type Output = Verdict;
+    type Cx = DeployRequest;
+
+    const NAME: &'static str = "approve_deploy";
+
+    fn ends_event(outcome: &HookResult<Verdict>) -> bool {
+        !matches!(outcome, Ok(Verdict::Approve))
+    }
+}
+```
+
+</Example>
+
+`Output` must be `Send + 'static` and `Cx` must be `Send + Sync + 'static`, because the hook future borrows the context. `ends_event` decides which participant outcomes stop the event. Returning `true` means no later participant and no observer runs. The default is `outcome.is_err()`, so a failed participant is fail-closed.
+
+`PARTICIPATION` defaults to `HookParticipation::ParticipantsAndObservers`. When an event has no outcome a hook could change, set `HookParticipation::ObserversOnly`; every hook of that kind then becomes an observer, which is how `Shutdown` is declared.
+
+```rust
+use upwell::HookParticipation;
+
+struct DeployFinished;
+
+impl HookKind for DeployFinished {
+    type Output = ();
+    type Cx = DeployRequest;
+
+    const NAME: &'static str = "deploy_finished";
+    const PARTICIPATION: HookParticipation = HookParticipation::ObserversOnly;
+}
+```
+
+## Take event inputs with `HookParam`
+
+Hooks receive component dependencies through `&self`, never as parameters. The only other parameters a hook method may take are the kind's inputs, each a <SymbolRef path="upwell/HookParam">`HookParam<K>`</SymbolRef> extracted from `K::Cx`. `dependency` reports the edge for validation and event routing; `extract` builds the value from the context. Mark an input that is supplied by the firing site rather than the container as `dynamic`.
+
+<Example title="Extract the deployment target from the context">
+
+```rust
+use upwell::{
+    Cardinality, DependencyDescriptor, DependencyObservation, HookParam, ResolutionMode,
+    TypeDescriptor,
+};
+
+struct DeployTarget(String);
+```
+
+Describe the edge and read the value out of the owned context:
+
+```rust
+impl HookParam<ApproveDeploy> for DeployTarget {
+    fn dependency(_path: Option<&'static str>) -> DependencyDescriptor {
+        DependencyDescriptor {
+            name: "DeployTarget",
+            ty: TypeDescriptor::of::<DeployTarget>("DeployTarget"),
+            cardinality: Cardinality::One,
+            optional: false,
+            dynamic: true,
+            qualifier: None,
+            config: false,
+            resolution: ResolutionMode::Eager,
+            observation: DependencyObservation::Snapshot,
+        }
+    }
+
+    fn extract(cx: &DeployRequest, _path: Option<&'static str>) -> HookResult<Self> {
+        Ok(DeployTarget(cx.target.clone()))
+    }
+}
+```
+
+</Example>
+
+The `path` argument carries the parameter's `#[config("..")]` literal, or `None` for the by-type shorthand. A custom kind that has no use for it ignores it. Return `Err(upwell::HookError::MissingParam(..))` when the context cannot supply the value; a failed extraction becomes that hook's outcome.
+
+A blanket impl such as `impl<K: HookKind<Cx = DeployRequest>> HookParam<K> for DeployTarget` shares one extractor across several kinds that use the same context.
+
+## Subscribe components
+
+Annotate an `async` method inside a `#[methods]` block with `#[hook(Kind)]`. The method takes `&self` (or no receiver) plus any `HookParam` inputs, and may be fallible.
+
+<Example title="Veto and audit deployments">
+
+```rust
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+use upwell::prelude::*;
+use upwell::AppError;
+
+#[component]
+struct ChangeFreeze {
+    #[default]
+    frozen: AtomicBool,
+    #[default]
+    audited: AtomicUsize,
+}
+```
+
+A participant returns the kind's `Output`. An observer, declared with `observe`, returns `()` or `Result<(), E>`. Adding `always` makes a hook run on every event of its kind instead of only when the firing site selects its component:
+
+```rust
+#[methods]
+impl ChangeFreeze {
+    #[hook(ApproveDeploy)]
+    async fn gate(&self, target: DeployTarget) -> Verdict {
+        if self.frozen.load(Ordering::SeqCst) && target.0 == "production" {
+            Verdict::Veto("change freeze")
+        } else {
+            Verdict::Approve
+        }
+    }
+
+    #[hook(ApproveDeploy, observe, always)]
+    async fn audit(&self, _target: DeployTarget) -> Result<(), AppError> {
+        self.audited.fetch_add(1, Ordering::SeqCst);
+
+        Ok(())
+    }
+}
+```
+
+</Example>
+
+A return of `Result<T, E>` is unwrapped, and any `E: Error + Send + Sync + 'static` becomes `HookError::Other`. The success type is checked against `Output` for a participant and against `()` for an observer, so a mismatched return is a compile error and an observer can never return an action. `#[hook]` methods must be `async`; the receiver, if present, must be `&self` (a hook may omit `self` entirely). Hook receivers are resolved from the root scope, so declare hooks on singleton components. A receiver that is not root-scoped reports `HookError::MissingReceiver` when the hook fires.
+
+The two flags are independent. `observe` chooses the role, which is the hook's authority over the outcome. `always` chooses the routing, which is whether the firing site's selection applies.
+
+## Fire the event
+
+Get the manager by injecting <SymbolRef path="upwell/HookManager">`HookManager`</SymbolRef> into a component, or call `App::hook_manager` on a directly owned app. Check `has::<K>()` first when building the context is expensive: it is an O(1) lookup by kind, and firing a kind nobody listens to does no work and returns empty outcomes.
+
+<Example title="Ask the hooks before deploying">
+
+```rust
+use upwell::{HookError, HookManager};
+
+#[derive(Debug)]
+enum DeployError {
+    Vetoed { component: &'static str, reason: &'static str },
+    Hook { component: &'static str, source: HookError },
+}
+```
+
+Inject the manager like any other dependency:
+
+```rust
+#[component]
+struct Deployer {
+    hooks: HookManager,
+}
+```
+
+Fire against every hook, then walk the participants in the order they ran. The last participant is the one that ended the event, if any did:
+
+```rust
+impl Deployer {
+    async fn deploy(&self, target: &str) -> Result<(), DeployError> {
+        if !self.hooks.has::<ApproveDeploy>() {
+            return self.release(target).await;
+        }
+
+        let request = DeployRequest { target: target.to_owned() };
+        let fired = self.hooks.fire_all::<ApproveDeploy>(&request).await;
+
+        for (component, outcome) in fired.participants {
+            match outcome {
+                Ok(Verdict::Approve) => {}
+                Ok(Verdict::Veto(reason)) => {
+                    return Err(DeployError::Vetoed { component: component.name, reason });
+                }
+                Err(source) => {
+                    return Err(DeployError::Hook { component: component.name, source });
+                }
+            }
+        }
+
+        self.release(target).await
+    }
+}
+```
+
+</Example>
+
+`FiredHooks` carries `participants` in registration order, `observers` in registration order, and `ended`, which is true when a participant's outcome satisfied `ends_event`. Its `#[must_use]` is deliberate: observer failures are reported only here and are never interpreted for you. Log them if they matter.
+
+<SymbolRef path="upwell/HookManager">`HookManager`</SymbolRef> offers four ways to fire:
+
+| Method | Targeting | Result |
+|---|---|---|
+| `fire(cx, select)` | hooks `select` accepts, plus every `always` hook | `FiredHooks<K>` after the event settles |
+| `fire_all(cx)` | every hook of the kind | `FiredHooks<K>` |
+| `fire_streamed(cx, select)` | as `fire` | a `Stream` of `FiredHook<K>` as each hook completes |
+| `fire_all_streamed(cx)` | as `fire_all` | a `Stream` of `FiredHook<K>` |
+
+The selection predicate receives each `&HookDescriptor`, which exposes the declaring `component_ty`, `kind` (the kind's `NAME` string), the declared `role` and `routing`, and `dependencies()`, a function that returns the parameter dependencies. The `role` is the declared role only: every hook of an `ObserversOnly` kind is an observer regardless, so use `component_participates::<K>` for the effective participant check. Use it to target the components an event concerns. `component_participates::<K>(type_id)` reports whether a component declares a participant of the kind.
+
+```rust
+use std::any::TypeId;
+
+let fired = self
+    .hooks
+    .fire::<ApproveDeploy>(&request, |hook| {
+        hook.component_ty.type_id == TypeId::of::<ChangeFreeze>()
+    })
+    .await;
+```
+
+Use the streamed forms when you can act on an outcome as soon as it is ready. A `FiredHook` is a `#[non_exhaustive]` enum with `Participant` and `Observer` variants; `component()` and `ends_event()` cover the common checks without matching it.
+
+```rust
+use futures::StreamExt;
+
+let events = self.hooks.fire_all_streamed::<ApproveDeploy>(&request);
+let mut events = std::pin::pin!(events);
+
+while let Some(fired) = events.next().await {
+    if fired.ends_event() {
+        return Err(DeployError::Vetoed { component: fired.component().name, reason: "ended" });
+    }
+}
+```
+
+Dropping the stream cancels the event: hooks that have not started never run.
+
+## Execution semantics
+
+- **Participants run sequentially in registration order.** Hooks on one component run in source order. The first outcome for which `ends_event` is true ends the event, so no later participant and no observer runs.
+- **Observers run concurrently, after the event settles.** They start only once every participant has accepted, so an observer never sees an event a participant can still change or one that was ended. `fire` returns them back in registration order; the streamed forms yield them in completion order.
+- **Failures are fail-closed for participants and advisory for observers.** An observer's error is reported in the outcome and never ends or alters the event.
+- **Panics are isolated and redacted.** A panicking hook becomes `HookError::Panicked { hook, component }` carrying the kind name and component but never the panic payload, because payloads can contain secrets. A participant panic ends the event under the default `ends_event`.
+- **Other framework failures are outcomes too.** A receiver that cannot be resolved from the root scope, such as one on a connection-scoped, request-scoped or transient component, is `MissingReceiver`, an extraction that fails is `MissingParam` or `Other`, and a manager whose generation has gone away reports `ResolverUnavailable`.
+- **Targeting is separate from role.** A targeted hook runs only when the firing site's selection includes it. An `always` hook runs on every event of its kind, which suits policies that must see everything.
+- **The manager is generation-local.** Each runtime generation builds its own manager over its own components. `App::hook_manager` returns the one for the currently committed generation, and a component that injects `HookManager` is reconstructed on a reload that changes bindings, since it depends on the generation-local manager, so it always fires against live instances. Do not cache a manager obtained from `App::hook_manager` across reloads; ask for it at the firing site.
+
+<Callout type="warning" title="Context is borrowed by every hook">
+
+The context is shared by reference with every hook that runs, including concurrent observers. Keep it immutable, put mutable state behind your own synchronization, and keep secrets out of any value a hook may log.
+
+</Callout>
+
+## Define kinds in a reusable crate
+
+A kind is plain Rust, so a plugin or library crate can export its marker type, context, and `HookParam` types. Applications then subscribe with `#[hook(acme_deploy::ApproveDeploy)]` without the library knowing the subscribers. Keep the kind's `NAME` stable and namespaced, since it appears in errors and diagnostics, and document the contract of `Output` and `ends_event` where the kind is declared. For packaging a kind together with its components, see <GuideRef slug="framework/extensions/plugins">Compose plugins</GuideRef>.
