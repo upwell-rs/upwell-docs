@@ -59,7 +59,7 @@ tracing::info!(
 );
 ```
 
-`reload()` returns `Result<RuntimeTransitionReport, upwell::AppError>`. A source change that commits reports `is_committed()` with the new `runtime_generation()` and `config_generation()`. An unchanged source is a no-op: `Ok` with `TransitionOutcome::NoOp`, no hooks, and no generation movement. The report lists changed binding paths and type names, never values, so it is safe to log.
+`reload()` returns `Result<RuntimeTransitionReport, upwell::AppError>`. A source change that commits reports `is_committed()` with the new `runtime_generation()` and `config_generation()`. An unchanged source is a no-op: `Ok` with `TransitionOutcome::NoOp`, no hooks, and no generation movement. When a component condition reads raw config paths, an unchanged source is still re-evaluated and is a no-op only while eligibility is unchanged (see [Understand the transaction](#understand-the-transaction)). The report lists changed binding paths and type names, never values, so it is safe to log.
 
 </Example>
 
@@ -128,8 +128,8 @@ impl DatabasePool {
 
 A reload is a serialized config-and-graph transition. The config reloader's lock is taken first, then the runtime transition writer, and both are held until the attempt ends. The phases, as reported by `TransitionPhase`, are:
 
-1. `Stage`: re-read every retained source from an empty tree in original precedence order, seed defaults, and compare each committed binding's raw subtree and consumed placeholder dependencies. An unchanged source ends here as a no-op.
-2. `Evaluate`: re-evaluate component conditions against the staged values.
+1. `Stage`: re-read every retained source from an empty tree in original precedence order, seed defaults, and compare each committed binding's raw subtree and consumed placeholder dependencies. An unchanged source ends here as a no-op, unless a component condition reads raw config paths; then the attempt continues to `Evaluate`.
+2. `Evaluate`: re-evaluate component conditions against the staged values. With no binding change, the reload ends here as a no-op when eligibility is unchanged. If a raw-config condition flips eligibility, the attempt continues through the remaining phases with an empty changed-binding list and can commit.
 3. `Plan`: derive the candidate component graph and decide which components are retained, replaced, rebound, added or removed.
 4. `Proposal`: run `TransitionProposal` hooks against the active generation. Nothing is constructed yet.
 5. `Construct`: build the candidate root over the candidate config. Only affected singletons are rebuilt; unaffected ones keep their instances.
@@ -143,7 +143,7 @@ A rejection in phases 1 to 7 leaves the active generation, the managed config tr
 
 Side effects outside the framework are not rolled back. A hook that performs external work must clean up anything it prepared before returning `Err`; the framework can discard a candidate generation and keep live config slots, not an arbitrary database connection created by user code. Mutations made through retained instances that the candidate aliases also persist.
 
-Proposal and decision hooks, and how each affected component keeps or replaces its instance, are covered by the transition hooks and transition strategies guides.
+Proposal and decision hooks, and how each affected component keeps or replaces its instance, are covered by the <GuideRef slug="framework/application/transition-hooks">transition hooks</GuideRef> and <GuideRef slug="framework/dependency-injection/transition-strategies">transition strategies</GuideRef> guides.
 
 ## Debounce and platform behavior
 
@@ -161,18 +161,19 @@ Watcher delivery means a source may have changed. Observe the reload result or g
 
 ## Troubleshoot reloads
 
-A rejected reload returns `AppError::TransitionRejected`. Read `rejection.report().outcome()` for the phase and `TransitionFailure`, and `rejection.error()` for the underlying error.
+Some errors are returned directly, not wrapped in a report:
+
+- `RuntimeUnavailable` means the reloader was used before the application was built or after its runtime was dropped.
+- `ReentrantReload` means a `ConfigReload`, proposal or decision hook, or a candidate factory, called `reload()` for its own application. The running attempt holds non-reentrant locks, so the nested call fails immediately and returns this error to the calling hook. It never appears in a report. If the hook propagates it, the outer attempt is rejected as `HookRejected`; if the hook handles it, the outer reload continues. Request the follow-up from a `TransitionCommitted` or `TransitionAborted` observer, which run after the locks are released.
+
+A rejected attempt returns `AppError::TransitionRejected`. Read `rejection.report().outcome()` for the phase and `TransitionFailure`, and `rejection.error()` for the underlying error.
 
 - `ConfigLoad` or `ConfigBind`: a retained source disappeared, became unreadable or no longer parses, or a changed subtree or placeholder cannot deserialize into its registered type. `ConfigBind` names the path and type.
 - `HookRejected` names the component whose hook rejected the attempt. The underlying error is `ConfigReloadError::Hook` for a `ConfigReload` hook, `TransitionHookRejected` when a proposal or decision hook returned `Reject` with its reason code, or `TransitionHookFailed` when such a hook returned an error.
 - `HookPanicked` means a participant hook panicked. Panic payloads are omitted because they may contain secrets.
 - `Panicked` protects the process from a panic in user-provided deserialization, a condition callback or a factory.
-- `RestartRequired` means an affected component cannot be reconstructed in place; the report names the component and reason, and nothing was constructed.
-- `ReentrantReload` means a `ConfigReload`, proposal or decision hook, or a candidate factory, called `reload()` for its own application. The running attempt holds non-reentrant locks, so the nested call fails immediately and the outer reload is unaffected. Request the follow-up from a `TransitionCommitted` or `TransitionAborted` observer, which run after the locks are released.
-- `RuntimeUnavailable` means the reloader was used before the application was built or after its runtime was dropped. It is returned directly, not wrapped in a report.
+- `RestartRequired` means an affected component cannot be reconstructed in place; the report names the component and reason, and nothing was constructed. This is distinct from a `ConfigReload` hook returning `HookOutcome::RestartRequired(reason)`, which is an accepted outcome recorded with its reason in the report's `hooks()`, not a rejection.
 - No file event usually means `watch` was not compiled, the manager did not request `watch_config`, or the application has not entered `run`/`serve`.
 - A changed environment variable can trigger a new binding value on manual reload even when the source subtree is unchanged, but only placeholders consumed by the prior typed read participate in that dependency check.
 
-See <GuideRef slug="framework/configuration/sources-and-bindings">configuration sources</GuideRef> and <GuideRef slug="framework/application/lifecycle">lifecycle and shutdown</GuideRef>.
-
-To predict whether components keep, rebind or rebuild their instances when a reload changes configuration, see <GuideRef slug="framework/dependency-injection/transition-strategies">Component transition strategies</GuideRef>.
+See <GuideRef slug="framework/configuration/sources-and-bindings">configuration sources</GuideRef>, <GuideRef slug="framework/application/lifecycle">lifecycle and shutdown</GuideRef>, <GuideRef slug="framework/application/transition-hooks">transition hooks</GuideRef> and <GuideRef slug="framework/dependency-injection/transition-strategies">transition strategies</GuideRef>.
