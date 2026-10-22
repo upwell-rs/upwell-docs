@@ -1,0 +1,453 @@
+---
+title: The container model
+description: Understand the descriptors, handles, extractors, and scopes beneath the DI macros, and use them directly when the macros do not fit.
+order: 40
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example, GuideRef, SymbolRef } from '#lib/docs';
+</script>
+
+# The container model
+
+Most applications never leave `#[component]`, `#[methods]`, and `provide =`. Read this guide when you step off that path: wrapping a type the macros cannot annotate, writing your own injectable parameter, decoding a wiring error, registering without `auto_discover()`, or reading descriptor-level output from `cargo upwell`.
+
+The model has four layers. A <SymbolRef path="upwell/Component">`Component`</SymbolRef> names a type and says how it is stored. A <SymbolRef path="upwell/ComponentDescriptor">`ComponentDescriptor`</SymbolRef> says how to build it, in which scope, and with which dependencies. The registry validates every descriptor and orders construction. A <SymbolRef path="upwell/ScopeContainer">`ScopeContainer`</SymbolRef> holds the built values and resolves them.
+
+## What the macros generate
+
+`#[component]` expands to ordinary public items. Nothing about it is hidden magic, which is why you can write the same items by hand.
+
+| Generated item | Purpose |
+|---|---|
+| `impl Component` | stable `ID` (the lowercased type name unless `id =` is set), display `NAME`, and the storage `Handle`: `Arc<Self>` by default, `Self` with `by_value` |
+| a `ComponentDescriptor` | identity, scope (singleton unless `scope =` is set), optional condition, the factory list, and the hook list |
+| the default factory | named `"default"`, built from the field types; each field type contributes one dependency edge |
+| `#[init]` or `factory = path` | an additional `Explicit` factory that replaces the default |
+| `impl Descriptor<ComponentDescriptor>` | lets the builder register the type by name with `.component::<T>()` |
+| for each `provide = dyn Trait` | an `impl ProviderOf<dyn Trait>`, a `ProviderDescriptor`, and `Descriptor<&'static [ProviderDescriptor]>` for `.provider::<T>()` |
+| with `di-check` | `impl Provide<Self> for Wiring` and `impl Wired for T`, covered below |
+
+A provider's qualifier defaults to the component ID. `primary`, `priority`, `before`, and `after` fill the other provider fields.
+
+### Registration backends
+
+Descriptors reach the application through link-time collections, one element per descriptor. The default backend appends each to a `linkme` distributed slice: the global `COMPONENTS` and `PROVIDERS` slices, plus a per-type slice of factories and hooks. That per-type slice holds <SymbolRef path="upwell/Registration">`Registration`</SymbolRef> values, an enum of `Factory` and `Hook`, so one type needs only one linker section.
+
+On Apple targets, or with the `hybrid-registry` feature, the macros emit `inventory` submissions instead. There each descriptor is wrapped in <SymbolRef path="upwell/DescriptorFor">`DescriptorFor<T, D>`</SymbolRef>, and <SymbolRef path="upwell/RegistryFor">`RegistryFor`</SymbolRef> supplies the per-type bucket that makes the wrapper collectable. The choice is made while the macro expands, so generated code never contains a feature `cfg`. See <GuideRef slug="framework/platforms/features-and-targets">Features and targets</GuideRef> for selecting the backend.
+
+### Discovery and explicit registration
+
+`auto_discover()` collects every `COMPONENTS` and `PROVIDERS` entry in the linked binary, sorted so construction order is the same on every target, and also enables config discovery. Explicit registration adds the same descriptors one at a time:
+
+| Builder call | Registers |
+|---|---|
+| `.component::<T>()` | the descriptor of a type with `Descriptor<ComponentDescriptor>`, which `#[component]` generates |
+| `.provider::<T>()` | every `provide = dyn Trait` mapping of `T` |
+| `.component_descriptor(&DESCRIPTOR)` | a hand-built `ComponentDescriptor` |
+| `.provider_descriptor(&DESCRIPTOR)` | a hand-built `ProviderDescriptor` |
+| `.with_component(value)` | an already-built instance of a `Component` |
+
+A type registered twice, for instance discovered and named explicitly, collapses to one descriptor. A pre-built instance from `with_component` overrides a factory-built descriptor for the same type. Registering `.component::<T>()` alone does not register `T`'s trait mappings; add `.provider::<T>()` for those.
+
+## The `Component` and `Injectable` contract
+
+Two traits separate what a type is from how it is held. <SymbolRef path="upwell/Component">`Component`</SymbolRef> supplies `ID`, `NAME`, an associated `Handle`, and `into_handle`. <SymbolRef path="upwell/Injectable">`Injectable`</SymbolRef> describes a handle: what it is keyed under, what the scope actually stores, and how to convert between the two.
+
+| Member | Meaning |
+|---|---|
+| `Target` | the type the value is stored and looked up under; a trait object for `Arc<dyn Trait>` |
+| `Stored` | the value in the scope's slot |
+| `into_stored` | called once, when a freshly built handle enters a scope |
+| `from_stored` | called on every resolution; it must be cheap |
+| `snapshot_stored` | creates storage for the same value in the next runtime generation; the default declines |
+
+`Arc<T>` and `Dep<T>` share one stored form, a swappable `Live<T>` cell. Resolving `Arc<T>` takes a fixed snapshot; resolving `Dep<T>` clones the cell, so a later reload swap is visible. Both are keyed under `T`, which is why one component can be injected either way. A by-value handle is its own slot, so `from_stored` is a plain clone.
+
+Snapshots matter at a reload. To keep a singleton across generations the runtime asks its handle for fresh storage with `snapshot_stored`. `Arc<T>` wraps the current instance in a new cell. A handle that keeps the default cannot be carried, and a transition that would retain it fails with `RestartRequired`. Opt in only when cloning cannot share mutable generation-local state with the old generation, which is why `Dep<T>` deliberately declines.
+
+<Example title="Wrap a type you cannot annotate">
+
+```rust
+use std::sync::Arc;
+use std::time::Instant;
+use upwell::axum::App;
+use upwell::prelude::*;
+
+struct StartedAt(Instant);
+```
+
+Implement `Component` for the wrapper. With `Arc<Self>` as the handle, the type is shared behind one allocation.
+
+```rust
+impl Component for StartedAt {
+    type Handle = Arc<Self>;
+
+    const ID: &'static str = "started-at";
+    const NAME: &'static str = "StartedAt";
+
+    fn into_handle(self) -> Self::Handle {
+        Arc::new(self)
+    }
+}
+```
+
+Register a value you built yourself. Consumers inject `Arc<StartedAt>` like any other component.
+
+```rust
+let app = App::builder("uptime")
+    .auto_discover()
+    .with_component(StartedAt(Instant::now()))
+    .build()
+    .await?;
+```
+
+</Example>
+
+A type that is already cheap to clone can be its own handle. Implement `Injectable` for it, with itself as `Target` and `Stored`, and opt into retention only if the clone shares nothing generation-local.
+
+<Example title="Store a cheap handle by value">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+
+#[derive(Clone)]
+struct Endpoint(Arc<str>);
+```
+
+The handle is the component. `into_handle` is the identity function.
+
+```rust
+impl Component for Endpoint {
+    type Handle = Self;
+
+    const ID: &'static str = "endpoint";
+    const NAME: &'static str = "Endpoint";
+
+    fn into_handle(self) -> Self::Handle {
+        self
+    }
+}
+```
+
+The slot holds the value itself, so storing and resolving are clones. Returning `Some` from `snapshot_stored` allows a reload to carry the value forward.
+
+```rust
+impl Injectable for Endpoint {
+    type Target = Endpoint;
+    type Stored = Self;
+
+    fn into_stored(self) -> Self {
+        self
+    }
+
+    fn from_stored(stored: &Self) -> Self {
+        stored.clone()
+    }
+
+    fn snapshot_stored(stored: &Self) -> Option<Self> {
+        Some(stored.clone())
+    }
+}
+```
+
+</Example>
+
+The same macro option exists as `#[component(by_value)]`, with `retainable` to add the snapshot. The framework's own seeded values, such as `RuntimeReloader`, `Dir<K>`, and `PeerInfo`, are written exactly like this.
+
+## Write a custom `FromContainer` parameter
+
+A factory is an async function whose parameters are all <SymbolRef path="upwell/FromContainer">`FromContainer`</SymbolRef>. Field injection and `#[init]` use the same trait, so a custom parameter works in both. An implementation supplies two things: the dependency edge the parameter contributes, which validation and ordering read, and an async function that resolves the value from a <SymbolRef path="upwell/ComponentConstructionContext">`ComponentConstructionContext`</SymbolRef>.
+
+The context offers `resolve` for one handle, `resolve_qualified`, `resolve_all` for every provider, and `resolve_keyed` for providers by qualifier. A factory may return the component or a `Result` of it; any `Error + Send + Sync` is accepted.
+
+<Example title="Inject the names of every notifier">
+
+```rust
+use std::sync::Arc;
+use upwell::prelude::*;
+use upwell::{Cardinality, ComponentConstructionContext, DependencyDescriptor, DiResult, FromContainer, dependency_of};
+
+#[injectable]
+trait Notifier: Send + Sync {
+    fn send(&self, message: &str);
+}
+
+struct NotifierNames(Vec<String>);
+```
+
+Report an edge that matches what `from_container` will request. A keyed edge is always satisfiable, so an application with no notifiers still builds.
+
+```rust
+impl FromContainer for NotifierNames {
+    fn dependency() -> DependencyDescriptor {
+        dependency_of::<dyn Notifier>(Cardinality::Keyed, false, false)
+    }
+
+    async fn from_container(cx: &ComponentConstructionContext) -> DiResult<Self> {
+        let keyed = cx.resolve_keyed::<Arc<dyn Notifier>>().await?;
+        let mut names: Vec<String> = keyed.into_keys().collect();
+
+        names.sort();
+
+        Ok(Self(names))
+    }
+}
+```
+
+Use the parameter anywhere a constructor takes dependencies.
+
+```rust
+#[component]
+struct Roster {
+    names: Vec<String>,
+}
+
+#[methods]
+impl Roster {
+    #[init]
+    fn new(names: NotifierNames) -> Self {
+        Self { names: names.0 }
+    }
+}
+```
+
+</Example>
+
+The built-in parameters are all implementations of this trait, which is a useful map of what each shape means:
+
+| Parameter | Edge it reports | How it resolves |
+|---|---|---|
+| `Arc<T>`, `Arc<dyn Trait>` | one value | the component, or the primary or sole provider, with a snapshot |
+| `Dep<T>` | one value, observed live | the same slot as `Arc<T>`, handed back as a shared cell |
+| `Option<Arc<T>>` | one optional value | the same lookup; absence is `None` |
+| `Vec<Arc<dyn Trait>>` | a collection | `resolve_all`; empty is valid |
+| `HashMap<String, Arc<dyn Trait>>` | a keyed collection | `resolve_keyed`; empty is valid |
+| `Dir<K>` and other by-value injectables | one value | any `Injectable` whose `Target` is itself resolves through a blanket impl |
+| `Cfg<T>` | a config edge, observed live | not the container: the config store, an external resolver, reached through the context |
+
+`Cfg<T>` shows how an extension lives outside the DI crate. It is `Injectable` with `T` as its `Target`, and the config crate implements `FromContainer` for it, flagging the edge as a config edge so the component graph skips it and the config layer validates it against bindings instead. The container itself never learns about configuration.
+
+## Compile-time wiring
+
+With the default `di-check` feature, a missing dependency can be a `cargo check` error instead of a startup failure. Three items make it work.
+
+- <SymbolRef path="upwell/Wiring">`Wiring`</SymbolRef> is an empty anchor type.
+- <SymbolRef path="upwell/Provide">`Provide<T>`</SymbolRef> is a marker. `Wiring: Provide<T>` holds when something provides `T`.
+- <SymbolRef path="upwell/Wired">`Wired`</SymbolRef> is implemented for a component only where `Wiring` provides every one of its dependencies.
+
+`#[component]` emits `impl Provide<Self> for Wiring` for itself and `#[injectable]` emits `impl Provide<dyn Trait> for Wiring` for the trait. A field-injected component asserts its concrete dependencies at its own definition. Router-class types (a service or a controller) assert the whole `Wired` bound, trait objects included, where they are defined. The `app!` macro asserts `Wired` for its listed services.
+
+A failure reads like this:
+
+```text
+error[E0277]: no component provides `StartedAt`
+  = note: add a component for `StartedAt`, or mark the dependency `Dynamic<StartedAt>` if it is provided at runtime
+```
+
+What `di-check` does not cover is as important. It checks that a type is provided, not that a trait has a provider or that the choice is unambiguous. A single `Arc<dyn Trait>` with no provider, or with several tied for it, is found when the application builds. Parameters of an `#[init]` or `factory =` constructor are likewise validated at build time rather than by the compiler.
+
+### Declare an externally provided dependency
+
+A value that no macro registers is invisible to `di-check`. That includes your own `with_component` instances and values a framework seeds. Tell the compiler it exists with a `Provide` impl. The type must be local, so the orphan rules allow it, and no `cfg` is needed because the traits always exist.
+
+<Example title="Provide a hand-registered component to the checker">
+
+```rust
+use std::sync::Arc;
+use std::time::Instant;
+use upwell::prelude::*;
+use upwell::{Provide, Wiring};
+
+struct StartedAt(Instant);
+
+impl Component for StartedAt {
+    type Handle = Arc<Self>;
+
+    const ID: &'static str = "started-at";
+    const NAME: &'static str = "StartedAt";
+
+    fn into_handle(self) -> Self::Handle {
+        Arc::new(self)
+    }
+}
+```
+
+Without the next line, the component below fails `cargo check` because no macro provides `StartedAt`.
+
+```rust
+impl Provide<StartedAt> for Wiring {}
+
+#[component]
+struct Uptime {
+    started: Arc<StartedAt>,
+}
+```
+
+</Example>
+
+The framework does the same for its seeded values: `RuntimeReloader`, `ShutdownHandle`, and every `Dir<K>` each declare a `Provide` impl beside their `Injectable` impl.
+
+Use `Dynamic<H>` when the value is supplied only at runtime by something outside the application, for example `Dynamic<Arc<Session>>` on a field. It wraps the handle, derefs to it, and marks the edge as exempt from both compile-time and build-time dependency validation. That exemption is the cost: nothing proves the value exists, so reserve it for values a protocol or framework truly provides later. It is not an optional dependency and does not reload.
+
+## Resolution order and scope containers
+
+At build, the registry validates the descriptors and then sorts each scope's components so every one is constructed after what it needs. Only an edge that is required, eager, non-config, and non-dynamic imposes order. An optional, lazy, deferred, or fresh edge does not. A trait dependency orders after the concrete components that can provide it. Break a genuine cycle with a delayed handle; the <GuideRef slug="framework/dependency-injection/advanced">advanced guide</GuideRef> covers `Lazy`, `Deferred`, and `Fresh`.
+
+A <SymbolRef path="upwell/ScopeContainer">`ScopeContainer`</SymbolRef> holds one scope's built values and an optional parent. The root container is the singleton scope. A protocol opens a child for each connection or request over its parent, seeding values that exist only there, such as the request metadata. Resolution tries the current scope first and then each parent, so a request handler sees request, connection, and singleton values uniformly. A transient component is never stored; it is rebuilt on every resolution.
+
+A scope has a stable ID and a rank, where a higher rank lives longer. A non-transient component may depend only on a scope it can reach, and a transient dependency is always allowed.
+
+| Scope | Provided by | Rank | Parent |
+|---|---|---|---|
+| `Singleton` | core | 255 | none |
+| `Connection` | RPC | 200 | root |
+| `Request` | RPC | 100 | `Connection` |
+| `WebsocketConnection` | axum with `ws` | 200 | root |
+| `WebsocketMessage` | axum with `ws` | 100 | `WebsocketConnection` |
+| `HttpRequest` | axum | 100 | root |
+| `Transient` | core | 0 | none; rebuilt per resolution |
+
+Equal ranks do not make scopes visible to each other. `HttpRequest` and `WebsocketMessage` both rank 100, but neither is an ancestor of the other. Validation uses the protocol's declared topology for ancestry.
+
+### Read a validation diagnostic
+
+| Message | Meaning and fix |
+|---|---|
+| `missing dependency for component 'X': Y` | no visible provider of `Y`. Register it, make the edge `Option`, or declare it `Dynamic` |
+| `ambiguous provider for 'T' ...: a, b tie for it` | several providers and no winner. Mark exactly one `#[primary]`, give distinct priorities, qualify the dependency, or inject `Vec` or `HashMap` |
+| `dependency cycle: no construction order for components: A, B` | the named components wait on each other through eager edges. Delay one side |
+| `scope violation: component 'A' (Singleton) depends on 'B' (HttpRequest), which is shorter-lived` | a longer-lived component captured a shorter-lived one. Move state into the shorter scope, or inject it per use |
+| `scope-unreachable dependency: ... only available in inaccessible scopes` | the provider exists but is in a sibling or descendant scope. The message lists them |
+| `duplicate component id: x` | two different types share an ID. Set `id =` on one |
+| `multiple explicit constructors registered for component type: T` | two registrations for one type with different IDs |
+| `ambiguous factory for component 'X'` | more than one `#[init]` or `factory =`. Keep one |
+| `duplicate provider qualifier 'q' for trait ...` | two providers of a trait share a qualifier in one scope. Rename one |
+
+Errors name components by display name or stable ID. The same IDs appear in `cargo upwell` output, as described in <GuideRef slug="cargo-upwell/cli/inspect-and-graph">Inspect and query an application</GuideRef>.
+
+## Hand-built descriptors
+
+The descriptors the macros generate can be declared by hand with `const` builders. Use them in a plugin that cannot rely on macros, or when a type is built elsewhere. The pieces are:
+
+- `ComponentDescriptor::of::<T>()`, taking the ID and name from `T: Component`, with `with_factories`, `with_scope`, `with_condition`, `with_hooks`, and `without_retention`.
+- `factories!`, which turns async functions into the factory list. A bare `path` is named `factory:<path>`, and `"id" => path` sets the name. Several entries need exactly one explicit choice, written `default "id" => path`.
+- `ProviderDescriptor::of::<T, dyn Trait>("dyn Trait")`, which requires an `impl ProviderOf<dyn Trait> for T`, with `primary`, `qualifier`, `priority`, and `ordering`.
+
+A factory's parameters are its dependencies, so the edges come from the signature rather than from anything you write twice.
+
+<Example title="Register a provider and its consumer without macros">
+
+```rust
+use std::sync::Arc;
+use upwell::axum::App;
+use upwell::prelude::*;
+use upwell::{ComponentDescriptor, ProviderDescriptor, ProviderOf, factories};
+
+trait Greeter: Send + Sync {
+    fn greet(&self) -> &'static str;
+}
+
+struct English;
+
+impl Greeter for English {
+    fn greet(&self) -> &'static str {
+        "hello"
+    }
+}
+```
+
+Give the implementation a component identity, and say how to upcast it to the trait object.
+
+```rust
+impl Component for English {
+    type Handle = Arc<Self>;
+
+    const ID: &'static str = "english";
+    const NAME: &'static str = "English";
+
+    fn into_handle(self) -> Self::Handle {
+        Arc::new(self)
+    }
+}
+
+impl ProviderOf<dyn Greeter> for English {
+    fn upcast(this: Arc<Self>) -> Arc<dyn Greeter> {
+        this
+    }
+}
+```
+
+Describe how to build it, then map it to the trait as the primary provider.
+
+```rust
+async fn english() -> English {
+    English
+}
+
+static ENGLISH: ComponentDescriptor =
+    ComponentDescriptor::of::<English>().with_factories(factories![english]);
+static ENGLISH_GREETER: ProviderDescriptor =
+    ProviderDescriptor::of::<English, dyn Greeter>("dyn Greeter").primary();
+```
+
+A consumer declares its dependency as a factory parameter.
+
+```rust
+struct Welcome {
+    greeter: Arc<dyn Greeter>,
+}
+
+impl Welcome {
+    fn text(&self) -> &'static str {
+        self.greeter.greet()
+    }
+}
+
+impl Component for Welcome {
+    type Handle = Arc<Self>;
+
+    const ID: &'static str = "welcome";
+    const NAME: &'static str = "Welcome";
+
+    fn into_handle(self) -> Self::Handle {
+        Arc::new(self)
+    }
+}
+
+async fn welcome(greeter: Arc<dyn Greeter>) -> Welcome {
+    Welcome { greeter }
+}
+
+static WELCOME: ComponentDescriptor =
+    ComponentDescriptor::of::<Welcome>().with_factories(factories![welcome]);
+```
+
+Register the descriptors with the builder. No `auto_discover()` is needed for them.
+
+```rust
+let app = App::builder("greeter")
+    .component_descriptor(&ENGLISH)
+    .provider_descriptor(&ENGLISH_GREETER)
+    .component_descriptor(&WELCOME)
+    .build()
+    .await?;
+```
+
+</Example>
+
+A plugin contributes the same descriptors through `PluginContributions::component_descriptor` and `provider`, each under its own contribution ID; see <GuideRef slug="framework/extensions/plugins">Compose plugins</GuideRef>.
+
+A component built with `of` is retainable across a reload. Call `without_retention()` to force a rebuild every time while keeping live consumers rebindable. A descriptor registered with `with_component` is a raw instance with no snapshot adapter, so a transition that would keep it requires a restart. Prefer a descriptor with a factory when the value should survive reloads.
+
+Hooks and conditions attach through `with_hooks` and `with_condition`. A hook is itself a hand-buildable descriptor, but writing one by hand is rarely worth the call plumbing; keep hooks on `#[methods]` and reserve hand-built descriptors for components and providers.
+
+## Reference pages
+
+- <SymbolRef path="upwell/Component">`Component`</SymbolRef> and <SymbolRef path="upwell/Injectable">`Injectable`</SymbolRef>
+- <SymbolRef path="upwell/FromContainer">`FromContainer`</SymbolRef>
+- <SymbolRef path="upwell/ComponentDescriptor">`ComponentDescriptor`</SymbolRef> and <SymbolRef path="upwell/ProviderDescriptor">`ProviderDescriptor`</SymbolRef>
+- <SymbolRef path="upwell/Provide">`Provide`</SymbolRef>, <SymbolRef path="upwell/Wired">`Wired`</SymbolRef>, and <SymbolRef path="upwell/Wiring">`Wiring`</SymbolRef>
+- <SymbolRef path="upwell/ScopeContainer">`ScopeContainer`</SymbolRef> and <SymbolRef path="upwell/topological_sort">`topological_sort`</SymbolRef>
