@@ -21,6 +21,7 @@ This section owns framework component construction and provider selection. Trans
 | select qualified providers, collections, non-singleton lifetimes, live values, or delayed resolution | <GuideRef slug="framework/dependency-injection/advanced">Advanced dependency injection</GuideRef> |
 | wrap a type the macros cannot annotate, write a custom injectable parameter, read a wiring or scope error, or register descriptors by hand | <GuideRef slug="framework/dependency-injection/container-model">The container model</GuideRef> |
 | enable a component or provider only while configuration or another component allows it | <GuideRef slug="framework/dependency-injection/conditions">Conditional components</GuideRef> |
+| predict how components move across a reload, or carry state with `#[replace]`, `#[transition]`, or `#[hot_update]` | <GuideRef slug="framework/dependency-injection/transition-strategies">Component transition strategies</GuideRef> |
 
 ## Shared prerequisites
 

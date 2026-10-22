@@ -1,0 +1,292 @@
+---
+title: Component transition strategies
+description: Predict whether a component keeps its instance, is rebuilt, or carries state when a reload changes configuration or provider eligibility.
+order: 40
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Example, GuideRef } from '#lib/docs';
+</script>
+
+# Component transition strategies
+
+A <GuideRef slug="framework/configuration/reload">configuration reload</GuideRef> can change which components are eligible and what they depend on. When that happens, the runtime moves affected singleton components into a new generation. Each component does so with one strategy, and the strategy decides whether its in-memory state survives.
+
+Most components need no declaration. Choose the handle you inject and the runtime does the rest; declare a recipe only when a component must carry state or customize how it is rebuilt.
+
+## The strategies
+
+| Strategy | Declared by | Instance afterwards | Retires the old instance |
+|---|---|---|---|
+| Retain | nothing | the same instance | no |
+| Live rebind | injecting `Dep<T>` | the same instance | no |
+| Hot update | `#[hot_update]` | the same instance | no |
+| Transition handler | `#[transition]` | a new instance | yes |
+| Replacement | `#[replace]` | a new instance | yes |
+| Reconstruct | the ordinary factory | a new instance | yes |
+
+- **Retain** keeps components that the reload does not affect.
+- **Live rebind** keeps a consumer whose only changes are in `Dep<T>` dependencies. The commit republishes each live cell with the candidate value, and the consumer sees it on its next read.
+- **Hot update** keeps the instance and applies an owned update to it at commit.
+- **Transition handler** inspects the planned change and picks a one-shot factory for this transition, or declines.
+- **Replacement** builds a new instance from an immutable `Previous<Self>` snapshot of the active one.
+- **Reconstruct** runs the ordinary factory again.
+
+The framework never guesses whether mutating an instance is safe, so every strategy that runs component code against a changed instance must be declared by the component.
+
+## How the runtime chooses
+
+For each affected singleton, the runtime applies the first rule that fits:
+
+1. An unaffected component is retained.
+2. A component whose changes are all live `Dep<T>` bindings that can rebind in place keeps its instance and is rebound.
+3. Otherwise the first declared recipe wins, in this order: hot update, transition handler, replacement. A hot update applies only while the component's identity, factory and dependency contract are unchanged. A handler that declines falls through to the replacement recipe or reconstruction.
+4. With no recipe, the component is reconstructed with its ordinary factory.
+5. A component that is newly eligible is constructed; one that is no longer eligible is removed.
+
+A live rebind needs a single, eagerly resolved dependency on a singleton component or provider mapping. When a `Dep<T>` consumer cannot rebind in place, it falls back to the next rule and is constructed again.
+
+## Choose the handle that matches the contract
+
+How a consumer injects a changing provider decides its strategy. The conditional example switches an `Authenticator` provider on `auth.mode`; three consumers show the common outcomes. The complete, runnable version lives in `examples/conditional` of the framework repository.
+
+<Example title="The switching provider and two of its consumers">
+
+```rust
+use std::sync::Arc;
+use upwell::{Dep, component, injectable};
+
+#[injectable]
+pub trait Authenticator: Send + Sync {
+    fn scheme(&self) -> &'static str;
+    fn accepts(&self, token: &str) -> bool;
+}
+```
+
+Two providers implement it. The default is unconditional; the custom one is primary only while `auth.mode` is `custom`, so changing the config value flips which provider is eligible.
+
+```rust
+use serde::Deserialize;
+use upwell::{config, when};
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMode {
+    Default,
+    Custom,
+}
+
+#[derive(Deserialize)]
+#[config(path = "auth")]
+pub struct AuthConfig {
+    pub mode: AuthMode,
+    pub max_sessions: usize,
+}
+
+#[component(provide = dyn Authenticator)]
+pub struct DefaultAuthenticator;
+
+#[component(provide = dyn Authenticator, primary)]
+#[when(AuthConfig.mode == AuthMode::Custom)]
+pub struct CustomAuthenticator;
+```
+
+Both providers also implement `Authenticator`; the trait bodies are in the example crate.
+
+`LoginGate` holds a live handle. A provider switch rebinds it in place, so the gate instance survives every reload.
+
+```rust
+#[component]
+pub struct LoginGate {
+    authenticator: Dep<dyn Authenticator>,
+}
+
+impl LoginGate {
+    pub fn login(&self, token: &str) -> Option<&'static str> {
+        let authenticator = self.authenticator.get();
+
+        authenticator.accepts(token).then(|| authenticator.scheme())
+    }
+}
+```
+
+`AuthBanner` captured a fixed `Arc<dyn Authenticator>` at construction. Nothing can swap that field, so the runtime reconstructs the banner with its ordinary factory.
+
+```rust
+#[component]
+pub struct AuthBanner {
+    authenticator: Arc<dyn Authenticator>,
+}
+
+impl AuthBanner {
+    pub fn text(&self) -> String {
+        format!("signed in with the {} scheme", self.authenticator.scheme())
+    }
+}
+```
+
+</Example>
+
+Inject `Dep<dyn T>` when the consumer should keep its instance and read the current provider on each call. Inject `Arc<dyn T>` when the consumer is built around one provider; it is then reconstructed, along with every fixed dependent that holds it. See <GuideRef slug="framework/dependency-injection/advanced">Advanced dependency injection</GuideRef> for the handle types themselves.
+
+## Carry state with `Previous<Self>`
+
+Reconstruction starts from a blank instance. `SessionLedger`, the third consumer, holds state that must outlive the switch, so it declares a `#[replace]` recipe in its `#[methods]` block. Its first parameter must be `Previous<Self>`, the immutable snapshot of the active instance; the remaining parameters are injected from the candidate generation, and must be a subset of the dependencies the ordinary factory declares.
+
+<Example title="Carry open sessions into the replacement">
+
+```rust
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use upwell::{Cfg, Previous, component, methods};
+```
+
+`AuthConfig` is the configuration section declared above. Define the error the recipe can fail with. Any type that implements `std::error::Error + Send + Sync + 'static` works; a non-`Send` error does not compile.
+
+```rust
+#[derive(Debug)]
+pub struct SessionLimitExceeded {
+    pub sessions: usize,
+    pub limit: usize,
+}
+
+impl std::fmt::Display for SessionLimitExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} open sessions exceed the new limit of {}", self.sessions, self.limit)
+    }
+}
+
+impl std::error::Error for SessionLimitExceeded {}
+```
+
+Declare the ledger with an ordinary initializer for first construction and a replacement for every later switch.
+
+```rust
+#[component]
+pub struct SessionLedger {
+    authenticator: Arc<dyn Authenticator>,
+    #[default]
+    limit: usize,
+    #[default]
+    sessions: AtomicUsize,
+}
+
+impl SessionLedger {
+    pub fn sessions(&self) -> usize {
+        self.sessions.load(Ordering::SeqCst)
+    }
+}
+
+#[methods]
+impl SessionLedger {
+    #[init]
+    fn new(authenticator: Arc<dyn Authenticator>, auth: Cfg<AuthConfig>) -> Self {
+        Self {
+            authenticator,
+            limit: auth.snapshot().max_sessions,
+            sessions: AtomicUsize::new(0),
+        }
+    }
+
+    #[replace]
+    fn carry(
+        previous: Previous<Self>,
+        authenticator: Arc<dyn Authenticator>,
+        auth: Cfg<AuthConfig>,
+    ) -> Result<Self, SessionLimitExceeded> {
+        let sessions = previous.sessions();
+        let limit = auth.snapshot().max_sessions;
+
+        if sessions > limit {
+            return Err(SessionLimitExceeded { sessions, limit });
+        }
+
+        Ok(Self {
+            authenticator,
+            limit,
+            sessions: AtomicUsize::new(sessions),
+        })
+    }
+}
+```
+
+</Example>
+
+The recipe returns either `Self` or a `Result`. Here it refuses to carry more sessions than the new limit allows, which rejects the whole reload; the next section shows what that means.
+
+### Other recipes
+
+- `#[hot_update]` keeps the instance. Its first parameter is `Previous<Self>`; it returns `HotUpdate<Self>` or `Result<HotUpdate<Self>, E>`. Do the fallible work while preparing, and move the result into `HotUpdate::new(|component: &Self| { ... })`, which runs at commit and cannot fail. Only components stored as `Arc<Self>` can declare one, so it fits the default component shape but not a by-value component.
+- `#[transition]` is a synchronous method that takes `&ComponentChange` and returns `Option<OneShot<Self>>`. It chooses a one-shot factory for this transition only, or returns `None` to decline. The one-shot factory can read `Previous<Self>` but, like every recipe, may resolve only the dependencies the ordinary factory declares.
+
+Every recipe needs an ordinary factory to go with it (`#[init]` or the field-injection default); otherwise registry validation fails with `upwell_di::Error::TransitionRecipeWithoutFactory`. A recipe parameter the ordinary factory does not declare fails the transition with `UndeclaredTransitionDependency`, so declare the dependency on the ordinary factory as well.
+
+A method carries at most one of `#[init]`, `#[replace]`, `#[transition]` and `#[hot_update]`, and a component declares at most one recipe of each kind.
+
+## Failure rolls back everything
+
+All fallible work finishes before the new generation is published: planning, every factory, replacement, handler and one-shot factory, every hot-update and live-rebind preparation, and the reload and transition hooks. The publication itself cannot fail.
+
+If any of that work returns an error, panics, is rejected by a hook, or the reload future is dropped, nothing is applied:
+
+- the active generation, its instances and its configuration stay as they were;
+- every instance built for the attempt is dropped with the candidate;
+- prepared live rebinds never touch their cells, and prepared hot-update actions are discarded unapplied;
+- the reload lock is released, so the next reload runs normally.
+
+In the example above, a reload that switches the provider while the ledger holds more sessions than the new `auth.max_sessions` fails, and `LoginGate`, `AuthBanner` and the ledger all keep their old instances. Panics in recipe code are contained and reported by category rather than payload.
+
+Rollback covers framework-owned state only. Mutations made through retained dependencies are visible immediately, and external side effects such as I/O or messages are the application's responsibility. The one exception to "nothing runs after publication" is a hot-update action that panics while being applied: it is contained and traced, and the publication still completes.
+
+## Scope restrictions
+
+Transitions move singleton instances only. Recipes are singleton-only: declaring any of them on a component with a non-singleton `scope` is a compile error, and a hand-built descriptor that does so fails registry validation with `upwell_di::Error::TransitionRecipeOutOfScope`. A `#[replace]` or `#[hot_update]` whose first parameter is not `Previous<Self>` is also a compile error.
+
+Request-, connection-, custom-scoped and transient components have no instance in the root, so a reload replans them instead. The planner still reports the change, but it needs no strategy and the component is built on its next opening from the new generation. Scopes that are already open keep resolving from the generation they pinned until they close; nothing migrates an open scope and the reload never waits for one.
+
+Unsupported requests fail with `RestartRequired` before anything is constructed. Examples are a recipe the component did not declare, a hot update whose contract changed, and a pre-built instance with no transition contract.
+
+## Cost
+
+A live rebind publishes into an existing slot with one atomic swap that every `Dep<T>` holder sees on its next read. The consumer and its dependents keep their instances, so nothing downstream is planned or constructed.
+
+A reconstruction runs the factory again in a new candidate root, and every fixed dependent that holds the old instance must be reconstructed too. The cost grows with the size of that dependent closure, not with the one component that changed. The framework's benchmarks measured a rebound slot at about 70 ns, against roughly 0.3 microseconds of framework overhead per constructed component plus its factory body and about 3 microseconds of planning per component in the closure. Prefer `Dep<T>` for dependencies that change at runtime and have many dependents.
+
+A reload that leaves every component's eligibility unchanged shares the previous generation's effective graph instead of rebuilding it.
+
+## Generations and retirement
+
+Each committed generation has a stable `RuntimeGenerationId`, and every reload attempt has a `TransitionAttemptId`. Every singleton the commit constructs again or removes is displaced and receives the `ComponentRetired` hook. `Dep<T>` is an alias of `Live<T>`, so the live rebind described above applies to either name; the prepared republication behind it is `LiveRebind`, an internal type you never construct. Retained, rebound-in-place and hot-updated instances are never displaced; a rebound component that had to be constructed again is displaced like any other.
+
+Displacement is logical. A pinned `RuntimeView`, an open scope, or any other holder of the old root keeps that generation's instances alive and usable. `Previous<Self>` and retained handles are shared `Arc`s, never mutable aliases. When the last holder lets go, the old root drops with its retired instances and a `displaced runtime generation released` event is traced on `upwell::transition`. `AppRuntime::displaced_generations()` lists the `DisplacedGeneration` entries still waiting to be released. Each has the displaced `generation`, the `attempt` whose commit displaced it, and the `displaced_at` instant. The generation ID type is not re-exported from `upwell`; read it from the entry rather than naming it.
+
+### React to retirement
+
+Declare a `ComponentRetired` hook on the component to learn it was displaced. The hook's `&self` is the displaced instance, and a `ComponentRetirement` parameter carries the `RetirementReason` (`Replaced` when a new instance was built, `Removed` when the component left the generation), the attempt and both generation IDs.
+
+```rust
+use upwell::{ComponentRetired, ComponentRetirement, methods};
+
+#[methods]
+impl CustomAuthenticator {
+    #[hook(ComponentRetired)]
+    async fn retired(&self, retirement: ComponentRetirement) {
+        self.stop_accepting_new_sessions();
+    }
+}
+```
+
+The hook must leave the instance usable. Pinned views, open scopes and other holders can keep reading it, so stop taking new work or schedule cleanup rather than invalidating state. A failing hook is traced and never affects the published generation.
+
+## Preview a transition
+
+Use the `cargo upwell` probe to see which strategy a change would select without applying it:
+
+```sh
+cargo upwell explain 'dyn my_app::Authenticator' --set auth.mode=default
+```
+
+It runs the same stage, evaluate and plan steps as a reload against the proposed configuration and stops before construction. It reports each affected component's action and chosen strategy and the components a commit would displace. Trusted condition callbacks are not run, so a component they gate shows as not evaluated.
+
+See also <GuideRef slug="framework/configuration/reload">Configuration reload</GuideRef> for the reload trigger and transaction.
