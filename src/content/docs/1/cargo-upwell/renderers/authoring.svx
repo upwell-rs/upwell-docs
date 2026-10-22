@@ -58,6 +58,7 @@ Copy or reference that file in the guest project and use the language's Componen
 The framework repository does not contain a renderer guest fixture, so this workflow pins the standard Rust Component Model toolchain used to validate the example: Rust `1.99.0`, `wit-bindgen` `0.57.1`, `dlmalloc` `0.2.14`, `wasm-tools` `1.247.0`, and `wasm32-unknown-unknown`. The guest is `no_std` so the result has no WASI imports.
 
 A `no_std` guest that formats strings or builds vectors needs an explicit `#[global_allocator]`, because `alloc` has no default. Choose an allocator that is actively maintained, has no open RustSec advisory, and builds for `wasm32-unknown-unknown` without WASI. The example uses `dlmalloc`, the allocator behind the Rust standard library on Wasm. Do not use `wee_alloc`: it is unmaintained (RUSTSEC-2022-0054), has no patched version, and `cargo audit` and `cargo deny` flag it.
+
 Create this manifest:
 
 ```toml
