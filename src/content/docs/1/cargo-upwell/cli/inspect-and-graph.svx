@@ -49,6 +49,78 @@ cargo upwell explain plugin:acme/http --format json
 
 Use `--color never --pager never` when saving a readable inspection transcript. `inspect --format json` is different: it emits the complete, unfiltered canonical document and therefore rejects inspection filters.
 
+## Preview a configuration change
+
+Use `explain --set PATH=VALUE` before changing configuration when you want to know what a reload would do to the component graph. The probe merges your assignments above every configuration source, stages the bindings they change, re-evaluates conditions, and resolves the same transition plan a runtime reload would use. It stops before construction, so nothing is built, no hook runs, and nothing is written.
+
+<Example title="Preview switching an authenticator provider">
+
+```sh
+cargo upwell explain 'dyn my_app::Authenticator' --set auth.mode=default
+```
+
+Repeat `--set` to propose several assignments. Later assignments win:
+
+```sh
+cargo upwell explain 'dyn my_app::Authenticator' \
+  --set auth.mode=default \
+  --set auth.max_sessions=50
+```
+
+</Example>
+
+`PATH` is a dot-separated property path of `[A-Za-z0-9_-]` segments. `VALUE` is split at the first `=` and read by the application as `true` or `false`, a number, a `"quoted string"`, or bare text. A malformed assignment is rejected as command misuse before anything is built.
+
+The text output gains a `Transition Preview` section, after the `Provider Selection` section that explains which provider mappings are effective and why:
+
+| Line | Meaning |
+|---|---|
+| `assignments` | The property paths you proposed, in order. Values are never echoed. |
+| `outcome` | `planned` publishes a new generation, `no_op` changes nothing, and `rejected at <phase> (<category>)` keeps the active generation. The phase is `stage`, `evaluate`, or `plan`. |
+| `evaluation` | `complete` when every condition was decided, `partial` when a trusted callback left some undecided. |
+| `changed` | Bindings whose value the change alters, by path and type name. |
+| `eligibility` | Conditional components whose condition flips, as `before -> after` using `holds`, `fails`, or `not_evaluated`. |
+| component lines | Each affected component with its planner action (`retain`, `rebind_live`, `replace`, `add`, or `remove`), its role, and the strategy the runtime would apply. A `*` marks the component you explained. |
+| reason lines | Why the planner requires the action, such as `dependency_target_changed` or `runtime_invalidated`, with the dependency demands crossed as `consumer#ordinal (requested type)`. |
+| `displaced` | Singletons a commit would retire, in retirement order. |
+
+To see the `*` marker, explain a component resource. The marker appears only when the explained resource ID is `component:<id>`; a trait type such as `'dyn my_app::Authenticator'` never shows one. With a component ID the output looks like this (identifiers are illustrative):
+
+```text
+Transition Preview
+  assignments: auth.mode
+  outcome: planned
+  evaluation: complete
+  changed auth (my_app::AuthConfig)
+  eligibility my_app::PasswordAuth: holds -> fails
+ *replace my_app::PasswordAuth [singleton] strategy=replace
+  add my_app::TokenAuth [singleton] strategy=reconstruct
+```
+
+The strategy is `retain`, `reconstruct`, `replace`, `transition`, or `hot_update`, or `none` when the plan carries no strategy. Read the planned action first, then the strategy that carries it out, then the reasons to find which dependency demand pulled the component in.
+
+Request the structured form when a program or review tool consumes the result:
+
+```sh
+cargo upwell explain 'dyn my_app::Authenticator' --set auth.mode=default --format json
+```
+
+The JSON explanation carries the preview under `transition`, and only when you passed `--set`. Programmatic callers receive it as the probe document's `transition_preview`; see the <GuideRef slug="cargo-upwell/programmatic-api/discovery-and-probes" fragment="preview-a-config-change">programmatic probe guide</GuideRef>.
+
+### What a preview cannot predict
+
+A preview is a plan, not a dry run of your application code:
+
+- No factory, hook, or trusted condition callback runs. A component gated by a trusted callback is reported as `not_evaluated`, the evaluation is `partial`, and its component is left out of the proposed graph.
+- Scoped and transient components are replanned rather than transitioned, so they appear without a strategy, as do removed components.
+- Previews carry paths, type names, and stable IDs, never configuration values. A value that fails to deserialize is reported as a `config_bind` rejection naming the binding path and type.
+- A change that cannot apply in place is reported as `restart_required` with the component and the runtime's reason.
+- It predicts structure, not outcomes of your own code. A replacement or transition handler that fails when it runs will not be visible here.
+
+Preview needs framework support in the target app. The request reaches the app through the `UPWELL_TOOLING_PROBE_TRANSITION_PREVIEW` environment variable, so an app built against an older framework silently produces no `Transition Preview` section and no `transition` field. Rebuild the app against a supporting version first.
+
+Preview works through `explain` only. `inspect`, `graph`, and `export` do not accept `--set`.
+
 ## Trace a relationship
 
 Once you know a stable ID, ask for the relationships around it. Choose `text` while deciding what to follow, then switch to a graph format for a diagram or downstream processing.
@@ -100,6 +172,8 @@ cargo upwell export \
 ```
 
 </Example>
+
+The document also carries conditional metadata (condition resources that gate components, and provider candidates labelled with whether the effective graph includes them) and the JSON Schema of every bound configuration type. The whole tree schema is under the document facet `framework/config-schema`, and each config binding resource carries its own schema in a `<binding resource id>/config-schema` facet.
 
 `document` succeeds only with a valid probe and produces the same bytes as `inspect --format json`. `envelope` can still write a valid probe envelope on failure. Choose `document` when downstream work must stop without a document, and `envelope` when the failure itself is an artifact. The <GuideRef slug="cargo-upwell/cli/automation-and-completions" fragment="automate-validation">automation guide</GuideRef> explains how to handle nonzero exit statuses while retaining structured output.
 
