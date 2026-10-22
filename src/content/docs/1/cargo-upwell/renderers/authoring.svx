@@ -55,7 +55,9 @@ Copy or reference that file in the guest project and use the language's Componen
 
 ## Implement the minimal guest
 
-The framework repository does not contain a renderer guest fixture, so this workflow pins the standard Rust Component Model toolchain used to validate the example: Rust `1.97.1`, `wit-bindgen` `0.57.1`, `wasm-tools` `1.247.0`, and `wasm32-unknown-unknown`. The guest is `no_std` so the result has no WASI imports.
+The framework repository does not contain a renderer guest fixture, so this workflow pins the standard Rust Component Model toolchain used to validate the example: Rust `1.99.0`, `wit-bindgen` `0.57.1`, `dlmalloc` `0.2.14`, `wasm-tools` `1.247.0`, and `wasm32-unknown-unknown`. The guest is `no_std` so the result has no WASI imports.
+
+A `no_std` guest that formats strings or builds vectors needs an explicit `#[global_allocator]`, because `alloc` has no default. Choose an allocator that is actively maintained, has no open RustSec advisory, and builds for `wasm32-unknown-unknown` without WASI. The example uses `dlmalloc`, the allocator behind the Rust standard library on Wasm. Do not use `wee_alloc`: it is unmaintained (RUSTSEC-2022-0054), has no patched version, and `cargo audit` and `cargo deny` flag it.
 
 Create this manifest:
 
@@ -70,7 +72,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wit-bindgen = { version = "=0.57.1", default-features = false, features = ["macros", "realloc"] }
-wee_alloc = "=0.4.5"
+dlmalloc = { version = "=0.2.14", default-features = false, features = ["global"] }
 
 [profile.release]
 lto = true
@@ -87,7 +89,7 @@ Place the exact contract above at `wit/renderer.wit`, then implement `src/lib.rs
 extern crate alloc;
 
 #[global_allocator]
-static ALLOCATOR: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+static ALLOCATOR: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
 
 mod bindings {
     wit_bindgen::generate!({
@@ -142,11 +144,11 @@ The guest accepts only `inspect`, treats the command projection as canonical UTF
 Build and inspect the component with the pinned commands:
 
 ```sh
-rustup toolchain install 1.97.1 --target wasm32-unknown-unknown
+rustup toolchain install 1.99.0 --target wasm32-unknown-unknown
 cargo install --locked wasm-tools --version 1.247.0
 
-cargo +1.97.1 generate-lockfile
-cargo +1.97.1 build --locked --release --target wasm32-unknown-unknown
+cargo +1.99.0 generate-lockfile
+cargo +1.99.0 build --locked --release --target wasm32-unknown-unknown
 
 mkdir -p components
 
@@ -157,13 +159,31 @@ wasm-tools component new \
 wasm-tools component wit components/summary.component.wasm
 ```
 
-`wit-bindgen` emits the component type and canonical ABI around `render`; `wasm-tools component new` packages that core Wasm into the component artifact the catalog registers. Inspect the packaged component, not the core module. The inspection output must have no `import` lines and must include:
+`wit-bindgen` emits the component type and canonical ABI around `render`; `wasm-tools component new` packages that core Wasm into the component artifact the catalog registers. Inspect the packaged component, not the core module. The inspection output must have no `import` lines and must end with the exported `render` function. With the pinned tools it prints the world as `root:component` with the two records inlined:
 
 ```text
-package upwell:renderer@0.1.0 {
-  world renderer {
-    export render: func(request: render-request) -> result<render-response, string>;
+package root:component;
+
+world root {
+  record render-request {
+    abi-version: string,
+    command: string,
+    format: string,
+    media-type: string,
+    tooling-schema: string,
+    resources: list<string>,
+    color: bool,
+    payload: list<u8>,
   }
+
+  record render-response {
+    format: string,
+    media-type: string,
+    resources: list<string>,
+    body: list<u8>,
+  }
+
+  export render: func(request: render-request) -> result<render-response, string>;
 }
 ```
 
