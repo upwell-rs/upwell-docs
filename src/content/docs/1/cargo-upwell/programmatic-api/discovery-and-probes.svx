@@ -137,7 +137,7 @@ let probe = run_probe_with_options(&request, &cancellation, options)?;
 
 </Example>
 
-The preview is part of the validated document. Read it from `ToolingDocument::transition_preview`, which is `None` unless you requested one, after the same envelope checks as any other probe:
+The preview travels in the canonical document. Read it from `ToolingDocument::transition_preview`, which is `None` unless you requested one. `validate()` covers the envelope and the document's resources, relationships, and facets, but it does not inspect the preview. The preview is decoded by serde, so unknown or missing fields fail at `from_json`, yet its component IDs and enum values are not cross-checked. Treat it as advisory, and match `components[].component` against `document.resources` (resource ID `component:<id>`) if you need that guarantee:
 
 ```rust plain
 use upwell_tooling_schema::{PreviewOutcome, ProbeOutcome};
@@ -169,6 +169,8 @@ if let Some(preview) = &document.transition_preview {
 ```
 
 `TransitionPreview` has these fields: `assignments` (paths only), a flattened `outcome`, `evaluation` (`Complete` or `Partial`), `changed` bindings, `eligibility` changes, `components`, and `displaced` singleton IDs. Each `PreviewComponent` has `component`, an optional `factory`, a `role`, an `action`, an optional `strategy`, and `reasons`. `EligibilityChange` holds a component ID with `before` and `after` condition outcomes. `PreviewOutcome`, the phase, failure, role, action, and strategy enums are `#[non_exhaustive]`, so keep a wildcard arm. On the wire the outcome is an `outcome` tag beside the other fields, and enum values use snake case such as `no_op` and `rebind_live`.
+
+Compatibility: the request reaches the target app only through the `UPWELL_TOOLING_PROBE_TRANSITION_PREVIEW` environment variable, and the app must be rebuilt against a framework version that supports previews. An app on an older framework ignores the request without an error, so the document has no `transition_preview` and an explanation has no `transition`. Do not read that absence as "nothing would change"; compare it with `PreviewOutcome::NoOp`.
 
 The preview never contains config values, and it runs no factory, hook, or trusted condition callback. Replanned scoped and transient components, and removed components, carry no strategy. See <GuideRef slug="cargo-upwell/cli/inspect-and-graph" fragment="what-a-preview-cannot-predict">what a preview cannot predict</GuideRef>.
 
@@ -207,15 +209,20 @@ if let Some(facet) = document.facets.get(CONFIG_SCHEMA_FACET) {
 
 Declared `#[config]` types contribute fields, docs, defaults, and sources. Other bound types contribute the shape traced from their `Deserialize` implementation. Bindings created with `ConfigBinding::of::<T>(path)` fill in `describe` for you.
 
-A `ConfigBinding` built field by field must supply `describe: fn() -> upwell::schema::ValueSchema`. Return `ValueSchema::Any` when the shape is unknown, or `upwell::schema::trace::<T>()` to trace a `Deserialize` type. `ValueSchema` is `#[non_exhaustive]`.
+A `ConfigBinding` built field by field, with a struct literal, must supply `describe: fn() -> upwell::schema::ValueSchema`. Return `ValueSchema::Any` when the shape is unknown, or `upwell::schema::trace::<T>` to trace a `Deserialize` type. `ValueSchema` is `#[non_exhaustive]`. Do not overwrite `describe` on a binding from `ConfigBinding::of`: `of` supplies the richer shape with fields, docs, defaults, and sources, and a traced replacement drops that metadata.
 
 ```rust plain
 use upwell::ConfigBinding;
-use upwell::schema::{ValueSchema, trace};
+use upwell::schema::trace;
 
-let mut binding = ConfigBinding::of::<Limits>("limits");
-
-binding.describe = trace::<Limits>;
+let binding = ConfigBinding {
+    ty,
+    path: String::from("limits"),
+    bind,
+    slot,
+    defaults,
+    describe: trace::<Limits>,
+};
 ```
 
 ## Query the canonical graph

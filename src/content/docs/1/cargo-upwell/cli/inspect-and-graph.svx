@@ -84,6 +84,19 @@ The text output gains a `Transition Preview` section, after the `Provider Select
 | reason lines | Why the planner requires the action, such as `dependency_target_changed` or `runtime_invalidated`, with the dependency demands crossed as `consumer#ordinal (requested type)`. |
 | `displaced` | Singletons a commit would retire, in retirement order. |
 
+To see the `*` marker, explain a component resource. The marker appears only when the explained resource ID is `component:<id>`; a trait type such as `'dyn my_app::Authenticator'` never shows one. With a component ID the output looks like this (identifiers are illustrative):
+
+```text
+Transition Preview
+  assignments: auth.mode
+  outcome: planned
+  evaluation: complete
+  changed auth (my_app::AuthConfig)
+  eligibility my_app::PasswordAuth: holds -> fails
+ *replace my_app::PasswordAuth [singleton] strategy=replace
+  add my_app::TokenAuth [singleton] strategy=reconstruct
+```
+
 The strategy is `retain`, `reconstruct`, `replace`, `transition`, or `hot_update`, or `none` when the plan carries no strategy. Read the planned action first, then the strategy that carries it out, then the reasons to find which dependency demand pulled the component in.
 
 Request the structured form when a program or review tool consumes the result:
@@ -103,6 +116,8 @@ A preview is a plan, not a dry run of your application code:
 - Previews carry paths, type names, and stable IDs, never configuration values. A value that fails to deserialize is reported as a `config_bind` rejection naming the binding path and type.
 - A change that cannot apply in place is reported as `restart_required` with the component and the runtime's reason.
 - It predicts structure, not outcomes of your own code. A replacement or transition handler that fails when it runs will not be visible here.
+
+Preview needs framework support in the target app. The request reaches the app through the `UPWELL_TOOLING_PROBE_TRANSITION_PREVIEW` environment variable, so an app built against an older framework silently produces no `Transition Preview` section and no `transition` field. Rebuild the app against a supporting version first.
 
 Preview works through `explain` only. `inspect`, `graph`, and `export` do not accept `--set`.
 
