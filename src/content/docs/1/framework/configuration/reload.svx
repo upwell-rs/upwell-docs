@@ -63,6 +63,12 @@ The successful report contains the new monotonic generation, changed bindings, a
 
 The same handle is injectable. Use an authenticated administrative route or a deployment control task when the platform has no filesystem notification or signals.
 
+<Callout type="info" title="Runtime transitions">
+
+`ConfigReloader` reports the config-level result. `AppRuntime::reload_config()` and `RuntimeReloader::reload()` run the full runtime transition, including proposal, decision, and retirement hooks, and return a `RuntimeTransitionReport`. See <GuideRef slug="framework/application/transition-hooks">runtime transition hooks</GuideRef>.
+
+</Callout>
+
 ## Validate a proposal with `CfgNext`
 
 <Example title="Reject an unusable pool configuration">
