@@ -13,7 +13,7 @@ topics: ['framework']
 
 A <GuideRef slug="framework/configuration/reload">configuration reload</GuideRef> can change which components are eligible and what they depend on. When that happens, the runtime moves affected singleton components into a new generation. Each component does so with one strategy, and the strategy decides whether its in-memory state survives.
 
-Most components need no declaration. Choose the handle you inject and the runtime does the rest; declare a recipe only when a component must carry state or customise how it is rebuilt.
+Most components need no declaration. Choose the handle you inject and the runtime does the rest; declare a recipe only when a component must carry state or customize how it is rebuilt.
 
 ## The strategies
 
