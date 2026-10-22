@@ -18,6 +18,7 @@ Framework extensions own reusable application composition. A plugin contributes 
 | Task | Guide |
 |---|---|
 | package components and declarations as one inspectable unit | <GuideRef slug="framework/extensions/plugins">Compose plugins</GuideRef> |
+| define your own event that components subscribe to, veto, or observe | <GuideRef slug="framework/extensions/custom-hooks">Define custom hook kinds</GuideRef> |
 | define a new application-level dispatch and serving model | <GuideRef slug="framework/extensions/protocol-authoring">Protocol authoring</GuideRef> |
 | implement WebSocket framing, dispatch, and subprotocol negotiation | <GuideRef slug="axum/websocket/protocol-authoring">Axum WebSocket protocol authoring</GuideRef> |
 
