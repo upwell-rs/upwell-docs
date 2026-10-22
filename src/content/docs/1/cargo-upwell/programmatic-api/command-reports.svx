@@ -37,7 +37,7 @@ let json = report.to_json()?;
 std::fs::write("target/upwell/check.json", json)?;
 ```
 
-Like `run_probe`, `run_command` is synchronous and takes request/token references. `run_command_with_options` adds `ProbeOptions` for Cargo presentation. The function returns a <Symbol path="cargo_upwell::CommandReport" /> even for command failure so callers can retain structured evidence.
+Like `run_probe`, `run_command` is synchronous and takes request/token references. `run_command_with_options` adds `ProbeOptions`, taken by value because it is no longer `Copy`. Use it for Cargo presentation; transition previews are read from the probe document and `ResourceExplanation`, not from a command report (see <GuideRef slug="cargo-upwell/programmatic-api/discovery-and-probes" fragment="preview-a-config-change">previewing a config change</GuideRef>). The function returns a <Symbol path="cargo_upwell::CommandReport" /> even for command failure so callers can retain structured evidence.
 
 </Example>
 

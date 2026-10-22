@@ -58,7 +58,7 @@ println!(
 );
 ```
 
-`run_probe_with_options` additionally accepts <Symbol path="cargo_upwell::ProbeOptions" />, currently including whether Cargo's human output is shown on stderr. Both APIs block the calling thread while discovery, isolated build, and target-local probe execution proceed. Move them to a blocking worker when integrating with an async UI/runtime.
+`run_probe_with_options` additionally accepts <Symbol path="cargo_upwell::ProbeOptions" />, which controls whether Cargo's human output is shown on stderr and carries an optional transition preview request. Both APIs block the calling thread while discovery, isolated build, and target-local probe execution proceed. Move them to a blocking worker when integrating with an async UI/runtime.
 
 </Example>
 
@@ -109,6 +109,114 @@ match &envelope.outcome {
 ```
 
 `run_probe` already decodes with `ProbeEnvelope::from_json`, validates target identity against the selected Cargo package/binary, and checks process status against success/failure outcome. Calling `validate()` again at a persistence or trust boundary is cheap and makes the consumer's contract explicit.
+
+## Preview a config change
+
+`ProbeOptions` has two public fields: `show_cargo_output: bool` and `transition_preview: Option<TransitionPreviewRequest>`. Because the request owns its assignments, `ProbeOptions` is `Clone` but no longer `Copy`; pass it by value and build variants with struct update syntax from `ProbeOptions::default()`.
+
+<Example title="Request a preview with one assignment">
+
+```rust plain
+use cargo_upwell::{ProbeOptions, run_probe_with_options};
+use upwell_tooling_schema::{ConfigAssignment, TransitionPreviewRequest};
+
+let options = ProbeOptions {
+    transition_preview: Some(TransitionPreviewRequest {
+        assignments: vec![ConfigAssignment {
+            path: String::from("auth.mode"),
+            value: String::from("default"),
+        }],
+    }),
+    ..ProbeOptions::default()
+};
+
+let probe = run_probe_with_options(&request, &cancellation, options)?;
+```
+
+`ConfigAssignment::path` is a dot-separated property path and `value` is a scalar literal: `true` or `false`, a number, a `"quoted string"`, or bare text. Assignments merge above every config source in order, and later ones win. The CLI validates paths before sending them; a request the probe cannot apply is reported as a failure envelope with the `upwell/tooling-preview-request` diagnostic code.
+
+</Example>
+
+The preview is part of the validated document. Read it from `ToolingDocument::transition_preview`, which is `None` unless you requested one, after the same envelope checks as any other probe:
+
+```rust plain
+use upwell_tooling_schema::{PreviewOutcome, ProbeOutcome};
+
+let envelope = &probe.probe.envelope;
+
+envelope.validate()?;
+
+let ProbeOutcome::Success { document } = &envelope.outcome else {
+    return Err("preparation failed; no preview".into());
+};
+
+document.validate()?;
+
+if let Some(preview) = &document.transition_preview {
+    match &preview.outcome {
+        PreviewOutcome::Planned => {
+            for component in &preview.components {
+                println!("{:?} {}", component.action, component.component);
+            }
+        }
+        PreviewOutcome::NoOp => println!("nothing would change"),
+        PreviewOutcome::Rejected { phase, failure } => {
+            println!("rejected at {}: {failure:?}", phase.as_str());
+        }
+        _ => println!("unrecognized outcome"),
+    }
+}
+```
+
+`TransitionPreview` has these fields: `assignments` (paths only), a flattened `outcome`, `evaluation` (`Complete` or `Partial`), `changed` bindings, `eligibility` changes, `components`, and `displaced` singleton IDs. Each `PreviewComponent` has `component`, an optional `factory`, a `role`, an `action`, an optional `strategy`, and `reasons`. `EligibilityChange` holds a component ID with `before` and `after` condition outcomes. `PreviewOutcome`, the phase, failure, role, action, and strategy enums are `#[non_exhaustive]`, so keep a wildcard arm. On the wire the outcome is an `outcome` tag beside the other fields, and enum values use snake case such as `no_op` and `rebind_live`.
+
+The preview never contains config values, and it runs no factory, hook, or trusted condition callback. Replanned scoped and transient components, and removed components, carry no strategy. See <GuideRef slug="cargo-upwell/cli/inspect-and-graph" fragment="what-a-preview-cannot-predict">what a preview cannot predict</GuideRef>.
+
+### Read the preview from an explanation
+
+`ResourceExplanation` gained two fields: `selection: Vec<ProviderSelection>` and `transition: Option<TransitionPreview>`. Both are skipped in serialized JSON when empty. `ResourceExplanation::query` copies the document's preview into `transition`, so one explanation holds the resource's relationships and the plan:
+
+```rust plain
+let explanation = ResourceExplanation::query(document, "component:catalog")?;
+
+for provider in &explanation.selection {
+    println!("{} effective={}", provider.provider, provider.effective);
+}
+
+if let Some(preview) = &explanation.transition {
+    println!("{} affected components", preview.components.len());
+}
+```
+
+Each `ProviderSelection` names a provider mapping, its providing `component`, whether it is `effective`, its conditional `role`, the `conditions` gating it as `ConditionStep` values (`id`, `depth`, `predicate`, `outcome`, `detail`), and the consumers it `resolved_by`. Construct `ResourceExplanation` only through `query`; the struct gained fields, so literals written against the earlier shape no longer compile.
+
+## Find config field schemas
+
+A successful document carries the JSON Schema (draft 2020-12) of every bound config type. Read the whole tree from the document facet named by `CONFIG_SCHEMA_FACET` (`framework/config-schema`), or one binding from the facet on its resource named `<binding resource id>/config-schema`, built from `CONFIG_BINDING_SCHEMA_FACET`. Both facets use `CONFIG_SCHEMA_FACET_VERSION`, currently `1`; check the facet's `schema_version` before reading `value`.
+
+```rust plain
+use upwell_tooling_schema::CONFIG_SCHEMA_FACET;
+
+if let Some(facet) = document.facets.get(CONFIG_SCHEMA_FACET) {
+    std::fs::write(
+        "target/upwell/config.schema.json",
+        serde_json::to_string_pretty(&facet.value)?,
+    )?;
+}
+```
+
+Declared `#[config]` types contribute fields, docs, defaults, and sources. Other bound types contribute the shape traced from their `Deserialize` implementation. Bindings created with `ConfigBinding::of::<T>(path)` fill in `describe` for you.
+
+A `ConfigBinding` built field by field must supply `describe: fn() -> upwell::schema::ValueSchema`. Return `ValueSchema::Any` when the shape is unknown, or `upwell::schema::trace::<T>()` to trace a `Deserialize` type. `ValueSchema` is `#[non_exhaustive]`.
+
+```rust plain
+use upwell::ConfigBinding;
+use upwell::schema::{ValueSchema, trace};
+
+let mut binding = ConfigBinding::of::<Limits>("limits");
+
+binding.describe = trace::<Limits>;
+```
 
 ## Query the canonical graph
 
@@ -161,5 +269,7 @@ Treat cancellation as operational state. Keep diagnostics and completed build/pr
 - A feature-gated binary is absent: mirror Cargo feature selection exactly.
 - JSON consumers break across versions: validate semantic schema requirements before field use.
 - Graph names are ambiguous: use stable resource IDs from the document.
+
+The same document projects conditional metadata: condition resources linked by `Gates` relationships to the components they decide, and every catalog candidate labelled with whether the effective graph includes it. Outcomes for trusted callbacks appear as not evaluated.
 
 See <GuideRef slug="cargo-upwell/programmatic-api/command-reports">programmatic command reports</GuideRef> and <GuideRef slug="cargo-upwell/cli/inspect-and-graph">inspect and graph</GuideRef>.
