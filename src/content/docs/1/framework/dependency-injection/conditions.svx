@@ -85,7 +85,7 @@ The framework derives a condition's inputs from the syntax of the expression and
 | `AuditTransport.eligible()` | whether another component is currently eligible |
 | `resolve("features.audit_export")` | a raw configuration path that no type binds, as `Option<T>` |
 
-A receiver must be an UpperCamelCase type that is a `#[config(path = ...)]` type or a component. Any other type is rejected with a "not a condition input" error. The fields you read must be visible where the condition is written; a private field is an ordinary privacy error pointing at the field.
+A receiver must be an UpperCamelCase type that is a `#[config(path = ...)]` type or a component. Any other type is rejected with a "not a condition input" error, because only types that implement `ConditionInput` can be read; `#[config(path = ...)]` and the component macros implement it. The trait, with `ConditionContext` and `ConditionCallback` (the generated callback a descriptor carries), lives in `upwell::condition`. The fields you read must be visible where the condition is written; a private field is an ordinary privacy error pointing at the field.
 
 `resolve` takes a string literal so the path is declared statically, and it is imported from `upwell::condition`. A missing key yields `None`. A present value that does not deserialize into the requested type rejects the whole candidate configuration instead of silently evaluating to `false`, and the error names the path and target type but never the value.
 
@@ -143,11 +143,11 @@ See <GuideRef slug="framework/dependency-injection/advanced">Advanced dependency
 
 A condition is trusted code that the framework runs, so it must be deterministic: no I/O, no blocking, no panics, no reading the environment or global state. Read everything through the declared inputs. Evaluation order is by stable condition id, never by declaration order, so reordering attributes cannot change the outcome.
 
-Availability must not be circular. If component A's condition asks about B and B's condition asks about A, directly or through a longer chain, validation rejects the graph with an availability-cycle error that names each component and condition. This applies even when the cycle sits on a branch that is currently unreachable. Remove one of the dependencies so eligibility stops depending on itself.
+Availability must not be circular. If component A's condition asks about B and B's condition asks about A, directly or through a longer chain, validation rejects the graph with `upwell::ConditionError::AvailabilityCycle`, which names each component and condition. This applies even when the cycle sits on a branch that is currently unreachable. Remove one of the dependencies so eligibility stops depending on itself.
 
 ## How eligibility affects provider selection
 
-A condition filters candidates; it does not introduce a second selection algorithm. A provider is eligible exactly when its concrete component is, and the existing qualifier, `primary`, and ordering rules then choose among the eligible providers.
+A condition filters candidates; it does not introduce a second selection algorithm. A provider is eligible exactly when its concrete component is, and the existing qualifier and `primary` rules then choose among the eligible providers for a single dependency.
 
 | Eligible providers | Result |
 |---|---|
@@ -156,20 +156,81 @@ A condition filters candidates; it does not introduce a second selection algorit
 | several, none or more than one tied | the build fails with `upwell_di::Error::AmbiguousProvider` |
 | none, for a required single dependency | the usual missing-dependency error |
 
-The ambiguity error carries `candidates`, the stable ids of every eligible provider the consumer can see, and its message lists the ways out: mark exactly one provider `primary`, give them distinct priorities, or inject `Vec<Arc<dyn Trait>>` to receive all of them. The default and custom authenticators above rely on the first row while the condition is false and on the second while it is true. Without `primary` on the custom provider, switching the configuration would turn a working application into an ambiguous one.
+The ambiguity error carries `candidates`, the stable ids of every eligible provider the consumer can see, and its message lists ways out. Only two of them settle a single dependency: mark exactly one provider `primary`, or inject `Vec<Arc<dyn Trait>>` to receive all of them. The message also suggests distinct priorities, but priority never breaks a tie for a single dependency (see below), so do not rely on it to clear this error. The default and custom authenticators above rely on the first row while the condition is false and on the second while it is true. Without `primary` on the custom provider, switching the configuration would turn a working application into an ambiguous one.
 
-A missing or mistyped configuration value rejects the candidate rather than falling back to the default provider.
+### Ordering and collections
+
+Priority and `before`/`after` ordering do not choose a provider for a single dependency. They only set the order of providers in a collection and the order components are constructed in. A `Vec<Arc<dyn Trait>>` receives exactly the eligible providers, in provider order, so a provider whose condition is false is simply absent from the vector and appears again, at its ordered position, when the condition turns true.
+
+### Missing and mistyped values
+
+A typed binding that is missing or fails to deserialize rejects the candidate configuration rather than falling back to the default provider. A present `resolve` value of the wrong type rejects it too. A missing raw key is different: `resolve` yields `None`, the comparison is false, and the component is quietly ineligible.
+
+## A runnable example
+
+The `examples/conditional` crate in the framework repository is the complete version of the authenticator above; run it with `cargo run -p upwell-example-conditional`. `tests/scenario.rs` asserts the same scenario.
+
+Assembly registers each component and provider on the builder, with the config read from a file:
+
+```rust
+let app = App::<()>::builder("conditional-example")
+    .config_source(manager)
+    .config::<AuthConfig>("auth")
+    .component::<DefaultAuthenticator>()
+    .component::<CustomAuthenticator>()
+    .component::<LoginGate>()
+    .component::<AuthBanner>()
+    .component::<SessionLedger>()
+    .provider::<DefaultAuthenticator>()
+    .provider::<CustomAuthenticator>()
+    .build()
+    .await?;
+```
+
+The configuration it reads sets the mode and a session limit:
+
+```toml
+[auth]
+mode = "custom"
+max_sessions = 10
+```
+
+Rewriting that file and calling `runtime().reload_config().await` re-evaluates the condition and switches the provider. Three consumers show the three ways to cross the switch. `LoginGate` holds `Dep<dyn Authenticator>` and keeps its instance. `AuthBanner` holds `Arc<dyn Authenticator>` and is reconstructed. `SessionLedger` also holds an `Arc`, but a `#[replace]` recipe rebuilds it from the previous instance:
+
+```rust
+#[replace]
+fn carry(
+    previous: Previous<Self>,
+    authenticator: Arc<dyn Authenticator>,
+    auth: Cfg<AuthConfig>,
+) -> Result<Self, SessionLimitExceeded> {
+    let sessions = previous.sessions();
+    let limit = auth.snapshot().max_sessions;
+
+    if sessions > limit {
+        return Err(SessionLimitExceeded { sessions, limit });
+    }
+
+    Ok(Self {
+        authenticator,
+        limit,
+        sessions: AtomicUsize::new(sessions),
+    })
+}
+```
+
+A recipe can carry state, such as open sessions, across a provider switch. When it fails, because a reload lowered `max_sessions` below the open sessions, the whole transition rolls back: every instance and the active generation stay as they were.
 
 ## Limits
 
 - Only factory-backed singleton components can be conditional. A `#[component(scope = transient)]` or other non-singleton component with `#[when]` fails to compile.
-- A component without a factory, such as a manually seeded instance, cannot be conditional and is rejected with `ConditionalManualComponent`. A manual registration also cannot override a conditional component.
+- A component without a factory, such as a manually seeded instance, cannot be conditional and is rejected with `upwell::ConditionError::ConditionalManualComponent`. A manual registration also cannot override a conditional component.
 - A condition applies to the whole component. It cannot gate one provider mapping of a component that provides several traits; give each trait its own component.
 - Already-open scopes keep the generation they opened with; later scopes use the current one.
 - `upwell::condition`, including `resolve`, is native-only and is not available when building for WebAssembly.
 
 ## Failures from tooling-prepared applications
 
-Tooling that prepares an application without running it never executes trusted code. A condition made only of field reads, comparisons against literals or enum variants, `&&`, `||`, `!`, `.eligible()`, and `resolve(...)` is evaluated over the staged configuration. Any other condition, for example one that calls a function or macro, is left undecided and so are the components that depend on it.
+Tooling that prepares an application without running it never executes trusted code. A condition made only of field reads, comparisons against literals or enum variants, `&&`, `||`, `!`, `.eligible()`, and `resolve(...)` is evaluated over the staged configuration. Any other condition, for example one that calls a function or macro, is left undecided and so are the components that depend on it. Each condition's result is an `upwell::ConditionOutcome` (`Holds`, `Fails` or `NotEvaluated`), and the per-application result of evaluating them is an `AppConditionEvaluation`; a runtime evaluation always decides, so `NotEvaluated` appears only in tooling output.
 
 Building such a preparation fails with `upwell_app::Error::UndecidedConditionsBuild`. If the graph tooling can decide is invalid, validation reports `upwell_app::Error::UndecidedConditionGraph`, whose `not_evaluated` field lists the undecided component ids. Neither occurs in an application started normally, where every condition runs.
