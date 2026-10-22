@@ -19,6 +19,7 @@ Application guides own the process-level model: the generated host, direct build
 |---|---|
 | let Upwell own `main`, CLI setup, and tooling discovery | <GuideRef slug="framework/application/app-macro">The `app!` macro</GuideRef> |
 | acquire resources, roll back startup, and drain shutdown | <GuideRef slug="framework/application/lifecycle">Lifecycle and graceful shutdown</GuideRef> |
+| inspect, veto, and audit runtime transitions caused by config reload | <GuideRef slug="framework/application/transition-hooks">Runtime transition hooks</GuideRef> |
 | run HTTP, RPC, jobs, or custom protocols as deliberate hosts | <GuideRef slug="framework/application/protocol-composition">Protocol composition</GuideRef> |
 
 ## Shared prerequisites

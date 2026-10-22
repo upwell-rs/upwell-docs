@@ -1,0 +1,297 @@
+---
+title: Runtime transition hooks
+description: Inspect, veto, and observe each phase of a runtime transition, and read its redacted report.
+order: 41
+topics: ['framework']
+---
+
+<script lang="ts">
+	import { Callout, Example, GuideRef } from '#lib/docs';
+</script>
+
+# Runtime transition hooks
+
+A runtime transition is one configuration reload that may change the component graph. Every reload runs as one serialized transaction: it stages the new configuration, plans which components must change, builds a candidate generation next to the active one, and then publishes the candidate or drops it whole.
+
+Use transition hooks when a component or an operator policy needs to see that change coming, veto it, learn that it has been displaced, or audit how it ended. Hooks that only validate a config value belong in <GuideRef slug="framework/configuration/reload">configuration reload</GuideRef>; transition hooks see the whole plan.
+
+## Phases
+
+A reload whose source changed runs these phases in order. An unchanged source is a no-op: no hooks run and no generation moves.
+
+| # | Phase | Hook kind | Runs on | Can reject |
+|---|---|---|---|:-:|
+| 1 | Stage: re-read config, find changed bindings | none | none | yes (config load or bind error) |
+| 2 | Evaluate conditions, plan the transition | none | none | yes (condition or plan error) |
+| 3 | Proposal | `TransitionProposal` | active generation | yes |
+| 4 | Construct the candidate root | none (component factories) | candidate | yes (factory error) |
+| 5 | Config reload | `ConfigReload` | candidate generation | yes |
+| 6 | Decision | `TransitionDecision` | candidate generation | yes |
+| 7 | Commit: publish the candidate, commit config | none | none | no |
+| 8 | Retirement (committed only) | `ComponentRetired` | displaced generation | no |
+| 9 | Committed or aborted | `TransitionCommitted` / `TransitionAborted` | published / active generation | no |
+
+Phases 3 to 7 run inside the transaction. A rejection at any of them leaves the active generation, the config tree, its live slots, and the config generation unchanged, and drops the candidate. Side effects outside the framework, such as I/O, external systems, and mutations made through retained instances, are not rolled back.
+
+Phases 8 and 9 run after the transaction has released its locks and before `reload_config()` or the trigger returns. The outcome is final by then, so these hooks cannot roll anything back.
+
+`ConfigReload` hooks run exactly once per attempt. The decision phase reads their accepted outcomes from `PendingTransition::config_hooks()` instead of running them again.
+
+## Inspect before anything is built
+
+<Example title="Observe the plan in a proposal hook">
+
+```rust
+use upwell::{PendingTransition, TransitionProposal, TransitionVerdict, methods};
+
+#[methods]
+impl AuthGate {
+    #[hook(TransitionProposal)]
+    async fn propose(&self, pending: PendingTransition) -> TransitionVerdict {
+        if let Some(gate) = pending.component(AuthGate::ID) {
+            tracing::info!(action = ?gate.action, reasons = ?gate.reasons, "auth gate is changing");
+        }
+
+        TransitionVerdict::Accept
+    }
+}
+```
+
+</Example>
+
+`PendingTransition` carries the attempt and base generation IDs, the changed binding paths, and every affected component. For each component it gives the stable ID, the planner action (`Add`, `Replace`, `RebindLive`, `Remove`), the selected factory, and the reason paths that explain the action. A hook may also take `#[config("path")] next: CfgNext<T>` to read the staged typed value of a binding it declares.
+
+The receiver (`&self`) is the active instance, because no candidate exists yet. A rejection constructs nothing.
+
+## Veto the constructed candidate
+
+<Example title="Freeze changes with an always-routed decision hook">
+
+```rust
+#[methods]
+impl ChangeFreeze {
+    #[hook(TransitionDecision, always)]
+    async fn decide(&self, pending: PendingTransition) -> TransitionVerdict {
+        match current_freeze() {
+            Some(reason) => TransitionVerdict::Reject(reason),
+            None => TransitionVerdict::Accept,
+        }
+    }
+}
+```
+
+</Example>
+
+Decision runs after construction and the config-reload hooks, immediately before commit. Its receiver is the candidate instance, and a rejection drops the whole candidate.
+
+`TransitionVerdict::Reject` takes a `&'static str` reason code. It is recorded in the redacted report, so it must not carry config values or secrets.
+
+`ConfigReload` keeps its own contract, described in <GuideRef slug="framework/configuration/reload">configuration reload</GuideRef>. It runs on the candidate generation, between proposal and decision.
+
+## Learn that you were displaced
+
+<Example title="Stop taking new work when retired">
+
+```rust
+use upwell::{ComponentRetired, ComponentRetirement};
+
+#[methods]
+impl CustomAuthenticator {
+    #[hook(ComponentRetired)]
+    async fn retired(&self, retirement: ComponentRetirement) {
+        self.stop_accepting_new_sessions();
+    }
+}
+```
+
+</Example>
+
+After a commit, every singleton the commit replaced or removed receives `ComponentRetired` once. Its `&self` is the displaced instance itself, resolved through the old generation's root, never its replacement. `ComponentRetirement` names the component and gives its `RetirementReason` (`Replaced` or `Removed`), the attempt, and both generation IDs.
+
+Retained, hot-updated, rebound-in-place, and newly added components never retire. A component whose live dependencies could not be rebound in place is constructed again, so it retires as `Replaced`.
+
+<Callout type="warning" title="Retirement is not destruction">
+
+Pinned `RuntimeView`s, open scopes, and other holders may keep using the instance after retirement, until they release it. A retirement hook should stop taking new work or schedule cleanup. It must not invalidate state that a pinned caller may still read.
+
+</Callout>
+
+Components retire in `RuntimeTransitionReport::displaced()` order: a consumer retires before the components it holds a fixed dependency on. Components linked only through live dependencies may retire in either order.
+
+To see when a retired instance is really released, watch the old generation's root. When its last owner lets go, one `displaced runtime generation released` event is emitted on the `upwell::transition` tracing target, carrying `generation`, the displacing `attempt`, and `released_after_us`. Until then `AppRuntime::displaced_generations()` lists the generation, oldest first, so a generation that never drains shows up there. The current generation is never listed. Release is reported through tracing, not a hook, because the root a hook receiver would resolve through is the one that was just dropped.
+
+## Observe the outcome
+
+<Example title="Record every committed and rejected attempt">
+
+```rust
+use upwell::{RuntimeTransitionReport, TransitionAborted, TransitionCommitted};
+
+#[methods]
+impl TransitionAudit {
+    #[hook(TransitionCommitted)]
+    async fn committed(&self, report: RuntimeTransitionReport) {
+        metrics::record_reload(report.attempt(), report.elapsed(), report.displaced().len());
+    }
+
+    #[hook(TransitionAborted)]
+    async fn aborted(&self, report: RuntimeTransitionReport) {
+        tracing::warn!(outcome = ?report.outcome(), "reload rejected");
+    }
+}
+```
+
+</Example>
+
+Each committed or rejected attempt fires exactly one of the two with its final report. Committed observers run on the published generation, after every retirement. Aborted observers run on the generation that stayed active.
+
+No-op attempts, cancelled attempts (whose future was dropped), and reloads rejected as reentrant fire neither. Cancelled and reentrant attempts produce no report at all.
+
+## Participants, observers, and routing
+
+- **Participants** are `TransitionProposal` and `TransitionDecision` hooks without `observe`. They return a `TransitionVerdict`, run sequentially in registration order, and the first `Reject`, error, or panic ends the attempt. A participant that errors or panics cannot vouch for the attempt, so the attempt is rejected.
+- **Observers** are written `#[hook(Kind, observe)]` and return `()` or `Result<(), E>`. They run concurrently, and only once every participant has accepted. Their failures are recorded in the report and traced, and never reject. `ComponentRetired`, `TransitionCommitted`, and `TransitionAborted` are observer-only kinds, so every hook of those kinds is an observer.
+- **Targeted** is the default. A proposal hook runs only on affected components present in the active generation (replaced, rebound, or removed). A decision hook runs only on affected components present in the candidate (added, replaced, or rebound). A retirement hook runs only for its own component's retirement.
+- **`always`** is written `#[hook(Kind, always)]`. The hook runs on every transition that reaches its phase, whether or not the plan touches its component. Use it for operator policies and audits. An `always` retirement hook observes every component's retirement and reads which one from its `ComponentRetirement`.
+- Committed and aborted observers run on every attempt that reaches them. Targeting does not apply.
+
+Panics in any hook are caught and reported without their payload.
+
+## Read the report
+
+Every attempt that acquires the transition writer produces one `RuntimeTransitionReport`. A commit or no-op returns it from `reload_config()` or `RuntimeReloader::reload()`. A rejection carries it inside `AppError::TransitionRejected`, whose `TransitionRejection` exposes it through `report()`.
+
+<Example title="Inspect a rejected reload">
+
+```rust
+use upwell::{AppError, TransitionOutcome};
+
+match runtime.reload_config().await {
+    Ok(report) if report.is_committed() => {
+        tracing::info!(displaced = ?report.displaced(), "reload committed");
+    }
+    Ok(_) => {}
+    Err(AppError::TransitionRejected(rejection)) => {
+        if let TransitionOutcome::Rejected { phase, failure } = rejection.report().outcome() {
+            tracing::warn!(%phase, %failure, "reload rejected");
+        }
+    }
+    Err(error) => return Err(error.into()),
+}
+```
+
+</Example>
+
+The report holds:
+
+- the attempt and generation IDs, and the reload `cause()`;
+- the terminal `outcome()`: `Committed`, `NoOp`, or `Rejected` with the rejecting `TransitionPhase` and a `TransitionFailure` category;
+- changed binding paths and type names, and the affected `components()` with their actions and reasons;
+- the `displaced()` components, the `hooks()` outcomes of config-reload hooks, and the `transition_hooks()` outcomes of proposal and decision hooks;
+- per-phase timings from `phases()`, summed by `elapsed()`.
+
+Every component in a report is named by its stable component ID, including the owner of each hook outcome and of a rejecting hook in `TransitionFailure`. Entries for one component therefore correlate across `components()`, `hooks()`, `transition_hooks()`, and `displaced()`.
+
+Each `TransitionHookReport` records the phase, the owning component, the hook's role, and a `TransitionHookOutcome` of `Completed`, `Rejected { reason }`, `Failed`, or `Panicked`.
+
+### Redaction
+
+Reports and hook contexts never contain current or proposed config values, deserializer output, error messages, or panic payloads. That holds for `Debug`, `Display`, serialized output with the `serde` feature, and the structured `upwell::transition` tracing events.
+
+The only free text they carry is chosen by hook authors as a `&'static str`: the reason a participant passes to `TransitionVerdict::Reject`, and the reason a config-reload hook passes to `HookOutcome::RestartRequired`. The only way to read staged values is `CfgNext<T>`, and only for a binding the hook declares.
+
+The unredacted error behind a rejection is reachable only through `TransitionRejection::error()`, `TransitionRejection::into_parts()`, and the error source chain. Its message may contain config-derived text, so do not forward it where values must stay redacted.
+
+### A minimal audit component
+
+The `examples/conditional` application records every proposal and outcome in one component. No provider switch affects it, so the single instance keeps its record across reloads.
+
+<Example title="TransitionAudit">
+
+```rust
+use std::sync::Mutex;
+
+use upwell::{
+    NodeAction, PendingTransition, RuntimeTransitionReport, TransitionAborted, TransitionCommitted,
+    TransitionOutcome, TransitionProposal, TransitionVerdict, component, methods,
+};
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AuditEvent {
+    Proposed(Vec<(&'static str, NodeAction)>),
+    Committed { displaced: Vec<&'static str> },
+    Aborted(TransitionOutcome),
+}
+
+#[component]
+pub struct TransitionAudit {
+    #[default]
+    events: Mutex<Vec<AuditEvent>>,
+}
+
+#[methods]
+impl TransitionAudit {
+    #[hook(TransitionProposal, always)]
+    async fn inspect(&self, pending: PendingTransition) -> TransitionVerdict {
+        let plan = pending
+            .components()
+            .iter()
+            .map(|component| (component.component, component.action))
+            .collect();
+
+        self.record(AuditEvent::Proposed(plan));
+
+        TransitionVerdict::Accept
+    }
+
+    #[hook(TransitionCommitted)]
+    async fn committed(&self, report: RuntimeTransitionReport) {
+        self.record(AuditEvent::Committed {
+            displaced: report.displaced().to_vec(),
+        });
+    }
+
+    #[hook(TransitionAborted)]
+    async fn aborted(&self, report: RuntimeTransitionReport) {
+        self.record(AuditEvent::Aborted(report.outcome().clone()));
+    }
+}
+```
+
+`record` is an ordinary method that pushes onto `events` under the mutex.
+
+</Example>
+
+## Reentrancy
+
+Proposal, config-reload, and decision hooks, and candidate factories, run while the reload holds its locks. Calling `reload_config()` or `RuntimeReloader::reload()` for the same runtime from inside them returns `AppError::ReentrantReload` immediately, and the running attempt is unaffected. If a hook must trigger another reload, `tokio::spawn` it without awaiting it from the hook: the spawned reload waits for the locks and runs after the transaction completes.
+
+<Callout type="warning" title="Cross-runtime reloads">
+
+The check only sees the current task. Two transactions on different tasks that each reload the other's runtime inline wait on each other's locks and deadlock, and this cycle is not detected. Avoid inline cross-runtime reloads from hooks and factories, or spawn them without awaiting them.
+
+</Callout>
+
+Retirement and outcome observers run after the locks are released, so they may request a follow-up reload. That reload runs as a new attempt. Another attempt may already be running or committed by the time an observer runs, so rely on the report's generation IDs rather than the runtime's current generation.
+
+A participant rejection surfaces as `AppError::TransitionHookRejected { kind, component, reason }`, and a participant that fails or panics surfaces as `AppError::TransitionHookFailed { kind, component, source }`. When the attempt is rejected, the reload returns `AppError::TransitionRejected`, and these errors are reachable through `TransitionRejection::error()`.
+
+## Trigger sources
+
+Each report records what requested it as a `ReloadCause`.
+
+| Cause | Source |
+|---|---|
+| `Requested` | `AppRuntime::reload_config()` or the injectable `RuntimeReloader` |
+| `Signal` | `SIGHUP` |
+| `FileWatch` | a change to a watched config file |
+
+All three run the same transaction and fire the same hooks.
+
+## Relation to lifecycle hooks
+
+Reload triggers start after the `Startup` event and stop before the `Shutdown` event, so triggered transitions and their outcome observers happen strictly between the two. A direct `reload_config()` call runs whenever it is made. `Startup` and `Shutdown` address reload generations in specific ways, described in <GuideRef slug="framework/application/lifecycle">lifecycle and graceful shutdown</GuideRef>.
+
+## Observability
+
+Rejections, observer failures, and generation releases are traced on the `upwell::transition` target. Observer failures are traced as `transition outcome observer failed` or `component retirement hook failed` with the attempt, hook kind, component, and failure category, never the error message or panic payload.
