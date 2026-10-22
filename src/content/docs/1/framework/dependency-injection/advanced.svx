@@ -157,6 +157,8 @@ impl Search {
 
 </Example>
 
+When a reload switches the provider behind a `Dep<T>`, the consumer keeps its instance; an `Arc<T>` consumer is rebuilt. The [transition strategies guide](transition-strategies) explains each outcome.
+
 Use `Dynamic<H>` instead when a protocol or framework supplies a value only at runtime. It is not a reload mechanism and does not make an otherwise missing component optional. The <SymbolRef path="upwell_macros/config">`#[config]` symbol page</SymbolRef> documents configuration declarations and bindings.
 
 ## Delay resolution for a real need
