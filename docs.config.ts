@@ -1,5 +1,16 @@
-import type { DocsConfig } from "@upwell/docs-core/config";
+import type {
+  DocsConfig,
+  DocsPrerenderPolicy,
+} from "@upwell/docs-core/config";
 import { parseVersion, versionId } from "@upwell/docs-core/semver";
+
+/** Opt-in prerender policy that keeps source pages static while excluding colliding source-file API output. */
+export const experimentalStaticSourcesPrerender: DocsPrerenderPolicy = {
+  routes: {
+    sources: true,
+    sourceApi: false,
+  },
+};
 
 export const docsConfig: DocsConfig = {
   framework: {

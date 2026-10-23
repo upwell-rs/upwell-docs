@@ -159,6 +159,8 @@ export type DocsPrerenderRoute =
   | "docs"
   | "symbols"
   | "api"
+  | "sources"
+  | "sourceApi"
   | "search"
   | "redirects";
 
